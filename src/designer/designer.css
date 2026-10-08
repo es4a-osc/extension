@@ -1,0 +1,321 @@
+@import "@vscode/codicons/dist/codicon.css";
+
+/*
+定义窗口设计器四列布局、属性与组件树、低保真画布、拖放反馈和上下文菜单样式。
+xhwsd@qq.com 2026-8-30
+*/
+
+/* Webview 根容器和四个可排序列区共享同一可用高度。 */
+:root {
+	--designer-logical-width: 480px;
+	--designer-logical-height: 800px;
+	--designer-layout-spacing: 0px;
+	--designer-empty-content-min-width: 32px;
+	--designer-empty-content-min-height: 32px;
+	--designer-component-border-width: 1px;
+	--designer-component-hover-line-width: 1px;
+	--designer-component-selection-line-width: 2px;
+	--designer-resize-handle-size: 4px;
+	--designer-resize-handle-offset: 2px;
+	--designer-component-interaction-color: var(--vscode-focusBorder);
+	--designer-component-layer: 1;
+	--designer-interaction-layer: 60;
+	--designer-label-layer: 70;
+	--designer-drag-layer: 2000;
+	--designer-drop-indicator: var(--vscode-focusBorder);
+	--designer-drop-hatch: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--designer-drop-indicator) 12%, transparent) 0 5px, color-mix(in srgb, var(--designer-drop-indicator) 72%, transparent) 5px 7px);
+	--designer-relative-guide: var(--vscode-descriptionForeground);
+	color-scheme: light dark;
+}
+* { box-sizing: border-box; }
+html, body { width: 100%; min-width: 1100px; height: 100%; min-height: 620px; margin: 0; padding: 0; }
+body { position: relative; overflow: auto; color: var(--vscode-foreground); background: var(--vscode-editor-background); font: var(--vscode-font-weight) var(--vscode-font-size)/1.35 var(--vscode-font-family); }
+#designer-app { width: 100%; height: 100%; }
+.designer-app-content { width: 100%; height: 100%; }
+button, input, select { color: inherit; font: inherit; }
+.designer-shell { display: flex; width: 100%; height: 100%; min-height: 620px; gap: 8px; align-items: stretch; padding: 8px; }
+.left-column, .projection-section, .toolbox-section { min-width: 0; }
+.left-column { display: flex; width: clamp(260px, 20vw, 360px); min-height: 0; flex: 0 0 clamp(260px, 20vw, 360px); flex-direction: column; gap: 8px; }
+.property-section { min-height: 0; flex: 1 1 0; }
+.layout-section { height: 240px; min-height: 240px; flex: 0 0 240px; }
+.projection-section { width: fit-content; height: fit-content; flex: 0 0 auto; align-self: start; }
+.nonvisual-section { width: 80px; min-width: 80px; max-width: 80px; height: 100%; min-height: 0; flex: 0 0 80px; align-self: stretch; }
+.toolbox-section { width: clamp(210px, 12vw, 260px); flex: 0 0 clamp(210px, 12vw, 260px); }
+.designer-column { position: relative; }
+.designer-column-handle { cursor: grab; user-select: none; }
+.designer-column-handle:active { cursor: grabbing; }
+.designer-column-source { opacity: .62; }
+.designer-column-drop-before { box-shadow: -4px 0 0 var(--vscode-focusBorder); }
+.designer-column-drop-after { box-shadow: 4px 0 0 var(--vscode-focusBorder); }
+.section { display: flex; min-width: 0; min-height: 0; flex-direction: column; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); background: var(--vscode-sideBar-background); }
+.section-title { flex: 0 0 30px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); background: var(--vscode-sideBarSectionHeader-background); font-weight: 600; }
+.section-title-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section-title-count { flex: 0 0 auto; margin-left: auto; color: var(--vscode-descriptionForeground); font-size: .9em; font-weight: 400; }
+.section-title-count-inline { margin-left: 5px; }
+.section-title-actions { display: flex; flex: 0 0 auto; gap: 2px; margin-left: auto; }
+.section-title-action { display: grid; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 3px; place-items: center; color: var(--vscode-foreground); background: transparent; cursor: pointer; }
+.section-title-action:hover, .section-title-action:focus-visible { outline: 0; border-color: var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.section-title-action[aria-pressed="true"] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.section-content { min-height: 0; flex: 1 1 auto; overflow: auto; }
+/* 各区滚动到边界后停止，不把滚轮继续传递给整个设计器页面。 */
+.section-content,
+.nonvisual-list,
+.property-choice-menu,
+#component-event-menu-items,
+#enabled-component-event-menu-items,
+.window-layout-surface.window-scrollable,
+.container-scroll-vertical { overscroll-behavior-y: contain; }
+/* 属性框占据属性列剩余高度，布局树固定在同一父列底部。 */
+.property-content { background: var(--vscode-sideBar-background); }
+.component-header { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 28px; margin: 6px 8px; padding: 4px 7px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-input-background); }
+.component-header-with-icon { grid-template-columns: 22px minmax(0, 1fr) auto; gap: 5px; }
+.component-name { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.component-type { color: var(--vscode-descriptionForeground); font-size: .92em; }
+.property-row { display: grid; grid-template-columns: clamp(100px, 38%, 140px) minmax(0, 1fr); }
+.property-name, .property-value { min-width: 0; padding: 4px 7px; }
+.property-value { border-left: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.property-list { width: 100%; margin: 0 0 8px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.property-group { margin: 0; }
+.property-group summary { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px; align-items: center; min-height: 24px; padding: 3px 6px; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-sideBarSectionHeader-background); font-weight: 600; cursor: pointer; list-style: none; user-select: none; }
+.property-group summary::-webkit-details-marker { display: none; }
+.property-group:first-child summary { border-top: 0; }
+.property-row { --property-value-foreground: var(--vscode-foreground); min-height: 29px; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.property-row.value-default { --property-value-foreground: color-mix(in srgb, var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)) 72%, transparent); }
+.property-row:hover { background: var(--vscode-list-hoverBackground); }
+.property-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.property-value { display: flex; align-items: center; overflow: hidden; padding: 2px 3px; color: var(--property-value-foreground); }
+.property-readonly-value { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.property-editor { position: relative; display: flex; width: 100%; min-width: 0; gap: 2px; align-items: center; }
+.property-editor-control { width: 100%; min-width: 0; height: 24px; padding: 1px 5px; border: 1px solid transparent; outline: 0; color: var(--property-value-foreground); background: transparent; }
+.property-editor-control:hover { border-color: var(--vscode-input-border, var(--vscode-widget-border)); background: var(--vscode-input-background); }
+.property-editor-control:focus { border-color: var(--vscode-focusBorder); background: var(--vscode-input-background); }
+.property-input { color: var(--vscode-foreground); }
+.property-input[data-atomic-expression="true"] { caret-color: transparent; }
+.property-color-trigger { position: relative; display: grid; width: 24px; height: 24px; flex: 0 0 24px; padding: 3px; border: 1px solid transparent; place-items: center; cursor: pointer; }
+.property-color-trigger:hover, .property-color-trigger:focus-within { border-color: var(--vscode-focusBorder); background: var(--vscode-input-background); }
+.property-color-swatch { width: 14px; height: 14px; border: 1px solid var(--vscode-contrastBorder, var(--vscode-widget-border)); }
+.property-color-swatch-unknown { background: linear-gradient(135deg, transparent 44%, var(--vscode-descriptionForeground) 45%, var(--vscode-descriptionForeground) 55%, transparent 56%); }
+.property-color-input { position: absolute; width: 100%; height: 100%; inset: 0; opacity: 0; cursor: pointer; }
+.property-choice-trigger { display: grid; width: 24px; height: 24px; flex: 0 0 24px; padding: 0; place-items: center; border: 1px solid transparent; outline: 0; color: inherit; background: transparent; cursor: pointer; }
+.property-choice-trigger:hover { border-color: var(--vscode-input-border, var(--vscode-widget-border)); background: var(--vscode-input-background); }
+.property-choice-trigger:focus { border-color: var(--vscode-focusBorder); background: var(--vscode-input-background); }
+.property-choice-trigger-full { width: 100%; min-width: 0; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 24px; padding-left: 5px; color: var(--property-value-foreground); }
+.property-choice-value { min-width: 0; justify-self: stretch; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.property-choice-arrow, .property-clear > .codicon { display: grid; width: 16px; height: 16px; overflow: hidden; line-height: 16px; place-items: center; pointer-events: none; }
+.property-choice-arrow { color: var(--vscode-descriptionForeground); }
+.property-choice-trigger:hover .property-choice-arrow, .property-choice-trigger:focus .property-choice-arrow { color: var(--vscode-foreground); }
+.property-choice-menu { position: fixed; z-index: 1000; max-height: min(240px, 50vh); overflow-x: hidden; overflow-y: auto; padding: 2px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-dropdown-background, var(--vscode-menu-background, var(--vscode-editorWidget-background))); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.property-choice-option { display: block; width: 100%; min-height: 26px; padding: 3px 8px; overflow: hidden; border: 0; color: var(--vscode-dropdown-foreground, var(--vscode-menu-foreground)); background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.property-choice-option:hover, .property-choice-option:focus { outline: 0; background: var(--vscode-list-activeSelectionBackground); }
+.property-choice-option-default { color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)); }
+.property-clear { display: grid; flex: 0 0 24px; width: 24px; height: 24px; overflow: hidden; padding: 0; border: 1px solid transparent; place-items: center; color: var(--vscode-descriptionForeground); background: transparent; cursor: pointer; }
+.property-clear:hover, .property-clear:focus { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.property-choice-arrow::before, .property-clear > .codicon::before { display: block; transform: none; }
+.value-default .property-input::placeholder { color: var(--property-value-foreground); opacity: 1; }
+.empty-state, .designer-empty, .layout-empty, .toolbox-empty { display: grid; min-height: 100px; place-content: center; padding: 16px; color: var(--vscode-descriptionForeground); text-align: center; }
+.codicon-placeholder { font-size: 24px; }
+.layout-tree { padding: 5px 0; }
+.layout-tree-children { margin-left: 18px; border-left: 1px solid var(--vscode-tree-indentGuidesStroke); }
+.layout-tree-item { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 3px; align-items: center; width: 100%; min-height: 25px; padding: 2px 7px; border: 0; text-align: left; background: transparent; cursor: pointer; }
+.layout-tree-item:hover, .layout-tree-item.hovered { background: var(--vscode-list-hoverBackground); }
+.layout-tree-item.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-type { color: var(--vscode-descriptionForeground); font-size: .9em; }
+.nonvisual-list { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 6px; align-items: center; padding: 8px; overflow-x: hidden; overflow-y: auto; }
+.nonvisual-item { display: grid; width: 48px; min-width: 48px; max-width: 48px; height: 48px; min-height: 48px; max-height: 48px; flex: 0 0 48px; place-content: center; padding: 3px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-editor-background); cursor: pointer; }
+.nonvisual-item:hover, .nonvisual-item.selected { border-color: var(--vscode-focusBorder); }
+.nonvisual-item[draggable="true"] { cursor: grab; }
+.nonvisual-item[draggable="true"]:active { cursor: grabbing; }
+.component-icon { display: inline-block; width: 20px; height: 20px; flex: 0 0 auto; background: currentColor; -webkit-mask: var(--component-icon-source) center / contain no-repeat; mask: var(--component-icon-source) center / contain no-repeat; }
+.component-icon-fallback { display: inline-grid; background: none; -webkit-mask: none; mask: none; place-items: center; font-weight: 600; }
+.component-icon-header { width: 20px; height: 20px; }
+.component-icon-tree { width: 18px; height: 18px; justify-self: center; }
+.component-icon-enabled { width: 28px; height: 28px; }
+.component-icon-toolbox { width: 24px; height: 24px; justify-self: center; }
+.component-drag-image { position: fixed; top: 0; left: 0; z-index: var(--designer-drag-layer); display: grid; width: 48px; height: 48px; border: 1px solid var(--vscode-focusBorder); color: var(--vscode-foreground); background: var(--vscode-editor-background); pointer-events: none; place-items: center; }
+.component-drag-image-transparent { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: .001; pointer-events: none; }
+/* 画布固定为 480x800 DIP 的设计期投影，组件长度由模型转换为 CSS。 */
+.designer-canvas { position: relative; width: calc(var(--designer-logical-width) + 24px); height: calc(var(--designer-logical-height) + 24px); min-width: 0; min-height: 0; flex: 0 0 auto; padding: 12px; overflow: hidden; background: var(--vscode-editor-background); -webkit-user-select: none; user-select: none; }
+.designer-interaction-layer, .designer-label-layer { position: absolute; inset: 0; pointer-events: none; }
+.designer-interaction-layer { z-index: var(--designer-interaction-layer); }
+.designer-label-layer { z-index: var(--designer-label-layer); }
+.designer-drag-layer { position: absolute; z-index: var(--designer-drag-layer); inset: 0; pointer-events: none; user-select: none; }
+.designer-component-name { position: absolute; display: flex; align-items: center; height: 20px; max-width: 180px; padding: 0 5px; overflow: hidden; font-size: 11px; pointer-events: none; }
+.designer-component-name-text { min-width: 0; overflow: hidden; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.designer-component-name-selected,
+.designer-component-name-hovered { border: 1px solid var(--designer-component-interaction-color); color: #fff; background: var(--designer-component-interaction-color); }
+.designer-component-name-selected { border-radius: 3px; font-weight: 400; cursor: move; pointer-events: auto; }
+.designer-component-name-hovered { border-radius: 3px; font-style: italic; font-weight: 400; }
+/* 组件保持原生 DOM 嵌套；画布交互层只读取真实边界并绘制反馈，不复制组件布局。 */
+.designer-component-feedback { position: absolute; box-shadow: inset 0 0 0 var(--designer-feedback-line-width) var(--designer-component-interaction-color); pointer-events: none; }
+.designer-component-feedback-selected { --designer-feedback-line-width: var(--designer-component-selection-line-width); z-index: 1; }
+.designer-component-feedback-hovered { --designer-feedback-line-width: var(--designer-component-hover-line-width); z-index: 2; }
+.designer-resize-handle { position: absolute; z-index: 1; padding: 0; border: 0; border-radius: 0; outline: 0; background: transparent; pointer-events: auto; touch-action: none; }
+/* 调试模式只显示交互区域，不改变正式模式的尺寸、位置和事件逻辑。 */
+.designer-debug .designer-component-feedback-selected .designer-resize-handle { background: rgba(255, 140, 0, .45); }
+.designer-resize-handle-top { top: calc(-1 * var(--designer-resize-handle-offset)); right: 0; left: 0; height: var(--designer-resize-handle-size); cursor: ns-resize; }
+.designer-resize-handle-right { top: 0; right: calc(-1 * var(--designer-resize-handle-offset)); bottom: 0; width: var(--designer-resize-handle-size); cursor: ew-resize; }
+.designer-resize-handle-bottom { right: 0; bottom: calc(-1 * var(--designer-resize-handle-offset)); left: 0; height: var(--designer-resize-handle-size); cursor: ns-resize; }
+.designer-resize-handle-left { top: 0; bottom: 0; left: calc(-1 * var(--designer-resize-handle-offset)); width: var(--designer-resize-handle-size); cursor: ew-resize; }
+.component-dragging .designer-component-feedback-selected { visibility: hidden !important; pointer-events: none; }
+.component-dragging .designer-component-name-selected { opacity: 0; pointer-events: none; }
+.designer-drop-feedback { position: absolute; box-sizing: border-box; pointer-events: none; }
+.designer-drop-feedback-container { box-shadow: inset 0 0 0 2px var(--designer-drop-indicator); }
+.designer-drop-feedback-grid,
+.designer-drop-feedback-insert-before-horizontal, .designer-drop-feedback-insert-after-horizontal,
+.designer-drop-feedback-insert-before-vertical, .designer-drop-feedback-insert-after-vertical { border: 1px solid var(--designer-drop-indicator); background: var(--designer-drop-hatch); }
+.designer-drop-feedback-grid { border-width: 2px; }
+.designer-drop-feedback-frame, .designer-drop-feedback-relative { border: 2px solid var(--designer-drop-indicator); background: color-mix(in srgb, var(--designer-drop-indicator) 6%, transparent); }
+.designer-drop-feedback-absolute { background: color-mix(in srgb, var(--designer-drop-indicator) 6%, transparent); }
+.designer-drop-feedback-absolute::after { position: absolute; z-index: 3; box-sizing: border-box; inset: 0; border: 2px solid var(--designer-drop-indicator); content: ""; }
+.designer-absolute-coordinate-line { position: absolute; z-index: 1; pointer-events: none; }
+.designer-absolute-coordinate-line-x { height: 1px; border-top: 1px solid var(--designer-relative-guide); }
+.designer-absolute-coordinate-line-y { width: 1px; border-left: 1px solid var(--designer-relative-guide); }
+.designer-absolute-coordinate-label { position: absolute; z-index: 2; color: var(--designer-relative-guide); background: transparent; font-size: 10px; font-weight: 400; line-height: 14px; white-space: nowrap; pointer-events: none; user-select: none; }
+.designer-grid-position-label { position: absolute; color: var(--designer-relative-guide); background: transparent; font-size: 10px; font-weight: 400; line-height: 14px; text-align: center; white-space: nowrap; overflow: hidden; pointer-events: none; user-select: none; }
+.designer-grid-position-label-feedback { z-index: 2; }
+.designer-relative-snap-guide { position: absolute; z-index: 1; pointer-events: none; }
+.designer-relative-snap-guide-vertical { width: 1px; border-left: 1px solid var(--designer-relative-guide); }
+.designer-relative-snap-guide-horizontal { height: 1px; border-top: 1px solid var(--designer-relative-guide); }
+.designer-relative-snap-guide-connector { position: absolute; z-index: 1; pointer-events: none; }
+.designer-relative-snap-guide-connector-vertical { width: 1px; border-left: 1px solid var(--designer-relative-guide); }
+.designer-relative-snap-guide-connector-horizontal { height: 1px; border-top: 1px solid var(--designer-relative-guide); }
+.designer-relative-snap-guide-label { position: absolute; color: var(--designer-relative-guide); background: transparent; font-size: 10px; font-weight: 400; line-height: 14px; white-space: nowrap; user-select: none; }
+.designer-frame-placement-label { position: absolute; z-index: 2; color: var(--designer-relative-guide); background: transparent; font-size: 10px; font-weight: 400; line-height: 14px; white-space: nowrap; pointer-events: none; user-select: none; }
+.designer-relative-snap-guide-vertical > .designer-relative-snap-guide-label,
+.designer-relative-snap-guide-connector-vertical > .designer-relative-snap-guide-label { writing-mode: vertical-rl; text-orientation: sideways; }
+.designer-relative-snap-guide-label-horizontal { writing-mode: horizontal-tb !important; text-orientation: mixed !important; }
+.designer-relative-snap-guide-horizontal > .designer-relative-snap-guide-label { top: -2px; }
+.designer-relative-snap-guide-horizontal > .designer-relative-snap-guide-label-start { left: 0; transform: translateY(-100%); }
+.designer-relative-snap-guide-horizontal > .designer-relative-snap-guide-label-middle { left: 50%; transform: translate(-50%, -100%); }
+.designer-relative-snap-guide-horizontal > .designer-relative-snap-guide-label-end { right: 0; transform: translateY(-100%); }
+.designer-relative-snap-guide-vertical > .designer-relative-snap-guide-label { left: -2px; }
+.designer-relative-snap-guide-vertical > .designer-relative-snap-guide-label-start { top: 0; transform: translateX(-100%); }
+.designer-relative-snap-guide-vertical > .designer-relative-snap-guide-label-middle { top: 50%; transform: translate(-100%, -50%); }
+.designer-relative-snap-guide-vertical > .designer-relative-snap-guide-label-end { bottom: 0; transform: translateX(-100%); }
+.window-node { position: relative; display: flex; width: var(--designer-logical-width); height: var(--designer-logical-height); flex-direction: column; border: var(--designer-component-border-width) solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-input-background); }
+.window-title { flex: 0 0 34px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-titleBar-activeBackground, var(--vscode-editorGroupHeader-tabsBackground)); font-weight: 600; cursor: pointer; }
+.window-content { min-height: 0; flex: 1 1 auto; padding: var(--designer-layout-spacing); overflow: visible; }
+.window-layout-surface, .container-layout-surface { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: visible; }
+.window-layout-surface.window-scrollable { overflow-x: hidden; overflow-y: auto; }
+.layout-linear-horizontal { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: var(--designer-layout-spacing); }
+.layout-linear-vertical { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
+.layout-unsupported { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
+.designer-unsupported-layout-notice { flex: 0 0 auto; padding: 4px 6px; border: 1px dashed var(--vscode-editorWarning-foreground); color: var(--vscode-editorWarning-foreground); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent); font-size: 12px; line-height: 18px; pointer-events: none; }
+.layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 0; }
+.designer-grid-cell { position: relative; display: grid; min-width: 0; min-height: 0; padding: var(--designer-layout-spacing); border: 0; background: transparent; cursor: copy; }
+.designer-grid-cell::before { position: absolute; z-index: 4; inset: 0; border-right: 1px solid color-mix(in srgb, var(--vscode-foreground) 38%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 38%, transparent); content: ""; pointer-events: none; }
+.designer-grid-cell[data-grid-cell-column="0"]::before { border-left: 1px solid color-mix(in srgb, var(--vscode-foreground) 38%, transparent); }
+.designer-grid-cell[data-grid-cell-row="0"]::before { border-top: 1px solid color-mix(in srgb, var(--vscode-foreground) 38%, transparent); }
+.designer-grid-cell-occupied { cursor: pointer; }
+.designer-grid-cell-selected { z-index: 3; background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent); outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.layout-frame { display: grid; }
+.layout-frame > .visual-node { grid-area: 1 / 1; }
+.layout-relative { position: relative; display: block; }
+.layout-relative > .designer-relative-positioned { position: absolute; left: var(--designer-relative-left); top: var(--designer-relative-top); }
+.layout-relative > .designer-relative-position-invalid { outline: 1px dashed var(--vscode-editorWarning-foreground); outline-offset: -1px; }
+.layout-absolute { position: relative; display: block; }
+.layout-absolute > .designer-absolute-positioned { position: absolute; left: calc(var(--designer-absolute-inset-left) + var(--designer-absolute-left)); top: calc(var(--designer-absolute-inset-top) + var(--designer-absolute-top)); }
+.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
+.container-scroll-vertical { overflow-x: hidden; overflow-y: auto; }
+.container-scrollbar-hidden { scrollbar-width: none; }
+.container-scrollbar-hidden::-webkit-scrollbar { display: none; }
+.visual-node { --designer-margin-top: 0px; --designer-margin-right: 0px; --designer-margin-bottom: 0px; --designer-margin-left: 0px; position: relative; z-index: var(--designer-component-layer); min-width: 0; min-height: 0; flex: 0 0 auto; overflow: hidden; border: var(--designer-component-border-width) dashed var(--vscode-descriptionForeground); background: transparent; cursor: pointer; }
+.visual-node.selected[draggable="true"] { cursor: move; }
+.designer-width-content { width: fit-content; }
+.designer-width-parent { width: calc(100% - var(--designer-margin-left, 0px) - var(--designer-margin-right, 0px)); max-width: 100%; align-self: stretch; }
+.designer-height-content { height: fit-content; }
+.designer-height-parent { height: calc(100% - var(--designer-margin-top, 0px) - var(--designer-margin-bottom, 0px)); max-height: 100%; align-self: stretch; }
+.layout-linear-horizontal > .designer-width-parent { width: auto; min-width: 0; max-width: none; flex: 1 1 0; }
+.layout-linear-vertical > .designer-height-parent { height: auto; min-height: 0; max-height: none; flex: 1 1 0; }
+.layout-linear-horizontal > .designer-weighted { max-width: none; flex-grow: var(--designer-component-weight); }
+.layout-linear-vertical > .designer-weighted { max-height: none; flex-grow: var(--designer-component-weight); }
+.designer-weight-remainder { min-width: 0; min-height: 0; flex: var(--designer-component-weight) 1 0; pointer-events: none; }
+.layout-linear-vertical > .designer-align-horizontal-left { align-self: flex-start; }
+.layout-linear-vertical > .designer-align-horizontal-center { align-self: center; }
+.layout-linear-vertical > .designer-align-horizontal-right { align-self: flex-end; }
+.layout-linear-horizontal > .designer-align-vertical-top { align-self: flex-start; }
+.layout-linear-horizontal > .designer-align-vertical-center { align-self: center; }
+.layout-linear-horizontal > .designer-align-vertical-bottom { align-self: flex-end; }
+.designer-grid-cell > .designer-align-horizontal-left, .layout-frame > .designer-align-horizontal-left { justify-self: start; }
+.designer-grid-cell > .designer-align-horizontal-center, .layout-frame > .designer-align-horizontal-center { justify-self: center; }
+.designer-grid-cell > .designer-align-horizontal-right, .layout-frame > .designer-align-horizontal-right { justify-self: end; }
+.designer-grid-cell > .designer-align-vertical-top, .layout-frame > .designer-align-vertical-top { align-self: start; }
+.designer-grid-cell > .designer-align-vertical-center, .layout-frame > .designer-align-vertical-center { align-self: center; }
+.designer-grid-cell > .designer-align-vertical-bottom, .layout-frame > .designer-align-vertical-bottom { align-self: end; }
+/* 表格先确定行列尺寸；匹配父级的组件随后填充自己的单元格，不以整张表参与自然尺寸计算。 */
+.designer-grid-cell > .designer-width-parent { width: auto; max-width: none; justify-self: stretch; }
+.designer-grid-cell > .designer-height-parent { height: auto; max-height: none; align-self: stretch; }
+.visual-control { display: grid; place-items: center; padding: 0; }
+.visual-control-content { display: block; max-width: 100%; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.visual-control.designer-placeholder-control { color: #000; background: transparent; }
+.designer-empty-content.designer-width-content { min-width: var(--designer-empty-content-min-width); }
+.designer-empty-content.designer-height-content { min-height: var(--designer-empty-content-min-height); }
+.visual-control.designer-multiline > .visual-control-content { overflow-wrap: anywhere; white-space: pre-wrap; }
+.visual-control.designer-content-horizontal-left { justify-items: start; }
+.visual-control.designer-content-horizontal-center { justify-items: center; }
+.visual-control.designer-content-horizontal-right { justify-items: end; }
+.visual-control.designer-content-vertical-top { align-items: start; }
+.visual-control.designer-content-vertical-center { align-items: center; }
+.visual-control.designer-content-vertical-bottom { align-items: end; }
+.designer-content-horizontal-left > .visual-control-content { text-align: left; }
+.designer-content-horizontal-center > .visual-control-content { text-align: center; }
+.designer-content-horizontal-right > .visual-control-content { text-align: right; }
+/* 适应内容宽度按文本自然宽度投影：保留显式换行，但不因停靠边缘产生软换行。 */
+.visual-control.designer-width-content > .visual-control-content { max-width: none; overflow-wrap: normal; white-space: pre; }
+.container-node { display: grid; overflow: hidden; }
+.container-content { grid-area: 1 / 1; width: 100%; height: 100%; min-height: 0; padding: var(--designer-layout-spacing); overflow: visible; }
+/* 固定或匹配父级的容器会向适应内容子组件提供可用空间上限；明确固定尺寸的子组件仍可保持自身声明尺寸。 */
+.designer-width-fixed > .container-content > .container-layout-surface > .designer-width-content,
+.designer-width-parent > .container-content > .container-layout-surface > .designer-width-content { max-width: 100%; }
+.designer-height-fixed > .container-content > .container-layout-surface > .designer-height-content,
+.designer-height-parent > .container-content > .container-layout-surface > .designer-height-content { max-height: 100%; }
+.container-layout-surface.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
+.container-layout-surface.container-scroll-vertical { overflow-x: hidden; overflow-y: auto; }
+.container-layout-surface.container-scroll-horizontal > .designer-width-content { max-width: none; }
+.container-layout-surface.container-scroll-vertical > .designer-height-content { max-height: none; }
+.designer-grid-unplaced { display: flex; grid-column: 1 / -1; gap: var(--designer-layout-spacing); align-items: center; min-height: var(--designer-empty-content-min-height); padding: var(--designer-layout-spacing); border-top: 1px dashed var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground)); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent); }
+.designer-grid-unplaced-label { flex: 0 0 auto; color: var(--vscode-editorWarning-foreground); font-size: 11px; }
+.designer-grid-position-invalid, .designer-grid-size-invalid { border-style: dashed; border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground)); }
+.layout-grid > .designer-grid-position-invalid { margin-top: var(--designer-layout-spacing); }
+/* 拖放指示只表达目标或插入方向，不参与组件实际布局。 */
+.drop-active { outline: 2px solid var(--vscode-focusBorder); outline-offset: -3px; }
+.drop-insert-before-horizontal, .drop-insert-after-horizontal, .drop-insert-before-vertical, .drop-insert-after-vertical { position: relative; }
+.drop-insert-before-horizontal::after, .drop-insert-after-horizontal::after, .drop-insert-before-vertical::after, .drop-insert-after-vertical::after { position: absolute; z-index: 20; border: 1px solid var(--designer-drop-indicator); background: var(--designer-drop-hatch); content: ""; pointer-events: none; }
+.drop-insert-before-horizontal::after { top: 0; bottom: 0; left: 0; width: 8px; }
+.drop-insert-after-horizontal::after { top: 0; right: 0; bottom: 0; width: 8px; }
+.drop-insert-before-vertical::after { top: 0; right: 0; left: 0; height: 8px; }
+.drop-insert-after-vertical::after { right: 0; bottom: 0; left: 0; height: 8px; }
+.toolbox-list { padding: 4px 0; }
+.toolbox-group + .toolbox-group { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.toolbox-group-summary { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 3px; align-items: center; min-height: 30px; padding: 3px 7px; font-weight: 600; cursor: pointer; list-style: none; user-select: none; }
+.toolbox-group-summary::-webkit-details-marker { display: none; }
+.group-disclosure { display: grid; width: 16px; height: 16px; place-items: center; color: var(--vscode-descriptionForeground); }
+.group-disclosure > .codicon { grid-area: 1 / 1; }
+.group-disclosure > .group-disclosure-open { display: none; }
+details[open] > summary .group-disclosure-closed { display: none; }
+details[open] > summary .group-disclosure-open { display: inline-block; }
+.toolbox-group-summary:hover { background: var(--vscode-list-hoverBackground); }
+.toolbox-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbox-group-count { color: var(--vscode-descriptionForeground); font-size: .9em; font-weight: 400; }
+.toolbox-group-items { display: grid; gap: 2px; margin-left: 15px; padding: 2px 3px 5px 0; border-left: 1px solid var(--vscode-tree-indentGuidesStroke); }
+.toolbox-item { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px; align-items: center; min-height: 32px; padding: 2px 5px; border: 1px solid transparent; cursor: grab; user-select: none; }
+.toolbox-item:hover { border-color: var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-list-hoverBackground); }
+.toolbox-item:active { cursor: grabbing; }
+.toolbox-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 一级组件菜单与事件二级菜单共用 VS Code 菜单主题变量。 */
+.component-context-menu { position: fixed; z-index: 1000; min-width: 104px; padding: 4px; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border)); border-radius: 3px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.component-context-menu[hidden] { display: none; }
+.context-menu-section[hidden] { display: none; }
+.context-menu-item[hidden] { display: none; }
+.context-menu-item.context-menu-submenu-trigger { display: flex; gap: 8px; align-items: center; }
+.context-menu-submenu-arrow { font-size: 1.2em; line-height: 1; }
+.context-menu-flyout { z-index: 1001; min-width: 132px; }
+#component-event-menu-items, #enabled-component-event-menu-items { max-height: min(60vh, 420px); overflow-y: auto; }
+.context-menu-item.context-menu-event-item { display: flex; gap: 8px; align-items: center; }
+.context-menu-event-status { text-align: center; }
+.context-menu-event-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-menu-separator { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border)); }
+.context-menu-item { display: block; width: 100%; min-height: 24px; padding: 3px 8px; border: 0; border-radius: 2px; text-align: left; color: inherit; background: transparent; cursor: pointer; }
+.context-menu-item:hover, .context-menu-item:focus { outline: 0; color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground)); background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); }
+.context-menu-item:disabled { color: var(--vscode-disabledForeground); background: transparent; cursor: default; }

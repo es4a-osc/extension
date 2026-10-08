@@ -1,0 +1,10 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Simple Full Source Preview",
+	"scopeName": "source.simple.full-preview",
+	"patterns": [
+		{
+			"include": "source.simple"
+		}
+	]
+}

@@ -1,0 +1,19 @@
+<!--
+提供 ES4A 窗口设计器 Webview 的最小宿主文档和内容安全策略占位符。
+xhwsd@qq.com 2026-8-30
+-->
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src {{CSP_SOURCE}}; img-src data:; style-src {{CSP_SOURCE}}; script-src 'nonce-{{NONCE}}';">
+	<link rel="stylesheet" href="{{STYLE_URI}}">
+	<title>ES4A 窗口设计器</title>
+</head>
+<body>
+	<div id="designer-app"></div>
+	<script nonce="{{NONCE}}" src="{{SCRIPT_URI}}"></script>
+</body>
+</html>

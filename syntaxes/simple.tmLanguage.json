@@ -1,0 +1,203 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Simple",
+	"scopeName": "source.simple",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#declarations"
+		},
+		{
+			"include": "#property-section"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#literals"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#punctuation"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#line-continuation"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"begin": "'",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.comment.simple"
+						}
+					},
+					"end": "$",
+					"name": "comment.line.apostrophe.simple"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"begin": "\"",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.begin.simple"
+						}
+					},
+					"end": "\"",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.end.simple"
+						}
+					},
+					"name": "string.quoted.double.simple",
+					"patterns": [
+						{
+							"match": "\\\\(?:[\\\\\"nrt]|u[0-9A-Fa-f]{4})",
+							"name": "constant.character.escape.simple"
+						}
+					]
+				}
+			]
+		},
+		"property-section": {
+			"patterns": [
+				{
+					"match": "\\$(?:属性|资源|定义|为|结束)(?![\\p{L}\\p{N}_])",
+					"name": "keyword.other.property-section.simple"
+				},
+				{
+					"match": "\\$(?:窗口|对象|接口|服务)(?![\\p{L}\\p{N}_])",
+					"name": "storage.type.property-section.simple"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:别名|常量|变量|事件|函数|属性|静态|过程)(?![\\p{L}\\p{N}_])",
+					"name": "storage.type.declaration.simple"
+				},
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:如果|则|否则如果|否则|判断|分支|判断循环|循环|执行|直到|每个|从|至|步进|下个|退出|位于|错误|触发事件|结束)(?![\\p{L}\\p{N}_])",
+					"name": "keyword.control.simple"
+				},
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:传值|传址)(?![\\p{L}\\p{N}_])",
+					"name": "storage.modifier.simple"
+				},
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:创建|本对象|空|类型检验)(?![\\p{L}\\p{N}_])",
+					"name": "keyword.other.expression.simple"
+				},
+				{
+					"match": "^\\s*(获取|设置)(?=\\s*(?:'|$))",
+					"captures": {
+						"1": {
+							"name": "storage.type.accessor.simple"
+						}
+					}
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:逻辑型|字节型|短整数型|整数型|长整数型|单精度小数型|双精度小数型|对象|文本型|日期时间型|变体型)(?![\\p{L}\\p{N}_])",
+					"name": "storage.type.simple"
+				}
+			]
+		},
+		"literals": {
+			"patterns": [
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:真|假)(?![\\p{L}\\p{N}_])",
+					"name": "constant.language.boolean.simple"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"match": "(?<![\\p{L}\\p{N}_])(?:且|或|异或|取反|是|非|匹配|为)(?![\\p{L}\\p{N}_])",
+					"name": "keyword.operator.word.simple"
+				},
+				{
+					"match": "<>|<=|>=|<<|>>|[+\\-*/%\\\\^&=<>]",
+					"name": "keyword.operator.symbol.simple"
+				}
+			]
+		},
+		"punctuation": {
+			"patterns": [
+				{
+					"match": ":",
+					"name": "punctuation.separator.statement.simple"
+				}
+			]
+		},
+		"declarations": {
+			"patterns": [
+				{
+					"captures": {
+						"1": {
+							"name": "storage.type.declaration.simple"
+						},
+						"2": {
+							"name": "entity.name.function.simple"
+						}
+					},
+					"match": "(?<![\\p{L}\\p{N}_])(函数|过程|事件|属性)\\s+([\\p{L}][\\p{L}\\p{N}_]*(?:\\.[\\p{L}][\\p{L}\\p{N}_]*)?)"
+				},
+				{
+					"captures": {
+						"1": {
+							"name": "storage.type.declaration.simple"
+						},
+						"2": {
+							"name": "variable.other.definition.simple"
+						}
+					},
+					"match": "(?<![\\p{L}\\p{N}_])(常量|变量)\\s+([\\p{L}][\\p{L}\\p{N}_]*)"
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"match": "(?<![\\p{L}\\p{N}_])&H[0-9A-Fa-f]+(?![\\p{L}\\p{N}_])",
+					"name": "constant.numeric.hex.simple"
+				},
+				{
+					"match": "(?<![\\p{L}\\p{N}_])[0-9]+(?:\\.[0-9]+(?:[Ee][+-]?[0-9]+)?)?(?![\\p{L}\\p{N}_])",
+					"name": "constant.numeric.decimal.simple"
+				}
+			]
+		},
+		"line-continuation": {
+			"patterns": [
+				{
+					"match": "_$",
+					"name": "punctuation.separator.continuation.simple"
+				}
+			]
+		}
+	}
+}

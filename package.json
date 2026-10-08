@@ -1,0 +1,1428 @@
+{
+	"name": "es4a",
+	"displayName": "ES4A",
+	"description": "为 Simple 项目提供集成开发环境支持。",
+	"icon": "icons/es4a-extension.png",
+	"version": "0.1.0",
+	"publisher": "es4a",
+	"private": true,
+	"license": "UNLICENSED",
+	"engines": {
+		"vscode": "^1.134.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"keywords": [
+		"Simple",
+		"BASIC",
+		"Android",
+		"中文编程"
+	],
+	"activationEvents": [
+		"onFileSystem:simple-code"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "simple",
+				"aliases": [
+					"Simple",
+					"simple"
+				],
+				"extensions": [
+					".simple"
+				],
+				"filenamePatterns": [
+					"*(代码)"
+				],
+				"icon": {
+					"dark": "./icons/simple-dark.svg",
+					"light": "./icons/simple-light.svg"
+				},
+				"configuration": "./language-configuration.json"
+			},
+			{
+				"id": "simple-full-preview",
+				"aliases": [
+					"Simple 完整代码"
+				],
+				"filenamePatterns": [
+					"*(完整代码)"
+				],
+				"icon": {
+					"dark": "./icons/full-code-dark.svg",
+					"light": "./icons/full-code-light.svg"
+				},
+				"configuration": "./language-configuration.json"
+			},
+			{
+				"id": "simple-property-xml",
+				"aliases": [
+					"Simple XML 属性"
+				],
+				"filenamePatterns": [
+					"*(属性)"
+				],
+				"icon": {
+					"dark": "./icons/property-xml-dark.svg",
+					"light": "./icons/property-xml-light.svg"
+				}
+			}
+		],
+		"grammars": [
+			{
+				"language": "simple",
+				"scopeName": "source.simple",
+				"path": "./syntaxes/simple.tmLanguage.json"
+			},
+			{
+				"language": "simple-full-preview",
+				"scopeName": "source.simple.full-preview",
+				"path": "./syntaxes/simple-full-preview.tmLanguage.json"
+			},
+			{
+				"language": "simple-property-xml",
+				"scopeName": "text.xml.simple-property-preview",
+				"path": "./syntaxes/simple-property-xml.tmLanguage.json"
+			}
+		],
+		"semanticTokenTypes": [
+			{
+				"id": "simpleDeclaration",
+				"description": "Simple declaration keyword"
+			},
+			{
+				"id": "simpleControl",
+				"description": "Simple control-flow keyword"
+			},
+			{
+				"id": "simpleModifier",
+				"description": "Simple declaration modifier"
+			}
+		],
+		"semanticTokenScopes": [
+			{
+				"language": "simple",
+				"scopes": {
+					"simpleDeclaration": [
+						"storage.type"
+					],
+					"simpleControl": [
+						"keyword.control"
+					],
+					"simpleModifier": [
+						"storage.modifier"
+					],
+					"keyword": [
+						"keyword.other"
+					],
+					"event": [
+						"entity.name.function"
+					],
+					"method": [
+						"entity.name.function"
+					],
+					"parameter": [
+						"variable.parameter"
+					],
+					"property": [
+						"variable.other.property"
+					],
+					"variable": [
+						"variable.other.readwrite"
+					],
+					"variable.readonly": [
+						"constant.other"
+					]
+				}
+			},
+			{
+				"language": "simple-full-preview",
+				"scopes": {
+					"simpleDeclaration": [
+						"storage.type"
+					],
+					"simpleControl": [
+						"keyword.control"
+					],
+					"simpleModifier": [
+						"storage.modifier"
+					],
+					"keyword": [
+						"keyword.other"
+					],
+					"event": [
+						"entity.name.function"
+					],
+					"method": [
+						"entity.name.function"
+					],
+					"parameter": [
+						"variable.parameter"
+					],
+					"property": [
+						"variable.other.property"
+					],
+					"variable": [
+						"variable.other.readwrite"
+					],
+					"variable.readonly": [
+						"constant.other"
+					]
+				}
+			}
+		],
+		"customEditors": [
+			{
+				"viewType": "es4a.simpleDesigner",
+				"displayName": "ES4A 窗口设计器",
+				"selector": [
+					{
+						"filenamePattern": "*(设计器)"
+					},
+					{
+						"filenamePattern": "*(代码)"
+					}
+				],
+				"priority": "option"
+			}
+		],
+		"commands": [
+			{
+				"command": "es4a.searchUnitCode",
+				"title": "搜索代码",
+				"category": "ES4A",
+				"icon": "$(search)"
+			},
+			{
+				"command": "es4a.createProject",
+				"title": "创建项目",
+				"category": "ES4A",
+				"icon": "$(new-folder)"
+			},
+			{
+				"command": "es4a.addProject",
+				"title": "添加项目",
+				"category": "ES4A",
+				"icon": "$(file-symlink-directory)"
+			},
+			{
+				"command": "es4a.refreshPrograms",
+				"title": "刷新项目",
+				"category": "ES4A",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "es4a.debugApplication",
+				"title": "调试应用",
+				"category": "ES4A",
+				"enablement": "es4a.sdk.hasDebugCapability",
+				"icon": "$(debug-alt-small)"
+			},
+			{
+				"command": "es4a.compileApplication",
+				"title": "编译应用",
+				"category": "ES4A",
+				"enablement": "es4a.sdk.hasCompileCapability"
+			},
+			{
+				"command": "es4a.editProjectName",
+				"title": "应用名称",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectVersionCode",
+				"title": "版本号",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectVersionName",
+				"title": "版本名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectIcon",
+				"title": "应用图标",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectOrientation",
+				"title": "屏幕方向",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectTheme",
+				"title": "应用主题",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.editProjectManifestMacro",
+				"title": "清单宏...",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.openProjectProperties",
+				"title": "打开属性",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateProjectProperties",
+				"title": "定位属性",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.openProjectDirectory",
+				"title": "打开目录",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateFolder",
+				"title": "定位文件夹",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.openUnitLoadEvent",
+				"title": "载入事件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.openUnitInitializeEvent",
+				"title": "初始化事件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateUnitFile",
+				"title": "定位单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateResourceFile",
+				"title": "定位文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateBuildFile",
+				"title": "定位文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.runSdkTool",
+				"title": "SDK工具...",
+				"category": "ES4A",
+				"enablement": "es4a.sdk.hasTools"
+			},
+			{
+				"command": "es4a.removeProject",
+				"title": "移除项目",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.deleteProject",
+				"title": "删除项目",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.refreshLibraries",
+				"title": "刷新类库",
+				"category": "ES4A",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "es4a.openLibraryManifest",
+				"title": "打开清单",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.locateLibraryManifest",
+				"title": "定位清单",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.selectSdk",
+				"title": "选择 SDK",
+				"category": "ES4A",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "es4a.goToDefinition",
+				"title": "转到定义"
+			},
+			{
+				"command": "es4a.createUnitItem",
+				"title": "创建...",
+				"category": "ES4A",
+				"icon": "$(add)"
+			},
+			{
+				"command": "es4a.createWindowUnit",
+				"title": "新建窗口单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.createObjectUnit",
+				"title": "新建对象单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.createInterfaceUnit",
+				"title": "新建接口单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.createServiceUnit",
+				"title": "新建服务单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.createUnitFolder",
+				"title": "新建文件夹",
+				"category": "ES4A",
+				"icon": "$(add)"
+			},
+			{
+				"command": "es4a.importResource",
+				"title": "导入资源",
+				"category": "ES4A",
+				"icon": "$(add)"
+			},
+			{
+				"command": "es4a.exportResource",
+				"title": "导出资源",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.exportBuildFile",
+				"title": "导出文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.createResourceFolder",
+				"title": "新建文件夹",
+				"category": "ES4A",
+				"icon": "$(add)"
+			},
+			{
+				"command": "es4a.renameUnitFolder",
+				"title": "重命名文件夹",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.deleteUnitFolder",
+				"title": "删除文件夹",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.renameUnitFile",
+				"title": "重命名单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.syncUnitFileName",
+				"title": "同步单元名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.deleteUnitFile",
+				"title": "删除单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnit",
+				"title": "复制单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.cutUnit",
+				"title": "剪切单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.pasteUnit",
+				"title": "粘贴单元",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.renameResourceFile",
+				"title": "重命名文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.deleteResourceFile",
+				"title": "删除文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.deleteBuildFile",
+				"title": "删除文件",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyResourceIndex",
+				"title": "复制索引名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyResourceFileName",
+				"title": "复制文件名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyResourceFolderName",
+				"title": "复制文件夹名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyResourceRelativePath",
+				"title": "复制相对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyResourceAbsolutePath",
+				"title": "复制绝对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.previewUnitContent",
+				"title": "预览完整代码",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.previewUnitXml",
+				"title": "预览XML属性",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitName",
+				"title": "复制单元名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitFolderQualifiedName",
+				"title": "复制限定名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitFolderName",
+				"title": "复制文件夹名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitFolderRelativePath",
+				"title": "复制相对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitFolderAbsolutePath",
+				"title": "复制绝对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitQualifiedName",
+				"title": "复制限定名",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitBaseObjectQualifiedName",
+				"title": "复制基础对象",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitImplementedInterfacesQualifiedName",
+				"title": "复制实现接口",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitRelativePath",
+				"title": "复制相对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.copyUnitAbsolutePath",
+				"title": "复制绝对路径",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.setObjectRelation",
+				"title": "设置实现接口或基础对象",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.setBaseObject",
+				"title": "设置基础对象",
+				"category": "ES4A",
+				"icon": "$(git-pull-request-go-to-changes)"
+			},
+			{
+				"command": "es4a.setImplementedInterfaces",
+				"title": "设置实现接口",
+				"category": "ES4A"
+			},
+			{
+				"command": "es4a.openDesigner",
+				"title": "设计窗口布局",
+				"category": "ES4A",
+				"icon": "$(layout)"
+			}
+		],
+		"keybindings": [
+			{
+				"command": "es4a.copyUnit",
+				"key": "ctrl+c",
+				"when": "focusedView == es4a.programs"
+			},
+			{
+				"command": "es4a.pasteUnit",
+				"key": "ctrl+v",
+				"when": "focusedView == es4a.programs && es4a.unitClipboardAvailable"
+			},
+			{
+				"command": "es4a.debugApplication",
+				"key": "f5",
+				"when": "es4a.sdk.hasDebugCapability && (editorLangId == simple || resourceScheme == es4a-unit-content-preview || resourceScheme == es4a-unit-xml-preview || activeCustomEditorId == es4a.simpleDesigner)"
+			}
+		],
+		"configuration": {
+			"title": "ES4A",
+			"properties": {
+				"es4a.projects": {
+					"type": "array",
+					"default": [],
+					"scope": "window",
+					"description": "当前工作区中的有序 ES4A 项目根目录。相对路径以工作区文件或单文件夹工作区根目录为基准。",
+					"items": {
+						"type": "object",
+						"required": [
+							"path"
+						],
+						"additionalProperties": false,
+						"properties": {
+							"path": {
+								"type": "string",
+								"minLength": 1,
+								"description": "Simple 项目根目录路径。"
+							},
+							"settings": {
+								"type": "object",
+								"description": "仅属于当前 ES4A 项目的 IDE 设置。",
+								"additionalProperties": false,
+								"properties": {
+									"designer": {
+										"type": "object",
+										"additionalProperties": false,
+										"properties": {
+											"documents": {
+												"type": "object",
+												"description": "以项目根目录为基准的 Simple 单元设计器设置。",
+												"additionalProperties": {
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"columnOrder": {
+															"type": "array",
+															"minItems": 4,
+															"maxItems": 4,
+															"uniqueItems": true,
+															"items": {
+																"type": "string",
+																"enum": [
+																	"property",
+																	"projection",
+																	"enabled",
+																	"toolbox"
+																]
+															}
+														},
+														"displayOptions": {
+															"type": "object",
+															"additionalProperties": false,
+															"properties": {
+																"componentLabelsVisible": {
+																	"type": "boolean"
+																},
+																"designerDebug": {
+																	"type": "boolean"
+																},
+																"layoutHoverSync": {
+																	"type": "boolean"
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"es4a.sdk.path": {
+					"type": "string",
+					"default": "",
+					"scope": "window",
+					"description": "SDK 入口 JSON 文件的完整绝对路径。建议使用“ES4A: 选择 SDK”命令设置。"
+				}
+			}
+		},
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "es4a-programs",
+					"title": "ES4A",
+					"icon": "icons/programs.svg"
+				}
+			]
+		},
+		"views": {
+			"es4a-programs": [
+				{
+					"id": "es4a.programs",
+					"name": "项目",
+					"icon": "$(project)"
+				},
+				{
+					"id": "es4a.libraries",
+					"name": "类库",
+					"icon": "$(library)"
+				}
+			]
+		},
+		"viewsWelcome": [
+			{
+				"view": "es4a.programs",
+				"contents": "尚未添加 ES4A 项目。\n[添加项目](command:es4a.addProject)"
+			}
+		],
+		"submenus": [
+			{
+				"id": "es4a.editProjectProperties",
+				"label": "编辑属性"
+			}
+		],
+		"menus": {
+			"editor/context": [
+				{
+					"command": "es4a.goToDefinition",
+					"when": "editorLangId == simple",
+					"group": "navigation@1"
+				}
+			],
+			"view/title": [
+				{
+					"command": "es4a.createProject",
+					"when": "view == es4a.programs",
+					"group": "navigation@1"
+				},
+				{
+					"command": "es4a.addProject",
+					"when": "view == es4a.programs",
+					"group": "navigation@2"
+				},
+				{
+					"command": "es4a.refreshPrograms",
+					"when": "view == es4a.programs",
+					"group": "navigation@3"
+				},
+				{
+					"command": "es4a.selectSdk",
+					"when": "view == es4a.libraries",
+					"group": "navigation@1"
+				},
+				{
+					"command": "es4a.refreshLibraries",
+					"when": "view == es4a.libraries",
+					"group": "navigation@2"
+				},
+				{
+					"command": "es4a.runSdkTool",
+					"when": "view == es4a.libraries && es4a.sdk.hasTools",
+					"group": "1_tools@1"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "es4a.debugApplication",
+					"when": "view == es4a.programs && viewItem == es4a.project && es4a.sdk.hasDebugCapability",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.debugApplication",
+					"when": "view == es4a.programs && viewItem == es4a.project && es4a.sdk.hasDebugCapability",
+					"group": "1_capability@1"
+				},
+				{
+					"command": "es4a.compileApplication",
+					"when": "view == es4a.programs && viewItem == es4a.project && es4a.sdk.hasCompileCapability",
+					"group": "1_capability@2"
+				},
+				{
+					"submenu": "es4a.editProjectProperties",
+					"when": "view == es4a.programs && viewItem == es4a.project",
+					"group": "2_properties@1"
+				},
+				{
+					"command": "es4a.openProjectProperties",
+					"when": "view == es4a.programs && viewItem == es4a.project",
+					"group": "2_properties@2"
+				},
+				{
+					"command": "es4a.locateProjectProperties",
+					"when": "view == es4a.programs && viewItem == es4a.project",
+					"group": "2_properties@3"
+				},
+				{
+					"command": "es4a.removeProject",
+					"when": "view == es4a.programs && (viewItem == es4a.project || viewItem == es4a.unavailableProject)",
+					"group": "3_project@3"
+				},
+				{
+					"command": "es4a.deleteProject",
+					"when": "view == es4a.programs && viewItem == es4a.project",
+					"group": "3_project@4"
+				},
+				{
+					"command": "es4a.refreshPrograms",
+					"when": "view == es4a.programs && viewItem == es4a.project",
+					"group": "3_project@2"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.assets",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.assets",
+					"group": "1_create@1"
+				},
+				{
+					"command": "es4a.createResourceFolder",
+					"when": "view == es4a.programs && viewItem == es4a.assets",
+					"group": "1_create@2"
+				},
+				{
+					"command": "es4a.locateFolder",
+					"when": "view == es4a.programs && viewItem == es4a.assets",
+					"group": "1_create@3"
+				},
+				{
+					"command": "es4a.createResourceFolder",
+					"when": "view == es4a.programs && viewItem == es4a.res",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.createResourceFolder",
+					"when": "view == es4a.programs && viewItem == es4a.res",
+					"group": "1_create@1"
+				},
+				{
+					"command": "es4a.locateFolder",
+					"when": "view == es4a.programs && viewItem == es4a.res",
+					"group": "1_create@2"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.resFolder",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.resFolder",
+					"group": "1_create@1"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.assetsFolder",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "view == es4a.programs && viewItem == es4a.assetsFolder",
+					"group": "1_create@1"
+				},
+				{
+					"command": "es4a.createResourceFolder",
+					"when": "view == es4a.programs && viewItem == es4a.assetsFolder",
+					"group": "1_create@2"
+				},
+				{
+					"command": "es4a.createUnitFolder",
+					"when": "view == es4a.programs && viewItem == es4a.units",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.createUnitItem",
+					"when": "view == es4a.programs && viewItem == es4a.unitFolder",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.createWindowUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "1_create@1"
+				},
+				{
+					"command": "es4a.createObjectUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "1_create@2"
+				},
+				{
+					"command": "es4a.createInterfaceUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "1_create@3"
+				},
+				{
+					"command": "es4a.createServiceUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "1_create@4"
+				},
+				{
+					"command": "es4a.pasteUnit",
+					"when": "view == es4a.programs && es4a.unitClipboardAvailable && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "2_folder@2"
+				},
+				{
+					"command": "es4a.searchUnitCode",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "2_folder@1"
+				},
+				{
+					"command": "es4a.locateFolder",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder || viewItem == es4a.assetsFolder || viewItem == es4a.resFolder)",
+					"group": "2_folder@3"
+				},
+				{
+					"command": "es4a.locateFolder",
+					"when": "view == es4a.programs && (viewItem == es4a.build || viewItem == es4a.buildFolder)",
+					"group": "2_folder@3"
+				},
+				{
+					"command": "es4a.createUnitFolder",
+					"when": "view == es4a.programs && (viewItem == es4a.units || viewItem == es4a.unitFolder)",
+					"group": "1_create@5"
+				},
+				{
+					"command": "es4a.renameUnitFolder",
+					"when": "view == es4a.programs && (viewItem == es4a.unitFolder || viewItem == es4a.assetsFolder || viewItem == es4a.resFolder)",
+					"group": "2_folder@4"
+				},
+				{
+					"command": "es4a.deleteUnitFolder",
+					"when": "view == es4a.programs && (viewItem == es4a.unitFolder || viewItem == es4a.assetsFolder || viewItem == es4a.resFolder || viewItem == es4a.buildFolder)",
+					"group": "2_folder@5"
+				},
+				{
+					"command": "es4a.copyUnitFolderQualifiedName",
+					"when": "view == es4a.programs && viewItem == es4a.unitFolder",
+					"group": "3_copy@1"
+				},
+				{
+					"command": "es4a.copyUnitFolderName",
+					"when": "view == es4a.programs && viewItem == es4a.unitFolder",
+					"group": "3_copy@2"
+				},
+				{
+					"command": "es4a.copyUnitFolderRelativePath",
+					"when": "view == es4a.programs && viewItem == es4a.unitFolder",
+					"group": "3_copy@3"
+				},
+				{
+					"command": "es4a.copyUnitFolderAbsolutePath",
+					"when": "view == es4a.programs && viewItem == es4a.unitFolder",
+					"group": "3_copy@4"
+				},
+				{
+					"command": "es4a.setBaseObject",
+					"when": "view == es4a.programs && viewItem =~ /^es4a\\.objectUnit\\./",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.setBaseObject",
+					"when": "view == es4a.programs && viewItem =~ /^es4a\\.objectUnit\\./",
+					"group": "0_relation@1"
+				},
+				{
+					"command": "es4a.setImplementedInterfaces",
+					"when": "view == es4a.programs && viewItem =~ /^es4a\\.objectUnit\\./",
+					"group": "0_relation@2"
+				},
+				{
+					"command": "es4a.openDesigner",
+					"when": "view == es4a.programs && viewItem == es4a.windowUnit",
+					"group": "inline@1"
+				},
+				{
+					"command": "es4a.openDesigner",
+					"when": "view == es4a.programs && viewItem == es4a.windowUnit",
+					"group": "1_open@1"
+				},
+				{
+					"command": "es4a.previewUnitXml",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "1_open@2"
+				},
+				{
+					"command": "es4a.previewUnitContent",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "1_open@3"
+				},
+				{
+					"command": "es4a.locateResourceFile",
+					"when": "view == es4a.programs && viewItem =~ /^es4a\\.resFile/",
+					"group": "2_file@1"
+				},
+				{
+					"command": "es4a.locateResourceFile",
+					"when": "view == es4a.programs && viewItem == es4a.assetsFile",
+					"group": "2_file@1"
+				},
+				{
+					"command": "es4a.locateBuildFile",
+					"when": "view == es4a.programs && viewItem == es4a.buildFile",
+					"group": "2_file@1"
+				},
+				{
+					"command": "es4a.openUnitLoadEvent",
+					"when": "view == es4a.programs && (viewItem == es4a.windowUnit || viewItem =~ /^es4a\\.objectUnit\\./)",
+					"group": "2_event@1"
+				},
+				{
+					"command": "es4a.openUnitInitializeEvent",
+					"when": "view == es4a.programs && (viewItem == es4a.windowUnit || viewItem =~ /^es4a\\.objectUnit\\./)",
+					"group": "2_event@2"
+				},
+				{
+					"command": "es4a.locateUnitFile",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@1"
+				},
+				{
+					"command": "es4a.exportResource",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem =~ /^es4a\\.resFile/)",
+					"group": "1_transfer@1"
+				},
+				{
+					"command": "es4a.exportBuildFile",
+					"when": "view == es4a.programs && viewItem == es4a.buildFile",
+					"group": "1_transfer@1"
+				},
+				{
+					"command": "es4a.renameUnitFile",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@5"
+				},
+				{
+					"command": "es4a.syncUnitFileName",
+					"when": "view == es4a.programs && viewItem == es4a.windowUnit",
+					"group": "2_unit@6"
+				},
+				{
+					"command": "es4a.deleteUnitFile",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@7"
+				},
+				{
+					"command": "es4a.copyUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@3"
+				},
+				{
+					"command": "es4a.cutUnit",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@2"
+				},
+				{
+					"command": "es4a.pasteUnit",
+					"when": "view == es4a.programs && es4a.unitClipboardAvailable && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "2_unit@4"
+				},
+				{
+					"command": "es4a.renameResourceFile",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem =~ /^es4a\\.resFile/)",
+					"group": "2_file@2"
+				},
+				{
+					"command": "es4a.deleteResourceFile",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem =~ /^es4a\\.resFile/)",
+					"group": "2_file@3"
+				},
+				{
+					"command": "es4a.deleteBuildFile",
+					"when": "view == es4a.programs && viewItem == es4a.buildFile",
+					"group": "2_file@2"
+				},
+				{
+					"command": "es4a.copyResourceIndex",
+					"when": "view == es4a.programs && viewItem == es4a.resFile.indexed",
+					"group": "3_copy@1"
+				},
+				{
+					"command": "es4a.copyResourceFileName",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem =~ /^es4a\\.resFile/)",
+					"group": "3_copy@2"
+				},
+				{
+					"command": "es4a.copyResourceFolderName",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFolder || viewItem == es4a.resFolder)",
+					"group": "3_copy@1"
+				},
+				{
+					"command": "es4a.copyResourceRelativePath",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem == es4a.assetsFolder || viewItem == es4a.resFolder || viewItem =~ /^es4a\\.resFile/)",
+					"group": "3_copy@3"
+				},
+				{
+					"command": "es4a.copyResourceAbsolutePath",
+					"when": "view == es4a.programs && (viewItem == es4a.assetsFile || viewItem == es4a.assetsFolder || viewItem == es4a.resFolder || viewItem =~ /^es4a\\.resFile/)",
+					"group": "3_copy@4"
+				},
+				{
+					"command": "es4a.copyUnitName",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "3_copy@1"
+				},
+				{
+					"command": "es4a.copyUnitQualifiedName",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "3_copy@2"
+				},
+				{
+					"command": "es4a.copyUnitBaseObjectQualifiedName",
+					"when": "view == es4a.programs && (viewItem == es4a.objectUnit.baseObject || viewItem == es4a.objectUnit.baseObjectAndInterfaces)",
+					"group": "3_copy@3"
+				},
+				{
+					"command": "es4a.copyUnitImplementedInterfacesQualifiedName",
+					"when": "view == es4a.programs && (viewItem == es4a.objectUnit.interfaces || viewItem == es4a.objectUnit.baseObjectAndInterfaces)",
+					"group": "3_copy@4"
+				},
+				{
+					"command": "es4a.copyUnitRelativePath",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "3_copy@5"
+				},
+				{
+					"command": "es4a.copyUnitAbsolutePath",
+					"when": "view == es4a.programs && (viewItem == es4a.unit || viewItem =~ /^es4a\\.objectUnit\\./ || viewItem == es4a.windowUnit)",
+					"group": "3_copy@6"
+				},
+				{
+					"command": "es4a.openLibraryManifest",
+					"when": "view == es4a.libraries && viewItem == es4a.libraryManifest",
+					"group": "1_manifest@1"
+				},
+				{
+					"command": "es4a.locateLibraryManifest",
+					"when": "view == es4a.libraries && viewItem == es4a.libraryManifest",
+					"group": "1_manifest@2"
+				}
+			],
+			"es4a.editProjectProperties": [
+				{
+					"command": "es4a.editProjectName",
+					"group": "1_property@1"
+				},
+				{
+					"command": "es4a.editProjectVersionCode",
+					"group": "1_property@2"
+				},
+				{
+					"command": "es4a.editProjectVersionName",
+					"group": "1_property@3"
+				},
+				{
+					"command": "es4a.editProjectIcon",
+					"group": "1_property@4"
+				},
+				{
+					"command": "es4a.editProjectOrientation",
+					"group": "1_property@5"
+				},
+				{
+					"command": "es4a.editProjectTheme",
+					"group": "1_property@6"
+				},
+				{
+					"command": "es4a.editProjectManifestMacro",
+					"group": "1_property@7"
+				}
+			],
+			"editor/title": [
+				{
+					"command": "es4a.openDesigner",
+					"when": "editorLangId == simple && resourceScheme == simple-code && es4a.activeEditorIsWindowUnit",
+					"group": "navigation@10"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "es4a.openLibraryManifest",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateLibraryManifest",
+					"when": "false"
+				},
+				{
+					"command": "es4a.searchUnitCode",
+					"when": "false"
+				},
+				{
+					"command": "es4a.debugApplication",
+					"when": "false"
+				},
+				{
+					"command": "es4a.compileApplication",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectVersionCode",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectVersionName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectIcon",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectOrientation",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectTheme",
+					"when": "false"
+				},
+				{
+					"command": "es4a.editProjectManifestMacro",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createUnitItem",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createWindowUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createObjectUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createInterfaceUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createServiceUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createUnitFolder",
+					"when": "false"
+				},
+				{
+					"command": "es4a.importResource",
+					"when": "false"
+				},
+				{
+					"command": "es4a.exportResource",
+					"when": "false"
+				},
+				{
+					"command": "es4a.exportBuildFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.createResourceFolder",
+					"when": "false"
+				},
+				{
+					"command": "es4a.renameUnitFolder",
+					"when": "false"
+				},
+				{
+					"command": "es4a.openProjectProperties",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateProjectProperties",
+					"when": "false"
+				},
+				{
+					"command": "es4a.openProjectDirectory",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateFolder",
+					"when": "false"
+				},
+				{
+					"command": "es4a.openUnitLoadEvent",
+					"when": "false"
+				},
+				{
+					"command": "es4a.openUnitInitializeEvent",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateUnitFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateResourceFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.locateBuildFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.removeProject",
+					"when": "false"
+				},
+				{
+					"command": "es4a.deleteProject",
+					"when": "false"
+				},
+				{
+					"command": "es4a.deleteUnitFolder",
+					"when": "false"
+				},
+				{
+					"command": "es4a.setObjectRelation",
+					"when": "false"
+				},
+				{
+					"command": "es4a.setBaseObject",
+					"when": "false"
+				},
+				{
+					"command": "es4a.setImplementedInterfaces",
+					"when": "false"
+				},
+				{
+					"command": "es4a.renameUnitFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.syncUnitFileName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.previewUnitContent",
+					"when": "false"
+				},
+				{
+					"command": "es4a.previewUnitXml",
+					"when": "false"
+				},
+				{
+					"command": "es4a.deleteUnitFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.cutUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.pasteUnit",
+					"when": "false"
+				},
+				{
+					"command": "es4a.renameResourceFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.deleteResourceFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.deleteBuildFile",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitFolderQualifiedName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitFolderName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitFolderRelativePath",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitFolderAbsolutePath",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitQualifiedName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitBaseObjectQualifiedName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitImplementedInterfacesQualifiedName",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitRelativePath",
+					"when": "false"
+				},
+				{
+					"command": "es4a.copyUnitAbsolutePath",
+					"when": "false"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"build": "node esbuild.js",
+		"watch": "node esbuild.js --watch",
+		"check-types": "tsc --noEmit",
+		"compile": "npm run check-types && npm run build",
+		"clean-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
+		"compile-tests": "npm run clean-tests && tsc -p tsconfig.test.json",
+		"test": "npm run compile-tests && node --test out/test/*.test.js",
+		"test:integration": "npm run compile && npm run compile-tests && vscode-test",
+		"package:vsix": "vsce package --allow-missing-repository --skip-license"
+	},
+	"devDependencies": {
+		"@types/mocha": "^10.0.10",
+		"@types/node": "^26.3.0",
+		"@types/vscode": "^1.134.0",
+		"@vscode/test-cli": "^0.0.15",
+		"@vscode/test-electron": "^3.1.0",
+		"@vscode/vsce": "^3.9.2",
+		"@vue/compiler-sfc": "^3.5.42",
+		"esbuild": "^0.28.2",
+		"typescript": "^7.0.2"
+	},
+	"dependencies": {
+		"@vscode/codicons": "^0.0.46-36",
+		"jsonc-parser": "^3.3.1",
+		"pinyin-pro": "^3.29.3",
+		"vue": "^3.5.42"
+	}
+}

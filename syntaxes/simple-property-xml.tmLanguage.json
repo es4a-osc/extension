@@ -1,0 +1,10 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Simple Property XML Preview",
+	"scopeName": "text.xml.simple-property-preview",
+	"patterns": [
+		{
+			"include": "text.xml"
+		}
+	]
+}
