@@ -198,6 +198,8 @@ button, input, select { color: inherit; font: inherit; }
 .window-content { min-height: 0; flex: 1 1 auto; padding: var(--designer-layout-spacing); overflow: visible; }
 .window-layout-surface, .container-layout-surface { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: visible; }
 .window-layout-surface.window-scrollable { overflow-x: hidden; overflow-y: auto; }
+/* 窗口也可以采用清单的横向滚动投影，方向覆盖既有的纵向滚动样式。 */
+.window-layout-surface.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
 .layout-linear-horizontal { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: var(--designer-layout-spacing); }
 .layout-linear-vertical { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
 .layout-unsupported { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }

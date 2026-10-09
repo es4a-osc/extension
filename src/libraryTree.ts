@@ -436,8 +436,9 @@ export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryNode>
 				return item;
 			}
 			case "missing": {
-				const item = new vscode.TreeItem("尚未加载 SDK 清单", vscode.TreeItemCollapsibleState.None);
+				const item = new vscode.TreeItem("选择 SDK 入口文件 sdk.json", vscode.TreeItemCollapsibleState.None);
 				item.iconPath = new vscode.ThemeIcon("warning");
+				item.command = { command: "es4a.selectSdk", title: "选择 SDK 入口文件" };
 				return item;
 			}
 			case "failure": {

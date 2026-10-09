@@ -4,6 +4,7 @@ xhwsd@qq.com 2026-8-31
 */
 
 import * as assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { test } from "node:test";
 import {
@@ -38,7 +39,7 @@ import {
 	resolveDesignerRelativeSnap,
 	sdkDescriptionHoverHint
 } from "../designer/designerView";
-import { parseSimplePropertyXml } from "../propertyXml";
+import { parseSimplePropertyXml, serializePropertyXml } from "../propertyXml";
 import { loadSdk } from "../sdk";
 
 /** 按名称递归查找设计器组件树节点。 */
@@ -870,6 +871,60 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 	};
 	assert.equal(componentPresentation({ ...node, children: [child] }, undefined, "container")
 		.classes.includes("designer-empty-content"), false);
+});
+
+test("真实滚动框窗口内的空面板不会让适应内容高度塌缩，且不改写 XML", async () => {
+	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	for (const direction of ["水平", "垂直"]) {
+		const source = await fs.readFile(path.resolve("..", "simple", "tests", "simple", "runtime",
+			"DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "containers",
+			`测试${direction}滚动框.simple`), "utf8");
+		const document = parseSimplePropertyXml(source);
+		assert.ok(document);
+		const before = serializePropertyXml(document);
+		const model = createSimpleDesignerModel(document, sdk);
+		const scroll = findComponent(model.root, `${direction}滚动框1`);
+		assert.ok(scroll);
+		assert.equal(scroll.layout, "frame");
+		assert.deepEqual(scroll.height, { kind: direction === "水平" ? "content" : "parent" });
+		const panel = findComponent(scroll, "面板2");
+		assert.ok(panel);
+		/* 正式样例允许用户加入内容；仅在投影副本中构造空面板，保持 XML 和源码不变。 */
+		const emptyScroll = { ...scroll, children: [{ ...panel, children: [] }] };
+		assert.equal(componentPresentation(emptyScroll, undefined, "container").style.minHeight,
+			direction === "水平" ? "var(--designer-empty-content-min-height)" : undefined);
+		assert.equal(componentPresentation(emptyScroll, undefined, "container").style.minWidth, undefined);
+		assert.deepEqual(panel.height, { kind: "parent" });
+		assert.equal(componentPresentation(panel, undefined, "container").style.minHeight, undefined);
+		assert.equal(serializePropertyXml(document), before);
+	}
+});
+
+test("嵌套空容器逐方向补足交互尺寸，实际文本和固定内容尺寸保持自然测量", () => {
+	const child: DesignerComponentNode = {
+		children: [], container: true, displayText: "", displayTextPlaceholder: true,
+		height: { kind: "parent" }, layout: "frame", name: "空面板", path: "/child",
+		textComponent: false, type: "面板", visual: true, width: { kind: "parent" }
+	};
+	const parent: DesignerComponentNode = {
+		...child, children: [child], height: { kind: "content" }, name: "父容器", path: "/parent",
+		width: { kind: "content" }
+	};
+	const style = componentPresentation(parent, undefined, "container").style;
+	assert.equal(style.minHeight, "var(--designer-empty-content-min-height)");
+	assert.equal(style.minWidth, "var(--designer-empty-content-min-width)");
+	const fixedChild = { ...child, width: { kind: "fixed", value: 12 } as const };
+	const fixedWidthStyle = componentPresentation({ ...parent, children: [fixedChild] }, undefined, "container").style;
+	assert.equal(fixedWidthStyle.minWidth, undefined);
+	assert.equal(fixedWidthStyle.minHeight, "var(--designer-empty-content-min-height)");
+	const measuredChild = { ...fixedChild, height: { kind: "fixed", value: 18 } as const };
+	assert.equal(componentPresentation({ ...parent, children: [measuredChild] }, undefined, "container").style.minHeight, undefined);
+	const text = { ...child, container: false, displayText: "实际文本", displayTextPlaceholder: false };
+	assert.equal(componentPresentation({ ...parent, children: [{ ...child, children: [text] }] }, undefined, "container").style.minHeight, undefined);
+	const fixedParent = { ...parent, height: { kind: "fixed", value: 1 } as const };
+	assert.equal(componentPresentation(fixedParent, undefined, "container").style.minHeight, "1px");
+	const matchingParent = { ...parent, height: { kind: "parent" } as const };
+	assert.equal(componentPresentation(matchingParent, undefined, "container").style.minHeight, undefined);
 });
 
 test("匹配父级组件区分已解析的外边距与内填充", async () => {

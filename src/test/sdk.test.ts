@@ -881,3 +881,34 @@ test("函数继承按名称和参数个数保留重载并覆盖对应签名", ()
 	assert.equal(functions[1]?.member.params?.[0]?.type, "文本型");
 	assert.equal(functions[2]?.owner.definition.name, "派生对象");
 });
+
+
+test("组件级投影校验布局、方向和数量，不改变属性级投影", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-container-projection-"));
+	context.after(() => fs.rm(directory, { recursive: true, force: true }));
+	await writeJson(path.join(directory, "sdk.json"), { runtime: "runtime.json" });
+	async function readProjection(projection: unknown) {
+		await writeJson(path.join(directory, "runtime.json"), {
+			name: "容器规则", kind: "runtime", categories: [{ name: "组件", definitions: [{
+				name: "容器", kind: "component", projection,
+				properties: [{ name: "宽度", projection: "width" }]
+			}]}]
+		});
+		return loadSdk(path.join(directory, "sdk.json"));
+	}
+	for (const projection of [undefined, {}, { layout: "frame", scroll: "vertical", limit: 1 },
+		{ scroll: "none", limit: 0 }, { layout: "linear-horizontal" }, { layout: "grid" }]) {
+		const sdk = await readProjection(projection);
+		assert.equal(sdk.manifests.length, 1);
+		const definition = sdk.manifests[0]?.categories[0]?.definitions[0];
+		assert.deepEqual(definition?.projection, projection);
+		assert.equal(definition?.properties?.[0]?.projection, "width");
+	}
+	for (const projection of [null, "frame", [], { layout: "stack" }, { layout: 3 },
+		{ scroll: "both" }, { scroll: true }, { limit: -1 }, { limit: 1.5 },
+		{ limit: "1" }, { limit: Number.MAX_SAFE_INTEGER + 1 }]) {
+		const sdk = await readProjection(projection);
+		assert.equal(sdk.manifests.length, 0);
+		assert.equal(sdk.issues.some((issue) => issue.includes("projection")), true);
+	}
+});

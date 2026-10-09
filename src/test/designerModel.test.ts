@@ -2064,16 +2064,16 @@ test("滚动框只接受一个直属可视组件", async () => {
 	assert.equal(findComponent(createSimpleDesignerModel(document, sdk).root, "Scroll1")?.acceptsVisualChild, false);
 	assert.throws(
 		() => addSimpleDesignerComponent(document, sdk, "按钮", scrollPath, "canvas"),
-		/滚动框只能直接包含一个可视组件/u
+		/容器最多只能直接包含 1 个可视组件/u
 	);
 	const clipboard = copySimpleDesignerComponent(document, sdk, outsidePath).text;
 	assert.throws(
 		() => pasteSimpleDesignerComponent(document, sdk, scrollPath, clipboard),
-		/滚动框只能直接包含一个可视组件/u
+		/容器最多只能直接包含 1 个可视组件/u
 	);
 	assert.throws(
 		() => relocateSimpleDesignerComponent(document, sdk, outsidePath, scrollPath),
-		/滚动框只能直接包含一个可视组件/u
+		/容器最多只能直接包含 1 个可视组件/u
 	);
 	assert.equal(
 		relocateSimpleDesignerComponent(document, sdk, insidePath, scrollPath).selectedPath,
@@ -2088,7 +2088,7 @@ test("滚动框只接受一个直属可视组件", async () => {
 			"\t</定义>",
 			"</定义>"
 		].join("\r\n")),
-		/滚动框包含多个直属可视组件/u
+		/剪贴板中的容器最多只能直接包含 1 个可视组件/u
 	);
 });
 

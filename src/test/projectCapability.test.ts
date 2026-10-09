@@ -136,6 +136,6 @@ test("拒绝调用当前 SDK 未声明的项目能力", () => {
 	);
 	assert.throws(
 		() => createProjectCapabilityInvocation(undefined, "compile", project),
-		/当前没有可用的 SDK/u
+		/尚未加载 SDK，请选择 SDK 入口文件 sdk\.json。/u
 	);
 });

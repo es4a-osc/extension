@@ -81,6 +81,30 @@ function escapeRegularExpression(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
+/**
+ * 单元自身的加载、初始化事件按文件名绑定，与窗口 XML 根名称无关。
+ * 只改声明中的对象名，保留组件事件、事件体、字符串、注释及原有排版。
+ */
+export function renameSimpleUnitLifecycleEventOwners(
+	userCode: string,
+	oldName: string,
+	newName: string
+): string {
+	if (oldName === newName) return userCode;
+	const declarationPattern = new RegExp(
+		`^([\\t ]*事件[\\t ]+)${escapeRegularExpression(oldName)}(?=[\\t ]*\\.[\\t ]*(?:加载|初始化)[\\t ]*\\()`,
+		"u"
+	);
+	let updated = userCode;
+	for (const line of [...simpleSourceLines(userCode)].reverse()) {
+		const match = declarationPattern.exec(line.text);
+		if (match === null) continue;
+		const offset = line.start + match[1]!.length;
+		updated = updated.slice(0, offset) + newName + updated.slice(offset + oldName.length);
+	}
+	return updated;
+}
+
 /** 识别指定单元已有的加载和初始化事件，并定位其事件体。 */
 function collectSimpleUnitLifecycleEventHandlers(
 	userCode: string,

@@ -6119,7 +6119,7 @@ ${propertySource}`;
 		}
 	});
 
-	test("未加载 SDK 时类库树不提供重复的选择入口", async () => {
+	test("未加载 SDK 时类库树提示项可选择 SDK 入口文件", async () => {
 		const provider = new LibraryTreeProvider(async () => undefined);
 		try {
 			await provider.refresh();
@@ -6127,8 +6127,8 @@ ${propertySource}`;
 			assert.equal(nodes.length, 1);
 			assert.equal(nodes[0]?.kind, "missing");
 			const item = provider.getTreeItem(nodes[0]!);
-			assert.equal(item.label, "尚未加载 SDK 清单");
-			assert.equal(item.command, undefined);
+			assert.equal(item.label, "选择 SDK 入口文件 sdk.json");
+			assert.deepEqual(item.command, { command: "es4a.selectSdk", title: "选择 SDK 入口文件" });
 		} finally {
 			provider.dispose();
 		}

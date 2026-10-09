@@ -39,6 +39,8 @@ interface DesignerComponentTargetMessage extends DesignerRenderBoundMessage {
 }
 
 export interface SelectDesignerNodeMessage extends DesignerComponentTargetMessage {
+	/** 切换选择前仍在输入框内的编辑，与目标选择使用同一投影版本。 */
+	readonly pendingPropertyEdit?: PropertyPanelValueRequest;
 	readonly type: "selectNode";
 }
 
@@ -468,7 +470,11 @@ export function parseDesignerWebviewMessage(message: unknown): DesignerWebviewMe
 			)
 				? candidate as unknown as SaveDesignerDocumentMessage : undefined;
 		case "selectNode":
-			return hasComponentIdentity(candidate) ? candidate as unknown as SelectDesignerNodeMessage : undefined;
+			return hasComponentIdentity(candidate) && (candidate.pendingPropertyEdit === undefined || (
+				isPropertyPanelValueRequest(candidate.pendingPropertyEdit)
+				&& candidate.pendingPropertyEdit.contextToken === candidate.contextToken
+				&& candidate.pendingPropertyEdit.renderVersion === candidate.renderVersion
+			)) ? candidate as unknown as SelectDesignerNodeMessage : undefined;
 		case "showPropertyValidationWarning":
 			return typeof candidate.componentName === "string"
 				&& candidate.componentName.length > 0

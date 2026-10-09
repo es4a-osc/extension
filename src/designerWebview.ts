@@ -573,18 +573,22 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			return;
 		}
 		if (parsedMessage.type === "selectNode") {
-			if (parsedMessage.renderVersion !== state.renderVersion) {
+			/* 先失焦的写入可能已经重绘：纯选择按当前组件身份定位；携带编辑仍严格校验版本。 */
+			if (parsedMessage.renderVersion > state.renderVersion
+				|| parsedMessage.pendingPropertyEdit !== undefined && parsedMessage.renderVersion !== state.renderVersion) {
 				this.render(state);
 				return;
 			}
 			try {
-				this.selectNode(state, parsedMessage);
+				/* 先记住点击目标；有待提交值时延后重绘，避免输入框在失焦前被旧模型覆盖。 */
+				this.selectNode(state, parsedMessage, parsedMessage.pendingPropertyEdit === undefined);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
 				void vscode.window.showErrorMessage("设计器操作失败：" + detail);
 				this.render(state);
+				return;
 			}
-			return;
+			if (parsedMessage.pendingPropertyEdit === undefined) return;
 		}
 		if (parsedMessage.type === "checkComponentClipboard") {
 			void this.sendComponentClipboardStatus(state, parsedMessage);
@@ -604,17 +608,18 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		);
 	}
 
-	/** 组件选择只是当前面板的瞬时状态，必须立即响应，不能排在 XML 写事务后面。 */
+	/** 立即记录面板选择；携带属性编辑时等事务完成后重绘，仍允许后续选择更新目标。 */
 	private selectNode(
 		state: DesignerPanelState,
-		identity: DesignerComponentIdentity
+		identity: DesignerComponentIdentity,
+		render = true
 	): void {
 		const result = this.currentResult(state);
 		if (result.document === undefined) return;
 		const selected = resolveDesignerComponentIdentity(result.document, identity, this.sdk);
 		state.selectedComponentName = selected.componentName;
 		state.selectedXmlPath = selected.xmlPath;
-		this.render(state);
+		if (render) this.render(state);
 	}
 
 	/** 同一真实单元的消息、保存、还原和备份共享一条不会因前次失败而中断的事务队列。 */
@@ -634,12 +639,17 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		state: DesignerPanelState,
 		parsedMessage: Exclude<
 			DesignerWebviewMessage,
-			{ readonly type: "checkComponentClipboard" } | { readonly type: "ready" } | { readonly type: "selectNode" }
+			{ readonly type: "checkComponentClipboard" } | { readonly type: "ready" }
 		>
 	): Promise<void> {
 		if (!this.panels.has(state)) return;
 		try {
 			switch (parsedMessage.type) {
+				case "selectNode":
+					if (parsedMessage.pendingPropertyEdit !== undefined) {
+						await this.updateProperty(state, parsedMessage.pendingPropertyEdit);
+					}
+					break;
 				case "activateComponentEvent":
 					await this.activateComponentEvent(state, parsedMessage);
 					break;
@@ -998,7 +1008,8 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			propertyDocument,
 			updated.propertyDocument,
 			updated.userCode,
-			updated.selectedPath ?? selectedPath,
+			/* 属性写入保留此时最新的选择，不能把随后点击的目标重新拉回编辑源组件。 */
+			undefined,
 			"修改属性",
 			message.effect === "renameComponent" && message.selectedComponentName !== undefined
 				? { from: message.selectedComponentName, to: message.value.trim() }

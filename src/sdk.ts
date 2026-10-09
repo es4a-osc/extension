@@ -177,6 +177,20 @@ export function effectiveLibraryMemberKey(
 		: member.name;
 }
 
+/** 容器复用的设计器布局；只描述投影，不新增运行时布局属性。 */
+export type LibraryContainerLayout = "absolute" | "frame" | "grid" | "linear-horizontal" | "linear-vertical" | "relative";
+
+/** 容器内部的固定投影规则；实际属性投影优先于这里的缺省配置。 */
+export interface LibraryContainerProjection {
+	readonly layout?: LibraryContainerLayout;
+	/** 直属可视子组件上限，省略表示不限制；非可视组件不计入。 */
+	readonly limit?: number;
+	/** 内容溢出的滚动方向，滚动条显示仍由真实属性投影决定。 */
+	readonly scroll?: "none" | "horizontal" | "vertical";
+	/** 保留其它元数据，设计器只消费已经声明支持的规则。 */
+	readonly [key: string]: unknown;
+}
+
 /** 描述类库中的对象、组件、布局、类型或语言定义。 */
 export interface LibraryDefinition {
 	/** 对象单元直接声明的基础对象完整名称。 */
@@ -205,6 +219,8 @@ export interface LibraryDefinition {
 	readonly kind?: string;
 	/** Simple 源码中使用的定义名称。 */
 	readonly name: string;
+	/** 容器内部的设计器投影配置，与属性级字符串 projection 分开读取。 */
+	readonly projection?: LibraryContainerProjection;
 	/** 定义直接声明的属性。 */
 	readonly properties?: readonly LibraryMember[];
 	/** 定义直接声明的变量。 */
@@ -564,14 +580,34 @@ function parseParameter(value: unknown, filePath: string): LibraryParameter {
 	};
 }
 
-/**
- * 将未知 JSON 值校验并转换为对象或语言定义。
- *
- * @param value 待解析的定义 JSON 值。
- * @param filePath 定义所属清单路径。
- * @returns 已规范化成员分组和继承列表的定义。
- * @throws 值不是对象或缺少定义名称时抛出错误。
- */
+/** 校验组件级投影；旧清单可以省略，错误规则不能进入设计器。 */
+function parseContainerProjection(value: unknown, filePath: string): LibraryContainerProjection {
+	if (!isRecord(value)) {
+		throw new Error(filePath + " 中定义的 projection 必须是对象");
+	}
+	const layouts: readonly LibraryContainerLayout[] = [
+		"absolute", "frame", "grid", "linear-horizontal", "linear-vertical", "relative"
+	];
+	if (value.layout !== undefined && !layouts.some((layout) => layout === value.layout)) {
+		throw new Error(filePath + " 中定义的 projection.layout 不是受支持的布局投影");
+	}
+	if (value.scroll !== undefined && value.scroll !== "none"
+		&& value.scroll !== "horizontal" && value.scroll !== "vertical") {
+		throw new Error(filePath + " 中定义的 projection.scroll 必须是 none、horizontal 或 vertical");
+	}
+	if (value.limit !== undefined && (typeof value.limit !== "number"
+		|| !Number.isSafeInteger(value.limit) || value.limit < 0)) {
+		throw new Error(filePath + " 中定义的 projection.limit 必须是非负安全整数");
+	}
+	return {
+		...value,
+		...(value.layout === undefined ? {} : { layout: value.layout as LibraryContainerLayout }),
+		...(value.limit === undefined ? {} : { limit: value.limit as number }),
+		...(value.scroll === undefined ? {} : { scroll: value.scroll as LibraryContainerProjection["scroll"] })
+	};
+}
+
+/** 校验对象或语言定义，并保留合法的成员、继承与容器投影规则。 */
 function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 	if (!isRecord(value)) {
 		throw new Error(`${filePath} 中存在无效定义`);
@@ -590,6 +626,8 @@ function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 	const inherits = Array.isArray(value.inherits)
 		? value.inherits.filter((item): item is string => typeof item === "string" && item.length > 0)
 		: undefined;
+	const projection = value.projection === undefined
+		? undefined : parseContainerProjection(value.projection, filePath);
 	const icon = optionalString(value.icon);
 	const runtimeType = optionalString(value.type) ?? optionalString(value.class);
 	const definition = { ...value };
@@ -602,6 +640,7 @@ function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 		...members,
 		icon,
 		name: requireString(value.name, "name", filePath),
+		...(projection === undefined ? {} : { projection }),
 		...(runtimeType === undefined ? {} : { type: runtimeType }),
 		...(inherits === undefined ? {} : { inherits })
 	};

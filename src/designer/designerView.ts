@@ -1251,6 +1251,18 @@ function applyLength(
 	}
 }
 
+/** 判断可视子树能否提供某一方向的内容尺寸；匹配父级本身不能撑开适应内容的父容器。 */
+function hasProjectedContainerContent(node: DesignerComponentNode, dimension: "height" | "width"): boolean {
+	return node.children.some((child) => {
+		if (!child.visual) return false;
+		const length = child[dimension];
+		if (length?.kind === "fixed") return length.value > 0;
+		return child.container
+			? hasProjectedContainerContent(child, dimension)
+			: child.displayTextPlaceholder !== true;
+	});
+}
+
 /** 把组件自身和相对父布局的样式合并为 Vue 可绑定数据。 */
 export function componentPresentation(
 	node: DesignerComponentNode,
@@ -1302,6 +1314,15 @@ export function componentPresentation(
 	}
 	applyLength(classes, style, "width", node.width);
 	applyLength(classes, style, "height", node.height);
+	if (kind === "container" && hasProjectedContent) {
+		/* 空的嵌套容器也需要可见外框；分别判断宽高，不能覆盖固定尺寸或放大已有内容。 */
+		if (node.width?.kind === "content" && !hasProjectedContainerContent(node, "width")) {
+			style.minWidth = "var(--designer-empty-content-min-width)";
+		}
+		if (node.height?.kind === "content" && !hasProjectedContainerContent(node, "height")) {
+			style.minHeight = "var(--designer-empty-content-min-height)";
+		}
+	}
 	if (node.margin !== undefined) {
 		for (const side of ["bottom", "left", "right", "top"] as const) {
 			const value = node.margin[side];
@@ -1513,12 +1534,11 @@ export function appearanceStyle(node: DesignerComponentNode): CSSProperties {
 	return style;
 }
 
-/** 滚动框由组件类型决定方向，其它容器读取自身布局设置。 */
+/** 复用已有布局并叠加清单投影的滚动方向，不按组件中文名称分支。 */
 export function designerLayoutClass(node: DesignerComponentNode): string {
 	const hiddenScrollbar = node.scrollbarEnabled === false ? " container-scrollbar-hidden" : "";
-	if (node.type === "水平滚动框") return "layout-linear-horizontal container-scroll-horizontal" + hiddenScrollbar;
-	if (node.type === "垂直滚动框") return "layout-linear-vertical container-scroll-vertical" + hiddenScrollbar;
-	return "layout-" + node.layout;
+	const scrollClass = node.scroll === undefined ? "" : " container-scroll-" + node.scroll + hiddenScrollbar;
+	return "layout-" + node.layout + scrollClass;
 }
 
 /** 把设计期间隙与容器填充合并到子布局区，只内缩布局可用空间。 */
@@ -1538,9 +1558,7 @@ export function containerInsetStyle(node: DesignerComponentNode): CSSProperties 
 /** 把容器表格规模和内容对齐投影到不会覆盖外层间隙的真实布局区。 */
 export function containerStyle(node: DesignerComponentNode): CSSProperties {
 	const style: CSSProperties = {};
-	const layout = node.type === "水平滚动框"
-		? "linear-horizontal"
-		: node.type === "垂直滚动框" ? "linear-vertical" : node.layout;
+	const layout = node.layout;
 	if (layout === "absolute") {
 		style["--designer-absolute-inset-left"] = "0px";
 		style["--designer-absolute-inset-top"] = "0px";

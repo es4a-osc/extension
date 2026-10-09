@@ -8,6 +8,7 @@ import { test } from "node:test";
 import {
 	createCopiedSimpleUnitSource,
 	createSimpleUnitSourceFromTemplate,
+	renameSimpleUnitLifecycleEventOwners,
 	resolveSimpleUnitLifecycleEventAction,
 	validateResourceFileName,
 	validateUnitFolderName,
@@ -191,6 +192,34 @@ test("单元名称接受中文标识符并拒绝后缀和路径", () => {
 	assert.match(validateUnitName("1窗口") ?? "", /字母开头/);
 	assert.match(validateUnitName("主窗口.simple") ?? "", /不要包含/);
 	assert.match(validateUnitName("ui/主窗口") ?? "", /只能包含/);
+});
+
+test("改名单元只同步自身生命周期事件对象名，保留组件事件、事件体和排版", () => {
+	for (const lineEnding of ["\r\n", "\n", "\r"]) {
+		const source = [
+			"' 事件 旧单元.加载()",
+			"  事件\t旧单元 \t. 加载 () ' 保留旧单元注释",
+			"\t显示提示(\"事件 旧单元.初始化()\")",
+			"\t旧单元.共享值 = 1",
+			"结束 事件",
+			"事件 旧单元.初始化()",
+			"结束 事件",
+			"事件 旧单元.被单击()",
+			"结束 事件",
+			"事件 旧单元按钮.初始化()",
+			"结束 事件",
+			"事件 按钮1.被单击()",
+			"结束 事件",
+			"事件 加载()",
+			"结束 事件",
+			""
+		].join(lineEnding);
+		const expected = source
+			.replace("事件\t旧单元 \t.", "事件\t新单元 \t.")
+			.replace(`${lineEnding}事件 旧单元.初始化()`, `${lineEnding}事件 新单元.初始化()`);
+		assert.equal(renameSimpleUnitLifecycleEventOwners(source, "旧单元", "新单元"), expected);
+		assert.equal(renameSimpleUnitLifecycleEventOwners(source, "旧单元", "旧单元"), source);
+	}
 });
 
 test("文件夹名称拒绝路径字符和 Windows 保留名称", () => {

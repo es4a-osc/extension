@@ -102,7 +102,7 @@ async function runProjectCapability(
 	}
 	const sdk = getSdk();
 	if (sdk === undefined) {
-		throw new Error("当前没有可用的 SDK。");
+		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
 	}
 	const invocation = createProjectCapabilityInvocation(sdk, capabilityId, project);
 	await ensureCommandFile(invocation.command);
@@ -126,7 +126,7 @@ async function runProjectCapability(
 async function runToolCapability(getSdk: () => Sdk | undefined): Promise<void> {
 	const sdk = getSdk();
 	if (sdk === undefined) {
-		throw new Error("当前没有可用的 SDK。");
+		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
 	}
 	const capability = await selectCapability(sdk.capabilities.tools, "选择要启动的 SDK 工具");
 	if (capability === undefined) {

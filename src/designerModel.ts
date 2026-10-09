@@ -39,6 +39,7 @@ import {
 import { resolveDefinitionIconPath } from "./componentIcon";
 import {
 	designerDefaultLengthKind,
+	designerLayoutDefinition,
 	designerLayoutKind,
 	type DesignerLayoutKind
 } from "./designerDefaults";
@@ -224,6 +225,10 @@ export interface DesignerComponentNode {
 	readonly resizable?: boolean;
 	readonly resizeHeight?: boolean;
 	readonly resizeWidth?: boolean;
+	/** 容器清单声明的直属可视子组件上限，不计非可视组件。 */
+	readonly limit?: number;
+	/** 已合并真实属性与组件级规则的滚动投影方向。 */
+	readonly scroll?: "horizontal" | "vertical";
 	readonly scrollable?: boolean;
 	readonly scrollbarEnabled?: boolean;
 	readonly singleLine?: boolean;
@@ -716,22 +721,6 @@ function designerLength(
 	return Number.isSafeInteger(fixed) ? { kind: "fixed", value: fixed } : undefined;
 }
 
-/** 返回当前布局种类在 SDK 中承载布局子属性的定义名称。 */
-function layoutDefinitionName(layout: DesignerLayoutKind): string | undefined {
-	switch (layout) {
-		case "absolute": return "绝对布局";
-		case "frame": return "单帧布局";
-		case "grid": return "表格布局";
-		case "linear-horizontal":
-		case "linear-vertical":
-			return "线性布局";
-		case "relative":
-			return "相对布局";
-		case "unsupported":
-			return undefined;
-	}
-}
-
 /** 读取布局子属性的 XML 显式值；未声明时使用当前 SDK 布局定义的有效初始值。 */
 function effectiveLayoutPropertyExpression(
 	properties: ReadonlyMap<string, string | undefined>,
@@ -739,7 +728,7 @@ function effectiveLayoutPropertyExpression(
 	layout: DesignerLayoutKind,
 	projection: LibraryPropertyProjection
 ): string | undefined {
-	const definitionName = layoutDefinitionName(layout);
+	const definitionName = designerLayoutDefinition(layout)?.name;
 	const layoutDefinition = definitionName === undefined ? undefined : definitions.get(definitionName);
 	const property = projectedProperty(layoutDefinition, definitions, projection);
 	if (property === undefined) return undefined;
@@ -754,6 +743,10 @@ function layoutKind(
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>
 ): DesignerLayoutKind {
 	const layoutExpression = effectiveProjectedPropertyExpression(properties, definition, definitions, "layout");
+	/* 没有有效布局属性值时使用固定投影；未知的实际表达式仍保持只读。 */
+	if (layoutExpression === undefined && isContainerDefinition(definition?.definition)) {
+		return definition?.definition.projection?.layout ?? "frame";
+	}
 	const initialLayout = designerLayoutKind(layoutExpression, undefined);
 	return designerLayoutKind(
 		layoutExpression,
@@ -946,7 +939,6 @@ function createComponentNode(
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	parentPath?: string,
 	parentLayout?: DesignerLayoutKind,
-	parentType?: string,
 	parentGridSize?: { readonly columns: number; readonly rows: number },
 	parentChildrenLayoutReadOnly = false
 ): DesignerComponentNode | undefined {
@@ -966,6 +958,13 @@ function createComponentNode(
 		"simple.runtime.components.文本组件"
 	);
 	const layout = layoutKind(properties, definition, definitions);
+	const projection = isContainerDefinition(definitionValue) ? definitionValue?.projection : undefined;
+	const limit = projection?.limit;
+	const scrollable = booleanProperty(properties, definition, definitions, "scrollable");
+	/* 实际滚动开关优先；固定方向只补足组件没有方向属性的投影。 */
+	const scroll = scrollable === false ? undefined
+		: projection?.scroll === "horizontal" ? "horizontal"
+			: projection?.scroll === "vertical" || scrollable === true ? "vertical" : undefined;
 	/* 自身布局只控制子组件；组件自身是否可操作由所在父布局决定。 */
 	const layoutReadOnly = visual && parentChildrenLayoutReadOnly;
 	const childrenLayoutReadOnly = layoutReadOnly || layout === "unsupported";
@@ -1021,7 +1020,6 @@ function createComponentNode(
 			definitions,
 			path,
 			layout,
-			type,
 			childGridSize,
 			childrenLayoutReadOnly
 		))
@@ -1060,8 +1058,7 @@ function createComponentNode(
 		/* 未显式设置子组件对齐时沿用父布局的内容对齐，不能用 SDK 初始值覆盖。 */
 		alignment: designerAlignment(directProjectedProperty(properties, definition, definitions, "layoutGravity"), definitions),
 		acceptsVisualChild: !childrenLayoutReadOnly && isContainerDefinition(definition?.definition)
-			&& (type !== "垂直滚动框" && type !== "水平滚动框"
-				|| !children.some((child) => child.visual)),
+			&& (limit === undefined || children.filter((child) => child.visual).length < limit),
 		backgroundColor: designerColor(
 			effectiveProjectedPropertyExpression(properties, definition, definitions, "backgroundColor"),
 			definitions
@@ -1096,7 +1093,7 @@ function createComponentNode(
 		gridRow,
 		height: designerLength(
 			directProjectedProperty(properties, definition, definitions, "height"),
-			designerDefaultLengthKind(parentLayout, parentType, "height")
+			designerDefaultLengthKind(parentLayout, "height")
 		),
 		icon: resolveDefinitionIconPath(definition),
 		layout,
@@ -1149,7 +1146,9 @@ function createComponentNode(
 		resizable: resizeWidth || resizeHeight,
 		resizeHeight,
 		resizeWidth,
-		scrollable: booleanProperty(properties, definition, definitions, "scrollable"),
+		limit,
+		scroll,
+		scrollable,
 		scrollbarEnabled: booleanProperty(properties, definition, definitions, "scrollbarEnabled"),
 		singleLine: booleanProperty(properties, definition, definitions, "singleLine"),
 		textComponent,
@@ -1168,7 +1167,7 @@ function createComponentNode(
 		),
 		width: designerLength(
 			directProjectedProperty(properties, definition, definitions, "width"),
-			designerDefaultLengthKind(parentLayout, parentType, "width")
+			designerDefaultLengthKind(parentLayout, "width")
 		),
 		weight: designerNumber(directProjectedProperty(properties, definition, definitions, "weight"), definitions)
 	};
@@ -1507,7 +1506,7 @@ export function addSimpleDesignerComponent(
 	}
 	const parentNode = placement.parent;
 	if (toolboxItem.visual && !canDesignerContainerAcceptVisualChild(parentNode)) {
-		throw new Error("滚动框只能直接包含一个可视组件；请先放入面板，再把多个组件放入面板。");
+		throw new Error(`容器最多只能直接包含 ${parentNode.limit} 个可视组件；可先放入面板承载多个组件。`);
 	}
 	if (toolboxItem.visual && parentNode.layout === "grid") {
 		if (gridPosition === undefined) {
@@ -1805,16 +1804,15 @@ export function findDesignerComponentNode(
 /**
  * 判断容器当前是否还能接收一个直属可视子组件。
  *
- * Android 两种滚动框只允许一个直属子 View；移动其现有直属子组件时可排除源路径。
- * 其它 Simple 容器目前没有同类数量上限。
+ * 数量上限来自 SDK 容器投影；移动现有直属子组件时排除源路径，非可视组件不占用数量。
  */
 export function canDesignerContainerAcceptVisualChild(
 	parent: DesignerComponentNode,
 	excludedPath?: string
 ): boolean {
 	if (!parent.container || parent.childrenLayoutReadOnly === true) return false;
-	if (parent.type === "垂直滚动框" || parent.type === "水平滚动框") {
-		return !parent.children.some((child) => child.visual && child.path !== excludedPath);
+	if (parent.limit !== undefined) {
+		return parent.children.filter((child) => child.visual && child.path !== excludedPath).length < parent.limit;
 	}
 	return parent.acceptsVisualChild !== false;
 }
@@ -1890,7 +1888,8 @@ function preparePastedComponentDefinition(
 	const children = element.children.map((child) => child.nodeType === "element" && child.name === "定义"
 		? preparePastedComponentDefinition(child, definitions, usedNames, sdk)
 		: child);
-	if (componentType === "垂直滚动框" || componentType === "水平滚动框") {
+	const limit = isContainerDefinition(definition) ? definition?.projection?.limit : undefined;
+	if (limit !== undefined) {
 		const visualChildren = children.filter((child) => (
 			child.nodeType === "element"
 			&& child.name === "定义"
@@ -1898,8 +1897,8 @@ function preparePastedComponentDefinition(
 				definitions.get(getPropertyXmlAttribute(child, "组件") ?? "")?.definition
 			)
 		));
-		if (visualChildren.length > 1) {
-			throw new Error("剪贴板中的滚动框包含多个直属可视组件，请先使用面板承载这些组件。");
+		if (visualChildren.length > limit) {
+			throw new Error(`剪贴板中的容器最多只能直接包含 ${limit} 个可视组件。`);
 		}
 	}
 	return createPropertyXmlElement(
@@ -2004,9 +2003,7 @@ export function pasteSimpleDesignerComponent(
 		throw new Error("组件“" + parentType + "”不能承载子组件。");
 	}
 	if (pastedVisual && !canDesignerContainerAcceptVisualChild(parentNode)) {
-		throw new Error(parentNode.layout === "relative"
-			? "相对布局当前只支持通过 XML 属性投影，不能粘贴子组件。"
-			: "滚动框只能直接包含一个可视组件；请先放入面板，再把多个组件放入面板。");
+		throw new Error(`容器最多只能直接包含 ${parentNode.limit} 个可视组件；可先放入面板承载多个组件。`);
 	}
 	if (pastedVisual && parentNode.layout === "grid") {
 		if (gridPosition === undefined) {
@@ -2190,7 +2187,7 @@ export function relocateSimpleDesignerComponent(
 		throw new Error("组件不能移动到自身或自己的子容器中。");
 	}
 	if (component.visual && !canDesignerContainerAcceptVisualChild(parent, component.path)) {
-		throw new Error("滚动框只能直接包含一个可视组件；请先放入面板，再把多个组件放入面板。");
+		throw new Error(`容器最多只能直接包含 ${parent.limit} 个可视组件；可先放入面板承载多个组件。`);
 	}
 	if (component.visual && parent.layout === "grid") {
 		if (gridPosition === undefined) {

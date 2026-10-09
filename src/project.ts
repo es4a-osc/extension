@@ -4,6 +4,7 @@ xhwsd@qq.com 2026-8-27
 */
 
 import * as path from "node:path";
+import { mostSpecificSourceRoot, simpleQualifiedName } from "./simpleProjectPaths";
 
 /** 描述由 `project.properties` 解析得到的完整 Simple 项目信息。 */
 export interface SimpleProjectInfo {
@@ -245,6 +246,34 @@ export function updateProjectProperty(source: string, key: string, value: string
 	const prefix = source.length === 0 || hasFinalNewline ? "" : newline;
 	const suffix = hasFinalNewline ? newline : "";
 	return `${source}${prefix}${key}=${value}${suffix}`;
+}
+
+/** 仅在实际改名的单元完整匹配当前 main 时同步限定名，不按包名前缀改写配置。 */
+export function updateProjectMainForRenamedUnits(
+	source: string,
+	projectFile: string,
+	units: readonly { readonly oldFile: string; readonly newFile: string }[]
+): string | undefined {
+	const project = createProjectInfo(projectFile, parseProjectProperties(source));
+	if (project.main === undefined) return undefined;
+	for (const unit of units) {
+		const oldRoot = mostSpecificSourceRoot(project.sourceDirectories, unit.oldFile);
+		if (oldRoot === undefined || simpleQualifiedName(oldRoot, unit.oldFile) !== project.main) continue;
+		const newRoot = mostSpecificSourceRoot(project.sourceDirectories, unit.newFile);
+		if (newRoot === undefined) throw new Error("主窗口改名后的路径不属于项目源码目录，无法同步 main。");
+		const nextMain = simpleQualifiedName(newRoot, unit.newFile);
+		if (nextMain === project.main) return undefined;
+		const updated = updateProjectProperty(source, "main", nextMain);
+		/* 延续行等特殊排版不能由现有单属性编辑器无损处理时，先拒绝整个改名。 */
+		const updatedProperties = parseProjectProperties(updated);
+		if (updatedProperties.main !== nextMain
+			|| Object.keys(updatedProperties).length !== Object.keys(project.properties).length
+			|| Object.entries(project.properties).some(([key, value]) => key !== "main" && updatedProperties[key] !== value)) {
+			throw new Error("main 使用了暂不支持的属性排版，请先整理该属性后再改名。");
+		}
+		return updated;
+	}
+	return undefined;
 }
 
 /**

@@ -79,7 +79,7 @@ export function createProjectCapabilityInvocation(
 	project: SimpleProjectInfo
 ): ProjectCapabilityInvocation {
 	if (sdk === undefined) {
-		throw new Error("当前没有可用的 SDK。");
+		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
 	}
 
 	const capability = sdk.capabilities.projects.find((candidate) => candidate.id === capabilityId);

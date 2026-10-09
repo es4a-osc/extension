@@ -376,6 +376,12 @@ const TOOLBOX_VISUAL_PREVIEW_SIZE = 32;
 
 /** 宿主每次发送完整只读投影，Vue 端只替换引用，不深度修改消息模型。 */
 const message = shallowRef<DesignerWebviewRenderMessage>();
+/** 只记住已随选择交出的 DOM 输入，抵消紧接着的失焦；不建立属性模型副本。 */
+const handedOffPropertyInputs = new WeakMap<HTMLInputElement, {
+	readonly value: string;
+	readonly selectedXmlPath?: string;
+	readonly xmlPath?: string;
+}>();
 const columnOrder = ref<readonly DesignerColumnId[]>(DESIGNER_COLUMN_IDS);
 const contextMenu = ref<ContextMenuState>();
 const dragFeedback = ref<DesignerDragFeedback>();
@@ -509,7 +515,7 @@ function selectNode(xmlPath: string): void {
 	if (identity === undefined) return;
 	selectedGridCell.value = undefined;
 	selectedPlacementFeedback.value = currentPlacementFeedback(xmlPath);
-	post({ ...identity, contextToken: currentContextToken(), type: "selectNode" });
+	post({ ...identity, contextToken: currentContextToken(), pendingPropertyEdit: takeFocusedPropertyEdit(), type: "selectNode" });
 }
 
 /** 画布悬停仅驱动当前布局树反馈，不改变组件选择或宿主文档状态。 */
@@ -525,7 +531,7 @@ function selectGridCell(selection: DesignerGridCellSelection): void {
 	if (identity === undefined) return;
 	selectedGridCell.value = selection;
 	selectedPlacementFeedback.value = currentGridCellSelectionFeedback(selection);
-	post({ ...identity, contextToken: currentContextToken(), type: "selectNode" });
+	post({ ...identity, contextToken: currentContextToken(), pendingPropertyEdit: takeFocusedPropertyEdit(), type: "selectNode" });
 }
 
 /** 请求宿主打开当前设计器对应的固定代码标签。 */
@@ -612,12 +618,39 @@ function createPropertyEdit(
 	};
 }
 
-/** 提交普通属性编辑；宿主使用会话令牌拒绝其它标签页的修改。 */
+/** 在 pointerdown 切换选择之前取得原输入值，保持编辑源节点与点击目标各自的身份。 */
+function takeFocusedPropertyEdit(): PropertyPanelValueRequest | undefined {
+	const element = document.activeElement;
+	if (!(element instanceof HTMLInputElement) || !element.classList.contains("property-input")) return undefined;
+	const handedOff = handedOffPropertyInputs.get(element);
+	/* 输入框尚未失焦时可以连续切换目标，同一值只交给第一个选择消息。 */
+	if (handedOff !== undefined && handedOff.value === element.value
+		&& handedOff.selectedXmlPath === element.dataset.selectedXmlPath
+		&& handedOff.xmlPath === element.dataset.xmlPath) return undefined;
+	const edit = createPropertyEdit(element, element.value);
+	if (edit !== undefined) {
+		handedOffPropertyInputs.set(element, {
+			value: element.value,
+			selectedXmlPath: element.dataset.selectedXmlPath,
+			xmlPath: element.dataset.xmlPath
+		});
+	}
+	return edit;
+}
+
+/** 提交普通属性编辑；已随选择交出的同一输入不再由随后失焦重复提交。 */
 function submitProperty(
 	element: HTMLInputElement | HTMLSelectElement | HTMLButtonElement,
 	value: string,
 	allowEmpty = false
 ): void {
+	if (element instanceof HTMLInputElement) {
+		const handedOff = handedOffPropertyInputs.get(element);
+		handedOffPropertyInputs.delete(element);
+		if (handedOff !== undefined && handedOff.value === value
+			&& handedOff.selectedXmlPath === element.dataset.selectedXmlPath
+			&& handedOff.xmlPath === element.dataset.xmlPath) return;
+	}
 	const edit = createPropertyEdit(element, value, allowEmpty);
 	if (edit !== undefined) post(edit);
 }

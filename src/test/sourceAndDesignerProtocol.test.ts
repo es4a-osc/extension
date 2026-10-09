@@ -8,6 +8,25 @@ import test from "node:test";
 import { parseDesignerWebviewMessage } from "../designerProtocol";
 import { isSimpleIgnoredOffset, stripSimpleLineComment } from "../simpleSourceLexical";
 
+test("选择消息可携带同会话同版本的属性编辑，拒绝混入其它会话或旧版本", () => {
+	const edit = {
+		contextToken: "designer", renderVersion: 7, type: "updateXmlValue",
+		selectedComponentName: "按钮1", selectedXmlPath: "/属性/定义[1]/定义[1]",
+		xmlPath: "/属性/定义[1]/定义[1]/赋值[1]/@值", value: "42", removeElementWhenEmpty: true
+	};
+	const selection = {
+		contextToken: "designer", renderVersion: 7, type: "selectNode",
+		componentName: "按钮2", xmlPath: "/属性/定义[1]/定义[2]"
+	};
+	assert.deepEqual(parseDesignerWebviewMessage(selection), selection);
+	const combined = { ...selection, pendingPropertyEdit: edit };
+	assert.deepEqual(parseDesignerWebviewMessage(combined), combined);
+	for (const pendingPropertyEdit of [null, {}, { ...edit, contextToken: "other" },
+		{ ...edit, renderVersion: 6 }, { ...edit, xmlPath: "bad" }]) {
+		assert.equal(parseDesignerWebviewMessage({ ...selection, pendingPropertyEdit }), undefined);
+	}
+});
+
 test("共享词法扫描区分代码、字符串和单行注释", () => {
 	const source = "变量 文本 = \"a\\\"b\" ' 注释";
 	assert.equal(isSimpleIgnoredOffset(source, source.indexOf("a"), true), true);

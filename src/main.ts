@@ -974,7 +974,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		/* 激活完成后仅提示一次；切换文档和项目不会重复触发。 */
 		if (activeSdk === undefined && !sdkSelectionInProgress) {
 			const action = await vscode.window.showInformationMessage(
-				"尚未加载有效的 SDK 清单，请选择 SDK 入口文件。",
+				"尚未加载 SDK，请选择 SDK 入口文件 sdk.json。",
 				"选择 SDK 清单"
 			);
 			if (action === "选择 SDK 清单" && activeSdk === undefined && !sdkSelectionInProgress) {

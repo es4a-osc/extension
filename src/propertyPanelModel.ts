@@ -6,6 +6,8 @@ xhwsd@qq.com 2026-8-27
 import {
 	buildDefinitionIndex,
 	getEffectiveMembers,
+	getEffectivePropertyByProjection,
+	isContainerDefinition,
 	isVisualComponentDefinition,
 	resolveSdkConstantValue,
 	runtimeTypeShortName,
@@ -14,6 +16,7 @@ import {
 	type Sdk
 } from "./sdk";
 import { resolveDefinitionIconPath } from "./componentIcon";
+import { designerLayoutDefinition } from "./designerDefaults";
 import {
 	createPropertyXmlAttributePath,
 	findPropertyXmlElementPath,
@@ -269,13 +272,19 @@ function parentLayoutContext(
 	const parentType = getPropertyXmlAttribute(parent, "组件") ?? "";
 	const parentDefinition = definitions.get(parentType);
 	if (parentDefinition === undefined) return {};
-	const layoutMember = getEffectiveMembers(parentDefinition, "properties", definitions)
-		.find((property) => property.member.name === "布局")?.member;
-	if (layoutMember === undefined) return {};
-	const assigned = directProperties(parent).find(
-		(property) => propertyName(property) === "布局"
+	const layoutMember = getEffectivePropertyByProjection(parentDefinition, "layout", definitions)?.member;
+	const assigned = layoutMember === undefined ? undefined : directProperties(parent).find(
+		(property) => propertyName(property) === layoutMember.name
 	);
-	const expression = assigned === undefined ? defaultExpression(layoutMember) : propertyValue(assigned);
+	const expression = assigned === undefined
+		? layoutMember === undefined ? undefined : defaultExpression(layoutMember)
+		: propertyValue(assigned);
+	if (expression === undefined) {
+		if (!isContainerDefinition(parentDefinition.definition)) return {};
+		/* 固定投影仅用于筛选子组件属性，不给容器虚构可编辑的布局属性。 */
+		const layout = designerLayoutDefinition(parentDefinition.definition.projection?.layout ?? "frame");
+		return { definition: definitions.get(layout?.name ?? ""), expression: layout?.expression };
+	}
 	return {
 		definition: resolveLayoutDefinition(layoutMember, expression, definitions),
 		expression
@@ -512,7 +521,7 @@ export function createPropertyPanelModel(
 		const anchorChoices = siblingAnchorChoices(document.root, selectedNode, definitions);
 		const effectiveProperties = getEffectiveMembers(definition, "properties", definitions);
 		const layoutMember = effectiveProperties.find(
-			(effective) => effective.member.name === "布局"
+			(effective) => effective.member.projection === "layout"
 		)?.member;
 		for (const effective of effectiveProperties) {
 			const member = effective.member;
@@ -561,7 +570,7 @@ export function createPropertyPanelModel(
 			appendPropertyGroup(groups, groupName, rows);
 		}
 
-		const layoutAssigned = assignedByName.get("布局");
+		const layoutAssigned = layoutMember === undefined ? undefined : assignedByName.get(layoutMember.name);
 		const layoutExpression = layoutAssigned === undefined
 			? layoutMember?.initializer?.value
 			: propertyValue(layoutAssigned);
