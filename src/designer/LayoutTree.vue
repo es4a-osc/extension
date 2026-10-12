@@ -10,6 +10,7 @@ xhwsd@qq.com 2026-8-30
 			v-else
 			:hovered-path="hoveredPath"
 			:node="root"
+			:name-preview="namePreview"
 			:selected-path="selectedPath"
 			:deletable="false"
 			@select="$emit('select', $event)"
@@ -21,10 +22,12 @@ xhwsd@qq.com 2026-8-30
 import { nextTick, useTemplateRef, watch } from "vue";
 import type { DesignerComponentNode } from "../designerModel";
 import LayoutTreeNode from "./LayoutTreeNode.vue";
+import type { DesignerNamePreview } from "./designerView";
 
 const props = defineProps<{
 	readonly hoveredPath?: string;
 	readonly root?: DesignerComponentNode;
+	readonly namePreview?: DesignerNamePreview;
 	readonly selectedPath?: string;
 }>();
 

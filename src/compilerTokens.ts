@@ -11,6 +11,7 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	resolveSimpleDefinitionName,
 	isStaticProjectMember,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
@@ -331,7 +332,8 @@ export function buildDocumentTokenRules(
 	const rules = new Map<string, CompilerTokenRule>();
 	const scopes: DocumentScope[] = [];
 	const typedSymbols: TypedDocumentSymbol[] = [];
-	const definitions = new Map(buildSemanticDefinitionIndex(sdk, context));
+	const semanticDefinitions = buildSemanticDefinitionIndex(sdk, context);
+	const definitions = new Map(semanticDefinitions);
 	for (const manifest of sdk?.manifests ?? []) {
 		for (const category of manifest.categories) {
 			for (const definition of category.definitions) {
@@ -537,8 +539,7 @@ export function buildDocumentTokenRules(
 	}
 
 	for (const alias of context?.currentUnit?.aliases ?? []) {
-		const target = definitions.get(alias.target)
-			?? definitions.get(alias.target.split(".").at(-1) ?? alias.target);
+		const target = resolveSimpleDefinitionName(alias.name, semanticDefinitions);
 		if (target !== undefined && isSdkTypeKind(target.definition.kind)) {
 			addRule({ text: alias.name, type: "type" });
 			addTypedSymbol(alias.name, alias.name, { end: source.length, start: 0 }, "static");
@@ -593,6 +594,7 @@ export function buildDocumentTokenRules(
 	}
 
 	for (const [name, reference] of definitions) {
+		if (resolveSimpleDefinitionName(name, semanticDefinitions) !== reference) continue;
 		const typeName = reference.definition.type?.trim();
 		if (
 			(reference.manifest.kind === "project" || typeName === name)
@@ -603,7 +605,7 @@ export function buildDocumentTokenRules(
 	}
 
 	for (const [typeName, reference] of definitions) {
-
+		if (resolveSimpleDefinitionName(typeName, semanticDefinitions) !== reference) continue;
 		if (
 			isSdkTypeKind(reference.definition.kind)
 			&& new RegExp(`(?<![\\p{L}\\p{N}_])${typeName}[ \\t]*\\.`, "u").test(source)

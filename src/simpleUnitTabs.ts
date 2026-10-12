@@ -10,6 +10,8 @@ import { findProjectForSource } from "./projectCapability";
 import { readSimpleUnitType } from "./programResources";
 import {
 	SIMPLE_CODE_SCHEME,
+	toSimpleCodeUri,
+	toSimpleDesignerUri,
 	toSimpleSourceUri
 } from "./simpleCodeFileSystem";
 import { filePathKey, isPathInside, sameFilePath } from "./simpleProjectPaths";
@@ -87,14 +89,14 @@ export function hasOpenSimpleUnitTab(
 	));
 }
 
-/** 单元真实路径变化后，把仍绑定旧 URI 的只读预览迁移到新 URI。 */
+/** 单元真实路径变化后，迁移仍绑定旧 URI 的设计器和只读预览。 */
 export async function moveSimpleUnitPreviewTabs(
 	oldSourceUri: vscode.Uri,
 	newSourceUri: vscode.Uri
 ): Promise<void> {
 	const previews = currentSimpleUnitTabs().filter((binding) => (
 		sameFilePath(binding.sourceUri.fsPath, oldSourceUri.fsPath)
-		&& (binding.kind === "contentPreview" || binding.kind === "xmlPreview")
+		&& (binding.kind === "contentPreview" || binding.kind === "xmlPreview" || binding.kind === "designer")
 	));
 	if (previews.length === 0) {
 		return;
@@ -103,6 +105,10 @@ export async function moveSimpleUnitPreviewTabs(
 		throw new Error("无法关闭使用旧路径的单元预览标签。");
 	}
 	for (const kind of new Set(previews.map((binding) => binding.kind))) {
+		if (kind === "designer") {
+			await vscode.commands.executeCommand("vscode.openWith", toSimpleDesignerUri(newSourceUri), SIMPLE_DESIGNER_VIEW_TYPE, { preview: false });
+			continue;
+		}
 		const uri = kind === "contentPreview"
 			? toUnitContentPreviewUri(newSourceUri)
 			: toUnitXmlPreviewUri(newSourceUri);
@@ -189,6 +195,8 @@ export async function reconcileSimpleUnitTabs(
 		}
 		const belongsToProject = findProjectForSource(projects, sourceUri.fsPath) !== undefined;
 		const exists = belongsToProject && await sourceFileExists(sourceUri);
+		// 原生路径事务先迁移真实文件和虚拟模型，不能把仍有有效后备文件的过渡 URI 当成孤立标签关闭。
+		if (belongsToProject && !exists && await vscode.workspace.fs.stat(toSimpleCodeUri(sourceUri)).then(() => true, () => false)) continue;
 		const invalidDesigner = exists && bindings.some((binding) => binding.kind === "designer")
 			&& await readSimpleUnitType(sourceUri.fsPath) !== "窗口";
 		if (exists && !invalidDesigner) {

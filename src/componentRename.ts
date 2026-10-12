@@ -29,6 +29,10 @@ import {
 	type LibraryDefinitionReference,
 	type Sdk
 } from "./sdk";
+import { filePathKey } from "./simpleProjectPaths";
+import { createSimpleSourceAnalysis, resolveSimpleBinding } from "./completionModel";
+import { findSimpleDefinition } from "./definitionModel";
+import { refactoringContext, simpleIdentifierSpans, applySimpleCodeChanges, planSimpleSymbolRename, type RefactoringUnit, type SimpleUnitChange } from "./refactoringModel";
 
 /** 组件改名后返回的用户代码与 XML 属性文档。 */
 export interface SimpleComponentRenameResult {
@@ -135,13 +139,14 @@ export function renameSimpleCodeIdentifiers(source: string, oldName: string, new
 	return updated;
 }
 
-/** 按 XML 路径修改组件名称，并同步兄弟锚点表达式与用户代码标识符。 */
+/** 按 XML 路径修改组件名称；启用关联同步时处理兄弟锚点和用户代码引用。 */
 export function renameSimpleComponent(
 	userCode: string,
 	propertyDocument: SimplePropertyXmlDocument,
 	componentPath: string,
 	requestedName: string,
-	sdk?: Sdk
+	sdk?: Sdk,
+	synchronizeReferences = true
 ): SimpleComponentRenameResult {
 	assertDesignerComponentNames(propertyDocument, sdk);
 	const component = resolvePropertyXmlElement(propertyDocument, componentPath);
@@ -166,15 +171,24 @@ export function renameSimpleComponent(
 	}
 
 	const documentRules = buildDocumentTokenRules(userCode);
-	if (documentRules.some((rule) => (
-		rule.text === oldName
-		&& rule.start !== undefined
-		&& rule.end !== undefined
-	))) {
-		throw new Error("用户代码区存在与组件“" + oldName + "”同名的局部标识符，不能安全同步改名。");
-	}
 	if (documentRules.some((rule) => rule.text === newName)) {
 		throw new Error("用户代码区已经声明标识符“" + newName + "”，不能作为组件名称。");
+	}
+	// 关闭同步仍执行名称校验，只修改所选 XML 定义，不改代码和兄弟锚点。
+	if (!synchronizeReferences) return {
+		propertyDocument: writePropertyXmlValue(propertyDocument, componentPath + "/@名称", newName),
+		userCode
+	};
+	const unit = {
+		filePath: "当前单元.simple", sourceRoot: ".", userCode,
+		property: { document: propertyDocument, status: propertyDocument.status, issues: propertyDocument.issues }
+	};
+	const context = refactoringContext(unit, [unit]);
+	const analysis = createSimpleSourceAnalysis(userCode, sdk, context);
+	const references = simpleIdentifierSpans(userCode).filter((span) => span.name === oldName
+		&& findSimpleDefinition(userCode, span.start, sdk, context, analysis)?.propertySource === true);
+	for (const span of references) {
+		if (resolveSimpleBinding(userCode, span.start, newName, context, analysis) !== undefined) throw new Error("新组件名称会遮蔽已有代码绑定。");
 	}
 
 	const anchorUpdatedDocument = renameSiblingAnchorReferences(
@@ -190,6 +204,31 @@ export function renameSimpleComponent(
 			componentPath + "/@名称",
 			newName
 		),
-		userCode: renameSimpleCodeIdentifiers(userCode, oldName, newName)
+		userCode: applySimpleCodeChanges(userCode, references.map((span) => ({ ...span, replacement: newName })))
 	};
+}
+
+
+/** 设计器组件改名的全项目引用计划，自身 XML 和锚点仍由组件模型负责。 */
+export function planSimpleComponentProjectRename(units: readonly RefactoringUnit[], owner: RefactoringUnit, componentPath: string, newName: string, sdk: Sdk | undefined): readonly SimpleUnitChange[] {
+	const property = owner.property.document;
+	if (property === undefined || owner.property.status === "damaged") throw new Error("组件属性状态不可用。");
+	const component = resolvePropertyXmlElement(property, componentPath);
+	const oldName = component === undefined ? undefined : getPropertyXmlAttribute(component, "名称");
+	if (oldName === undefined) throw new Error("组件已不存在，请重新选择。");
+	const renamed = renameSimpleComponent(owner.userCode, property, componentPath, newName, sdk);
+	if (renamed.propertyDocument === property) return [];
+	let changes: SimpleUnitChange[] = [];
+	for (const unit of units) {
+		const candidates = simpleIdentifierSpans(unit.userCode).filter((span) => span.name === oldName);
+		if (candidates.length === 0) continue;
+		const context = refactoringContext(unit, units);
+		const analysis = createSimpleSourceAnalysis(unit.userCode, sdk, context);
+		const span = candidates.find((span) => {
+			const target = findSimpleDefinition(unit.userCode, span.start, sdk, context, analysis);
+			return target?.propertySource === true && target.filePath !== undefined && filePathKey(target.filePath) === filePathKey(owner.filePath);
+		});
+		if (span !== undefined) { changes = [...planSimpleSymbolRename(units, unit, span.start, newName, sdk)]; break; }
+	}
+	return [...changes.filter((change) => change.unit !== owner), { unit: owner, userCode: changes.find((change) => change.unit === owner)?.userCode ?? renamed.userCode, propertyDocument: renamed.propertyDocument, edits: [] }];
 }

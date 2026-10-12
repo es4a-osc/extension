@@ -433,9 +433,33 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 		"标签", "按钮", "编辑框", "密码编辑框", "单选框", "复选框", "邮箱选择器",
 		"图片框", "图片按钮",
 		"水平进度条", "水平滑块条", "垂直滑块条",
-		"列表框", "单选列表框", "多选列表框", "分组列表框", "下拉列表框",
+		"列表框", "单选列表框", "多选列表框", "下拉列表框",
 		"进度圈", "画板", "网页浏览框", "视频播放器"
 	]);
+});
+
+test("分组列表框作为扩展类库加载并继承运行库成员", async () => {
+	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
+	assert.ok(runtime);
+	assert.equal(runtime.categories.flatMap((category) => category.definitions)
+		.some((definition) => definition.name === "分组列表框"), false);
+	const manifest = sdk.manifests.find((item) => item.kind === "library"
+		&& item.filePath === path.resolve("..", "sdk", "libraries", "simple.library.wsd.grouplist", "library.json"));
+	assert.ok(manifest, "分组列表框扩展库未注册或加载失败");
+	const index = buildDefinitionIndex(sdk.manifests);
+	const reference = index.get("分组列表框");
+	assert.ok(reference);
+	assert.equal(reference.definition.type, "simple.library.wsd.grouplist.分组列表框");
+	assert.equal(reference.manifest, manifest);
+	assert.deepEqual(reference.definition.inherits, ["simple.runtime.components.列表组件"]);
+	assert.equal(isVisualComponentDefinition(reference.definition), true);
+	assert.equal(isContainerDefinition(reference.definition), false);
+	assert.ok(getEffectiveMembers(reference, "properties", index)
+		.some((property) => property.member.name === "宽度"));
+	assert.deepEqual(getEffectiveMembers(reference, "functions", index)
+		.filter((method) => method.member.name === "添加子项")
+		.map((method) => method.member.params?.length), [6, 2]);
 });
 
 test("运行库通过 kind 和 inherits 区分组件角色", async () => {
@@ -648,6 +672,7 @@ test("运行库完整声明 Java 相对布局常量、属性和方法", async ()
 				member.return
 			]),
 		[
+			["添加规则", [["verb", "整数型"]], undefined],
 			["添加规则", [["verb", "整数型"], ["anchor", "整数型"]], undefined],
 			["删除规则", [["verb", "整数型"]], undefined],
 			["取瞄点", [["verb", "整数型"]], "整数型"]
@@ -786,8 +811,9 @@ test("运行库按对象集和函数集分类", async () => {
 	const objectCategory = runtime.categories.find((category) => category.name === "对象集");
 	assert.ok(functionCategory);
 	assert.ok(objectCategory);
-	assert.ok(functionCategory.definitions.some((definition) => definition.name === "多线程操作"));
+	assert.ok(functionCategory.definitions.some((definition) => definition.name === "线程操作" && definition.type === "simple.runtime.线程操作"));
 	assert.ok(functionCategory.definitions.some((definition) => definition.name === "数组操作"));
+	assert.ok(objectCategory.definitions.some((definition) => definition.name === "线程" && definition.type === "simple.runtime.collections.线程"));
 	assert.ok(objectCategory.definitions.some((definition) => definition.name === "集合"));
 	assert.ok(objectCategory.definitions.some((definition) => definition.name === "哈希表"));
 	assert.equal(

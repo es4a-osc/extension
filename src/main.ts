@@ -5,6 +5,13 @@ xhwsd@qq.com 2026-8-29
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { SimpleProjectRefactoring } from "./projectRefactoring";
+import { SIMPLE_REFACTOR_SCHEME } from "./simpleCodeFileSystem";
+import { SimpleReferenceProvider } from "./referenceProvider";
+import { SimpleRenameProvider } from "./renameProvider";
+import { SimpleDiagnosticProvider } from "./diagnosticProvider";
+import { SimpleDeclarationRenameController } from "./declarationRenameController";
+import { isPathInsideOrEqual, mostSpecificSourceRoot } from "./simpleProjectPaths";
 import { findSdkManifest, loadSdk, type Sdk } from "./sdk";
 import {
 	SIMPLE_COMPLETION_TRIGGER_CHARACTERS,
@@ -351,6 +358,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			isReadonly: false
 		}
 	);
+	const refactoringFileSystemRegistration = vscode.workspace.registerFileSystemProvider(SIMPLE_REFACTOR_SCHEME, simpleCodeFileSystemProvider, { isCaseSensitive: true });
 	const unitContentPreviewRegistration = vscode.workspace.registerTextDocumentContentProvider(
 		UNIT_CONTENT_PREVIEW_SCHEME,
 		unitPreviewProvider
@@ -367,7 +375,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		simpleCodeFileSystemProvider,
 		context.extensionUri,
 		designerPreferenceState,
-		readSemanticContext
+		readSemanticContext,
+		async (document, componentPath, newName) => {
+			const source = toSimpleSourceUri(document.uri);
+			const project = source === undefined ? undefined : findProjectForSource(await programProvider.getProjects(), source.fsPath);
+			if (source === undefined || project === undefined) return [];
+			const units = await refactoring.readProject(project);
+			const owner = units.find((unit) => sameFilePath(unit.filePath, source.fsPath));
+			return owner === undefined ? [] : refactoring.planComponentRename(units, owner, componentPath, newName);
+		}
 	);
 	const designerRegistration = vscode.window.registerCustomEditorProvider(
 		SIMPLE_DESIGNER_VIEW_TYPE,
@@ -385,13 +401,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const projectSemantics = new ProjectSemanticSyncController(
 		programProvider,
 		projectSymbols,
-		() => semanticTokensProvider.refresh(),
+		() => { semanticTokensProvider.refresh(); diagnostics?.schedule(true); },
 		(message) => output.appendLine(message)
 	);
+	const refactoring = new SimpleProjectRefactoring({
+		codeDocuments: simpleCodeFileSystemProvider,
+		getSdk: () => activeSdk,
+		refreshProjectSemantics: () => projectSemantics.refresh(),
+		beginSemanticBatch: () => projectSemantics.beginBatch()
+	});
 	let sdkSelectionInProgress = false;
 	let sdkLoadTask: Promise<Sdk | undefined> | undefined;
 	let activeSdk: Sdk | undefined;
 	let activeSdkFailure: unknown;
+	const diagnostics = new SimpleDiagnosticProvider(programProvider, refactoring, simpleCodeFileSystemProvider, projectSymbols, () => activeSdk, readSemanticContext, (message) => output.appendLine(message));
+	const referenceProvider = new SimpleReferenceProvider(programProvider, refactoring, () => activeSdk);
+	const declarationRenames = new SimpleDeclarationRenameController(programProvider, refactoring, simpleCodeFileSystemProvider, () => activeSdk, readSemanticContext, (message) => output.appendLine(message));
+	const refactoringCompleteListener = refactoring.onDidComplete(() => diagnostics.schedule(true));
+	const propertyRefactorListener = simpleCodeFileSystemProvider.onDidRefactorProperty(({ sourceUri, componentRename }) => {
+		unitPreviewProvider.refreshSource(sourceUri);
+		const document = simpleCodeFileSystemProvider.getOpenDocument(sourceUri);
+		if (document !== undefined) designerProvider.refreshDocument(document, componentRename);
+		diagnostics.schedule(true);
+	});
 	const sdkConsumers: readonly { updateSdk(sdk: Sdk | undefined): void }[] = [
 		completionProvider,
 		hoverProvider,
@@ -407,6 +439,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			consumer.updateSdk(sdk);
 		}
 		await updateSdkCapabilityContexts(sdk);
+		diagnostics.schedule(true);
 	};
 	const editableLanguageDocumentSelector: vscode.DocumentSelector = [
 		{ language: "simple", scheme: SIMPLE_CODE_SCHEME },
@@ -445,6 +478,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		void task.then(clearTask, clearTask);
 		return task;
 	};
+	const referencesRegistration = vscode.languages.registerReferenceProvider(editableLanguageDocumentSelector, referenceProvider);
+	const renames = new SimpleRenameProvider(programProvider, refactoring, simpleCodeFileSystemProvider, () => activeSdk);
+	const renameRegistration = vscode.languages.registerRenameProvider(editableLanguageDocumentSelector, renames);
 	const completionRegistration = vscode.languages.registerCompletionItemProvider(
 		editableLanguageDocumentSelector,
 		completionProvider,
@@ -549,6 +585,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		programView,
 		(message) => output.appendLine(message)
 	);
+	const programSelectionListener = programView.onDidChangeSelection((event) => {
+		if (event.selection.length > 0 && !programTreeExpansion.isRevealing) declarationRenames.focusLost();
+	});
+	const librarySelectionListener = libraryView.onDidChangeSelection((event) => { if (event.selection.length > 0) declarationRenames.focusLost(); });
+	const designerFocusListener = designerProvider.onDidFocus(() => declarationRenames.focusLost());
 	let unitTabReconcileTimer: ReturnType<typeof setTimeout> | undefined;
 	let unitTabReconcileSequence = Promise.resolve();
 	const warnedDirtyUnitTabs = new Set<string>();
@@ -635,8 +676,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	};
 	const designerPropertyChangeListener = designerProvider.onDidChangeProperty((sourceUri) => {
 		unitPreviewProvider.refreshSource(sourceUri);
+		diagnostics.schedule(false, sourceUri);
 	});
 	registerProgramCommands(context, programProvider, programView, {
+		refactoring,
 		codeDocuments: simpleCodeFileSystemProvider,
 		deleteDesignerSourceState: (sourceUri) => designerProvider.deleteSourceState(sourceUri),
 		getSdk: () => activeSdk,
@@ -758,6 +801,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	/* 文档生命周期统一维护输入规范化、XML 会话、预览和项目符号索引。 */
 	const documentListener = vscode.workspace.onDidOpenTextDocument((document) => {
 		openUnitSemantics.track(document);
+		if (document.languageId === "simple") diagnostics.schedule(false, document.uri);
 		punctuationNormalizer.trackDocument(document);
 	});
 	/** 当前单元标签发生编辑、撤销、重做或保存时刷新全部关联预览。 */
@@ -768,6 +812,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}
 	};
 	const documentChangeListener = vscode.workspace.onDidChangeTextDocument((event) => {
+		if (event.document.languageId === "simple") diagnostics.schedule(false, event.document.uri);
 		openUnitSemantics.markChanged(event.document);
 		void punctuationNormalizer.normalize(event);
 		const previousPropertyDocument = simpleCodeFileSystemProvider.getProperty(event.document)?.document;
@@ -826,7 +871,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	/** 判断文件是否会改变 Simple 单元或独立的 res 资源语义索引。 */
 	const affectsProjectSemantics = (uri: vscode.Uri): boolean => (
 		isSimpleFile(uri)
-		|| (uri.scheme === "file" && projectSymbols.containsResourcePath(uri.fsPath))
+		|| ((uri.scheme === "file" || uri.scheme === SIMPLE_CODE_SCHEME) && projectSymbols.containsProjectPath(uri.fsPath))
 	);
 	/* 工作区文件变化只在涉及 Simple 单元或项目 res 目录时重建项目符号索引。 */
 	const fileCreateListener = vscode.workspace.onDidCreateFiles((event) => {
@@ -855,6 +900,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 	const fileRenameListener = vscode.workspace.onDidRenameFiles((event) => {
 		for (const file of event.files) {
+			const oldPathUri = toSimpleSourceUri(file.oldUri) ?? (file.oldUri.scheme === SIMPLE_CODE_SCHEME ? file.oldUri.with({ scheme: "file" }) : file.oldUri);
+			const newPathUri = toSimpleSourceUri(file.newUri) ?? (file.newUri.scheme === SIMPLE_CODE_SCHEME ? file.newUri.with({ scheme: "file" }) : file.newUri);
+			if (file.oldUri.scheme === SIMPLE_CODE_SCHEME && simpleCodeFileSystemProvider.isNativePathRename(oldPathUri, newPathUri)) {
+				simpleCodeFileSystemProvider.notifyNativePathComplete(newPathUri);
+				continue;
+			}
+			if (oldPathUri.scheme === "file" && newPathUri.scheme === "file" && path.extname(oldPathUri.fsPath).toLowerCase() !== ".simple") {
+				const sources = new Map<string, vscode.Uri>();
+				for (const group of vscode.window.tabGroups.all) for (const tab of group.tabs) {
+					const binding = resolveSimpleUnitTab(tab);
+					if (binding !== undefined && isPathInsideOrEqual(oldPathUri.fsPath, binding.sourceUri.fsPath)) sources.set(filePathKey(binding.sourceUri.fsPath), binding.sourceUri);
+				}
+				for (const oldSource of sources.values()) {
+					const newSource = vscode.Uri.file(path.join(newPathUri.fsPath, path.relative(oldPathUri.fsPath, oldSource.fsPath)));
+					unitPreviewProvider.moveSource(oldSource, newSource);
+					void moveSimpleUnitPreviewTabs(oldSource, newSource).catch((error: unknown) => output.appendLine(`迁移单元标签失败：${String(error)}`));
+					void designerProvider.moveSourceState(oldSource, newSource).catch((error: unknown) => output.appendLine(`迁移设计器状态失败：${String(error)}`));
+				}
+			}
 			const oldSourceUri = toSimpleSourceUri(file.oldUri);
 			const newSourceUri = toSimpleSourceUri(file.newUri);
 			if (oldSourceUri !== undefined && newSourceUri !== undefined) {
@@ -878,6 +942,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		))) {
 			projectSemantics.schedule();
 		}
+	});
+	const fileWillRenameListener = vscode.workspace.onWillRenameFiles((event) => {
+		if (event.files.length === 0 || event.files.some((file) => file.oldUri.scheme !== "file" || file.newUri.scheme !== "file")) return;
+		const prepared = refactoring.requestedPathEdit(event.files);
+		if (prepared !== undefined) {
+			event.waitUntil(Promise.resolve(prepared));
+			return;
+		}
+		event.waitUntil((async () => {
+			await refactoring.waitForIdle();
+			const projects = await programProvider.getProjects();
+			const entries = event.files.map((file) => {
+				const project = projects.find((value) => mostSpecificSourceRoot(value.sourceDirectories, file.oldUri.fsPath) !== undefined
+					|| isPathInsideOrEqual(value.resourceDirectory, file.oldUri.fsPath) || isPathInsideOrEqual(value.assetsDirectory, file.oldUri.fsPath));
+				const kind = project !== undefined && mostSpecificSourceRoot(project.sourceDirectories, file.oldUri.fsPath) !== undefined ? "units" : "resources";
+				return { file, project, kind } as const;
+			});
+			const first = entries[0]!;
+			if (first.project === undefined || entries.some((entry) => entry.project?.filePath !== first.project?.filePath || entry.kind !== first.kind)) return undefined;
+			if (first.kind === "units" && entries.some(({ file }) => path.extname(file.oldUri.fsPath).length > 0 && path.extname(file.oldUri.fsPath).toLowerCase() !== ".simple")) return undefined;
+			return refactoring.prepareNativePathEdits(first.project, entries.map(({ file }) => ({ oldFile: file.oldUri.fsPath, newFile: file.newUri.fsPath })), first.kind);
+		})());
 	});
 	/* 编辑器和标签页焦点变化只负责同步项目树选择及窗口单元上下文。 */
 	const editorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -906,6 +992,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 
 	context.subscriptions.push(
+		declarationRenames,
+		renames,
+		renameRegistration,
+		programSelectionListener,
+		librarySelectionListener,
+		designerFocusListener,
+		fileWillRenameListener,
+		diagnostics,
+		referencesRegistration,
+		refactoringCompleteListener,
+		propertyRefactorListener,
+		refactoring,
+		refactoringFileSystemRegistration,
 		output,
 		completionRegistration,
 		hoverRegistration,

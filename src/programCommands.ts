@@ -7,6 +7,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { renameSimpleComponent } from "./componentRename";
 import { KeyedTaskQueue } from "./keyedTaskQueue";
+import type { SimpleProjectRefactoring } from "./projectRefactoring";
 import {
 	ProgramTreeProvider,
 	isUnitFolderNode,
@@ -31,7 +32,7 @@ import {
 	validateUnitName,
 	type SimpleUnitLifecycleEventName
 } from "./unitFiles";
-import { createProjectInfo, parseProjectProperties, updateProjectMainForRenamedUnits, type SimpleProjectInfo } from "./project";
+import { createProjectInfo, parseProjectProperties } from "./project";
 import {
 	renderSdkTemplate,
 	type Sdk,
@@ -92,6 +93,7 @@ interface CreateProjectRequest {
 
 /** 项目树命令在单元路径生命周期中需要同步的设计器状态。 */
 interface ProgramCommandServices extends UnitRelationServices {
+	readonly refactoring: SimpleProjectRefactoring;
 	readonly deleteDesignerSourceState: (sourceUri: vscode.Uri) => Promise<void>;
 	readonly moveDesignerSourceState: (oldSourceUri: vscode.Uri, newSourceUri: vscode.Uri) => Promise<void>;
 }
@@ -839,76 +841,6 @@ async function showCreateQuickPick(
 	await createUnit(provider, getSdk, codeDocuments, node, selection.target);
 }
 
-/** 改名时需要同步的项目属性快照，只保留这一次事务的输入。 */
-interface ProjectMainRenameChange {
-	readonly document: vscode.TextDocument;
-	readonly source: string;
-	readonly nextSource: string;
-}
-
-/** 文件夹和单元改名复用同一 main 匹配规则，不增加额外确认交互。 */
-async function prepareProjectMainRename(
-	project: SimpleProjectInfo | undefined,
-	units: readonly { readonly oldFile: string; readonly newFile: string }[]
-): Promise<ProjectMainRenameChange | undefined> {
-	if (project === undefined) return undefined;
-	const projectUri = vscode.Uri.file(project.filePath);
-	const opened = vscode.workspace.textDocuments.find((document) => (
-		document.uri.scheme === "file" && sameFilePath(document.uri.fsPath, projectUri.fsPath)
-	));
-	const source = opened?.getText() ?? new TextDecoder("utf-8").decode(await vscode.workspace.fs.readFile(projectUri));
-	const nextSource = updateProjectMainForRenamedUnits(source, project.filePath, units);
-	if (nextSource === undefined) return undefined;
-	const document = opened ?? await vscode.workspace.openTextDocument(projectUri);
-	if (document.isDirty || document.getText() !== source) {
-		throw new Error("项目属性存在未保存或并发修改，请先保存后再改名。");
-	}
-	return { document, source, nextSource };
-}
-
-/** 将实际路径改名和 main 修改一起提交；保存失败时恢复本次路径及配置。 */
-async function renamePathWithProjectMain(
-	sourceUri: vscode.Uri,
-	targetUri: vscode.Uri,
-	change: ProjectMainRenameChange | undefined
-): Promise<void> {
-	if (change === undefined) {
-		await vscode.workspace.fs.rename(sourceUri, targetUri, { overwrite: false });
-		return;
-	}
-	const { document, source, nextSource } = change;
-	if (document.isDirty || document.getText() !== source) {
-		throw new Error("项目属性在改名准备期间发生变化，已停止改名。");
-	}
-	/* 只替换 main 的差异文本，保留项目其它内容和已有编辑位置。 */
-	let start = 0;
-	while (start < source.length && start < nextSource.length && source[start] === nextSource[start]) start += 1;
-	let end = source.length;
-	let nextEnd = nextSource.length;
-	while (end > start && nextEnd > start && source[end - 1] === nextSource[nextEnd - 1]) {
-		end -= 1;
-		nextEnd -= 1;
-	}
-	const edit = new vscode.WorkspaceEdit();
-	edit.replace(document.uri, new vscode.Range(document.positionAt(start), document.positionAt(end)), nextSource.slice(start, nextEnd));
-	edit.renameFile(sourceUri, targetUri, { overwrite: false });
-	if (!await vscode.workspace.applyEdit(edit)) throw new Error("无法同时改名并同步 main。");
-	try {
-		if (!await document.save()) throw new Error("无法保存项目 main。");
-	} catch (error) {
-		if (document.getText() !== nextSource) {
-			throw new Error("项目属性在保存失败后再次变化，已停止自动恢复。", { cause: error });
-		}
-		const rollback = new vscode.WorkspaceEdit();
-		rollback.replace(document.uri, new vscode.Range(document.positionAt(start), document.positionAt(nextEnd)), source.slice(start, end));
-		rollback.renameFile(targetUri, sourceUri, { overwrite: false });
-		if (!await vscode.workspace.applyEdit(rollback) || !await document.save()) {
-			throw new Error("改名与 main 同步失败，且无法完整恢复，请检查项目路径和属性。", { cause: error });
-		}
-		throw error;
-	}
-}
-
 /** 重命名项目树中的真实文件夹，并迁移目录内已经打开的标签页。 */
 async function renameTreeFolder(
 	provider: ProgramTreeProvider,
@@ -969,8 +901,6 @@ async function renameTreeFolder(
 		throw new Error("该文件夹内存在未保存的文件，请先保存或撤销后再重命名。");
 	}
 
-	const mainChange = await prepareProjectMainRename(node.mode === "units" ? node.project : undefined,
-		movedUnits.map(({ oldUri, newUri }) => ({ oldFile: oldUri.fsPath, newFile: newUri.fsPath })));
 
 	const bindings = vscode.window.tabGroups.all.flatMap((group) => (
 		group.tabs.map((tab) => folderTabBinding(tab, node.directoryPath))
@@ -979,17 +909,19 @@ async function renameTreeFolder(
 	if (bindings.length > 0 && !await vscode.window.tabGroups.close(bindings.map((binding) => binding.tab), true)) {
 		throw new Error("无法关闭该文件夹内使用旧路径的标签页。");
 	}
-	if (movedUnits.some(({ oldUri }) => services.codeDocuments.hasUnsavedChanges(oldUri))) {
-		throw new Error("该文件夹内仍有未保存的单元，无法重命名。");
+	try {
+		if (movedUnits.some(({ oldUri }) => services.codeDocuments.hasUnsavedChanges(oldUri))) throw new Error("该文件夹内仍有未保存的单元，无法重命名。");
+		if (node.project === undefined) await services.refactoring.renameStandalonePath(sourceUri.fsPath, targetUri.fsPath, node.mode === "units" ? "units" : "resources");
+		else await services.refactoring.renamePath(node.project, sourceUri.fsPath, targetUri.fsPath, node.mode === "units" ? "units" : "resources");
+	} catch (error) {
+		await reopenFolderTabs(bindings, sourceUri.fsPath);
+		throw error;
 	}
-
-	await renamePathWithProjectMain(sourceUri, targetUri, mainChange);
 	for (const { newUri, oldUri } of movedUnits) {
 		services.codeDocuments.notifySourceMoved(oldUri, newUri);
 		await services.moveDesignerSourceState(oldUri, newUri);
 	}
 	provider.refresh();
-	await services.refreshProjectSemantics();
 	await reopenFolderTabs(bindings, targetUri.fsPath);
 }
 
@@ -1360,6 +1292,7 @@ async function deleteBuildFile(
 /** 重命名资源树中的普通文件，文件名输入包含原扩展名。 */
 async function renameResourceFile(
 	provider: ProgramTreeProvider,
+	services: ProgramCommandServices,
 	node: ProgramTreeNode | undefined,
 	requestedName?: string
 ): Promise<void> {
@@ -1413,7 +1346,15 @@ async function renameResourceFile(
 		throw new Error("无法关闭该资源文件的旧路径标签页。");
 	}
 
-	await vscode.workspace.fs.rename(sourceUri, targetUri, { overwrite: false });
+	try {
+		if (node.project === undefined) await services.refactoring.renameStandalonePath(sourceUri.fsPath, targetUri.fsPath, "resources");
+		else await services.refactoring.renamePath(node.project, sourceUri.fsPath, targetUri.fsPath, "resources");
+	} catch (error) {
+		if (relatedTabs.length > 0 && await workspacePathExists(sourceUri)) {
+			await vscode.commands.executeCommand("vscode.open", sourceUri, { preview: false });
+		}
+		throw error;
+	}
 	provider.refresh();
 	if (relatedTabs.length > 0) {
 		await vscode.commands.executeCommand("vscode.open", targetUri, { preview: false });
@@ -1424,8 +1365,7 @@ async function renameResourceFile(
 async function renameUnitContents(
 	services: UnitRelationServices,
 	sourceUri: vscode.Uri,
-	requestedName: string,
-	save: boolean
+	requestedName: string
 ): Promise<boolean> {
 	const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(sourceUri));
 	const property = services.codeDocuments.getProperty(document);
@@ -1456,13 +1396,10 @@ async function renameUnitContents(
 			updated.userCode
 		);
 	} else {
-		/* 仅事件声明变化时按普通代码保存，保证未操作的属性区逐字不变。 */
+		/* 仅事件声明变化时登记普通文本编辑，保证未操作的属性区逐字不变。 */
 		const edit = new vscode.WorkspaceEdit();
 		edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), updated.userCode);
-		if (!await vscode.workspace.applyEdit(edit)) throw new Error("无法同步单元事件对象名。");
-	}
-	if (save && !await document.save()) {
-		throw new Error("无法保存单元名称修改。");
+		if (!await vscode.workspace.applyEdit(edit)) throw new Error("无法更新单元事件对象名。");
 	}
 	return true;
 }
@@ -1480,8 +1417,7 @@ async function syncUnitName(
 	const changed = await renameUnitContents(
 		services,
 		vscode.Uri.file(node.filePath),
-		path.basename(node.filePath, path.extname(node.filePath)),
-		false
+		path.basename(node.filePath, path.extname(node.filePath))
 	);
 	if (!changed) {
 		await vscode.window.showInformationMessage("单元名称与文件名一致。");
@@ -1545,8 +1481,6 @@ async function renameUnit(
 	if (dirtyDocument !== undefined || services.codeDocuments.hasUnsavedChanges(sourceUri)) {
 		throw new Error("该单元存在未保存修改，请先保存或撤销后再重命名。");
 	}
-	/* 在修改窗口 XML 根名称前检查 main，准备失败不能留下半次窗口改名。 */
-	const mainChange = await prepareProjectMainRename(node.project, [{ oldFile: sourceUri.fsPath, newFile: targetUri.fsPath }]);
 
 	const relatedTabs = vscode.window.tabGroups.all.flatMap(
 		(group) => group.tabs.filter((tab) => tabMatchesUnit(tab, sourceUri))
@@ -1555,43 +1489,18 @@ async function renameUnit(
 		const kind = unitTabKind(tab);
 		return kind === undefined ? [] : [kind];
 	}))];
-	let originalSourceBytes: Uint8Array | undefined;
-	let renamedSourceBytes: Uint8Array | undefined;
-	originalSourceBytes = await vscode.workspace.fs.readFile(sourceUri);
-	if (await renameUnitContents(services, sourceUri, trimmedName, true)) {
-		renamedSourceBytes = await vscode.workspace.fs.readFile(sourceUri);
-	}
-
+	const tabsToClose = vscode.window.tabGroups.all.flatMap((group) => group.tabs.filter((tab) => tabMatchesUnit(tab, sourceUri)));
+	if (tabsToClose.length > 0 && !await vscode.window.tabGroups.close(tabsToClose, true)) throw new Error("无法关闭旧路径的单元标签页。");
 	try {
-		const tabsToClose = vscode.window.tabGroups.all.flatMap(
-			(group) => group.tabs.filter((tab) => tabMatchesUnit(tab, sourceUri))
-		);
-		if (tabsToClose.length > 0 && !await vscode.window.tabGroups.close(tabsToClose, true)) {
-			throw new Error("无法关闭该单元的旧路径标签页。");
-		}
-
-		await renamePathWithProjectMain(sourceUri, targetUri, mainChange);
+		if (node.project === undefined) await services.refactoring.renameStandalonePath(sourceUri.fsPath, targetUri.fsPath, "units");
+		else await services.refactoring.renamePath(node.project, sourceUri.fsPath, targetUri.fsPath, "units");
 	} catch (error) {
-		if (originalSourceBytes !== undefined && renamedSourceBytes !== undefined) {
-			try {
-				const currentSourceBytes = await vscode.workspace.fs.readFile(sourceUri);
-				if (!Buffer.from(currentSourceBytes).equals(Buffer.from(renamedSourceBytes))) {
-					throw new Error("源文件内容在重命名期间再次发生变化，已停止自动恢复。");
-				}
-				await vscode.workspace.fs.writeFile(sourceUri, originalSourceBytes);
-			} catch (rollbackError) {
-				throw new Error(
-					`物理文件重命名失败，且无法恢复单元原内容：${errorMessage(rollbackError)}`,
-					{ cause: error }
-				);
-			}
-		}
+		for (const kind of reopenKinds) await reopenUnitTab(kind, sourceUri);
 		throw error;
 	}
 	services.codeDocuments.notifySourceMoved(sourceUri, targetUri);
 	await services.moveDesignerSourceState(sourceUri, targetUri);
 	provider.refresh();
-	await services.refreshProjectSemantics();
 	for (const kind of reopenKinds) {
 		await reopenUnitTab(kind, targetUri);
 	}
@@ -1646,6 +1555,23 @@ export function registerProgramCommands(
 		() => moveUnitToDirectory(provider, relationServices, source, target)
 	);
 	provider.setUnitMoveHandler(moveUnit);
+	const moveProjectPath = async (source: DirectoryNode | FileNode, target: DirectoryNode): Promise<void> => {
+		if (source.project === undefined || target.project === undefined || filePathKey(source.project.filePath) !== filePathKey(target.project.filePath)) throw new Error("暂不支持跨项目移动文件夹或资源。");
+		const sourcePath = "filePath" in source ? source.filePath : source.directoryPath;
+		const destination = path.join(target.directoryPath, path.basename(sourcePath));
+		const mode = "filePath" in source ? "resources" : source.mode;
+		if (mode !== "units" && mode !== "resources") throw new Error("此目录不支持项目引用重构。");
+		if (filePathKey(sourcePath) === filePathKey(destination)) return;
+		const bindings = vscode.window.tabGroups.all.flatMap((group) => group.tabs.map((tab) => folderTabBinding(tab, sourcePath)).filter((binding): binding is FolderTabBinding => binding !== undefined));
+		if (bindings.some((binding) => binding.tab.isDirty)) throw new Error("移动路径中还有未保存文件，请先保存。");
+		if (bindings.length > 0 && !await vscode.window.tabGroups.close(bindings.map((binding) => binding.tab), true)) throw new Error("无法关闭旧路径标签页。");
+		try { await relationServices.refactoring.renamePath(source.project, sourcePath, destination, mode); }
+		catch (error) { await reopenFolderTabs(bindings, sourcePath); throw error; }
+		await reopenFolderTabs(bindings, destination);
+		provider.refresh();
+	};
+	provider.setPathMoveHandler((source, target) => runAction("移动项目路径", () => moveProjectPath(source, target)));
+	context.subscriptions.push(vscode.commands.registerCommand("es4a.internal.moveProjectPath", moveProjectPath));
 	const unitTransfer = new UnitTransferController(provider, relationServices);
 	context.subscriptions.push(unitTransfer);
 	const requireUnit = (node: ProgramTreeNode | undefined): FileNode => {
@@ -1990,7 +1916,7 @@ export function registerProgramCommands(
 		vscode.commands.registerCommand(
 			"es4a.syncUnitFileName",
 			(node?: ProgramTreeNode) => runAction(
-				"同步单元名",
+					"同步单元名",
 				() => syncUnitName(relationServices, node)
 			)
 		),
@@ -2013,7 +1939,7 @@ export function registerProgramCommands(
 			"es4a.renameResourceFile",
 			(node?: ProgramTreeNode, requestedName?: string) => runAction(
 				"重命名资源文件",
-				() => renameResourceFile(provider, node, requestedName)
+				() => renameResourceFile(provider, relationServices, node, requestedName)
 			)
 		),
 		vscode.commands.registerCommand(

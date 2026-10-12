@@ -90,6 +90,7 @@ export function isUnitFolderNode(node: ProgramTreeNode | undefined): node is Dir
 
 /** 项目树把单元拖到源码目录时交给命令层执行的事务回调。 */
 export type UnitMoveHandler = (source: FileNode, target: DirectoryNode) => Promise<void>;
+export type PathMoveHandler = (source: DirectoryNode | FileNode, target: DirectoryNode) => Promise<void>;
 
 /**
  * 把源码文件夹或单元节点解析为单元移动的目标文件夹。
@@ -234,6 +235,7 @@ export class ProgramTreeProvider implements
 	private directoryRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly directoryWatchers = new Map<string, vscode.Disposable>();
 	private unitMoveHandler?: UnitMoveHandler;
+	private pathMoveHandler?: PathMoveHandler;
 
 	/** 在项目列表变化时通知 VS Code 重新读取树节点。 */
 	readonly onDidChangeTreeData = this.changeEmitter.event;
@@ -349,6 +351,8 @@ export class ProgramTreeProvider implements
 		this.unitMoveHandler = handler;
 	}
 
+	setPathMoveHandler(handler: PathMoveHandler): void { this.pathMoveHandler = handler; }
+
 	/** 把单个单元或顶层项目节点加入当前项目树的拖放数据。 */
 	handleDrag(
 		source: readonly ProgramTreeNode[],
@@ -362,6 +366,11 @@ export class ProgramTreeProvider implements
 		if (source.length === 1 && source[0]?.kind === "unit") {
 			const payload: UnitDragPayload = { filePath: source[0].filePath, kind: "unit" };
 			dataTransfer.set(PROJECT_DRAG_MIME, new vscode.DataTransferItem(payload));
+			return;
+		}
+		const node = source[0];
+		if (source.length === 1 && node !== undefined && (node.kind === "file" || (node.kind === "directory" && (node.mode === "units" || node.mode === "resources"))) && node.project !== undefined) {
+			dataTransfer.set(PROJECT_DRAG_MIME, new vscode.DataTransferItem({ kind: "path", node }));
 			return;
 		}
 
@@ -384,6 +393,14 @@ export class ProgramTreeProvider implements
 		}
 
 		const value: unknown = dataTransfer.get(PROJECT_DRAG_MIME)?.value;
+		if (typeof value === "object" && value !== null && "kind" in value && value.kind === "path" && "node" in value) {
+			const source = value.node as DirectoryNode | FileNode;
+			const targetDirectory = source.kind === "file" || (source.kind === "directory" && source.mode === "resources")
+				? target !== undefined && (target.kind === "directory" || target.kind === "assets" || target.kind === "res") && target.mode === "resources" ? target : undefined
+				: unitDropDirectory(target);
+			if (targetDirectory !== undefined) await this.pathMoveHandler?.(source, targetDirectory);
+			return;
+		}
 		if (
 			typeof value === "object"
 			&& value !== null

@@ -13,6 +13,7 @@ xhwsd@qq.com 2026-8-30
 		@dragover="onDragOver"
 		@dragstart="onDragStart"
 		@drop="onDrop"
+		@pointerdown.capture="notifyFocus"
 	>
 	<div v-if="message !== undefined" ref="shell" class="designer-shell">
 		<template v-for="columnId in columnOrder" :key="columnId">
@@ -20,6 +21,7 @@ xhwsd@qq.com 2026-8-30
 				<section class="section property-section">
 					<div class="section-title designer-column-handle" data-designer-column-handle draggable="true" title="拖动调整设计器区域顺序">
 						<span class="section-title-label">属性</span>
+						<span v-if="showRenameSync" class="section-title-count" role="status">重构中…</span>
 						<span class="section-title-actions">
 							<button
 								class="section-title-action"
@@ -47,6 +49,7 @@ xhwsd@qq.com 2026-8-30
 						:ref="setPropertyPanelRef"
 						:hover-hint="selectedComponentHoverHint"
 						:model="message.propertyPanel"
+						:preview-name="pendingRename !== undefined && pendingRename.xmlPath === message.projection.selectedPath ? pendingRename.newName : undefined"
 						:selected-path="message.projection.selectedPath"
 						@submit="submitProperty"
 					/>
@@ -76,6 +79,7 @@ xhwsd@qq.com 2026-8-30
 					<LayoutTree
 						:hovered-path="layoutHoverSync ? hoveredComponentPath : undefined"
 						:root="message.projection.root"
+						:name-preview="pendingRename"
 						:selected-path="message.projection.selectedPath"
 						@select="selectNode"
 					/>
@@ -165,6 +169,7 @@ xhwsd@qq.com 2026-8-30
 					:drag-feedback="displayedPlacementFeedback"
 					:drag-hovered-path="dragHoveredComponentPath"
 					:projection="message.projection"
+					:name-preview="pendingRename"
 					:selected-grid-cell="selectedGridCell"
 					:show-component-labels="componentLabelsVisible"
 					@hover="hoverComponent"
@@ -376,9 +381,33 @@ const TOOLBOX_VISUAL_PREVIEW_SIZE = 32;
 
 /** 宿主每次发送完整只读投影，Vue 端只替换引用，不深度修改消息模型。 */
 const message = shallowRef<DesignerWebviewRenderMessage>();
-/** 只记住已随选择交出的 DOM 输入，抵消紧接着的失焦；不建立属性模型副本。 */
+
+/** 前端只保留一次待确认操作的标识和名称显示，不复制或修改 XML 与正式投影。 */
+const pendingRename = shallowRef<{
+	readonly contextToken: string;
+	readonly requestId: number;
+	readonly xmlPath: string;
+	readonly newName: string;
+}>();
+const showRenameSync = ref(false);
+let propertyRequestId = 0;
+let renameSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearPendingRename(): void {
+	if (renameSyncTimer !== undefined) clearTimeout(renameSyncTimer);
+	renameSyncTimer = undefined;
+	pendingRename.value = undefined;
+	showRenameSync.value = false;
+}
+
+/** 分栏并排显示时，设计器点击也应结束代码编辑；不依赖活动标签是否变化。 */
+function notifyFocus(): void {
+	if (message.value !== undefined) props.vscode.postMessage({ type: "focus", contextToken: message.value.contextToken });
+}
+/** 只记住已提交或随选择交出的 DOM 输入，避免回车后切换选择重发；不建立属性模型副本。 */
 const handedOffPropertyInputs = new WeakMap<HTMLInputElement, {
 	readonly value: string;
+	readonly renderVersion: number;
 	readonly selectedXmlPath?: string;
 	readonly xmlPath?: string;
 }>();
@@ -429,6 +458,13 @@ let componentClipboardRequestId = 0;
 
 /** 所有业务修改都通过类型化消息交还扩展宿主执行。 */
 function post(value: DesignerWebviewMessage): void {
+	const edit = value.type === "updateXmlValue" ? value
+		: value.type === "selectNode" || value.type === "saveDocument" ? value.pendingPropertyEdit : undefined;
+	if (edit?.effect === "renameComponent" && edit.requestId !== undefined) {
+		clearPendingRename();
+		pendingRename.value = { contextToken: edit.contextToken, requestId: edit.requestId, xmlPath: edit.selectedXmlPath, newName: edit.value.trim() };
+		renameSyncTimer = setTimeout(() => { showRenameSync.value = true; }, 500);
+	}
 	props.vscode.postMessage(value);
 }
 
@@ -562,6 +598,8 @@ function createPropertyEdit(
 		? element.dataset.editEffect
 		: undefined;
 	const renameComponent = editEffect === "renameComponent";
+	// 当前改名尚未确认时不重复发送；其它组件仍可选择和显示。
+	if (renameComponent && pendingRename.value !== undefined) return undefined;
 	const stringLiteralInput = element instanceof HTMLInputElement
 		&& element.dataset.stringLiteralInput === "true";
 	const color = element instanceof HTMLInputElement && element.type === "color"
@@ -606,6 +644,7 @@ function createPropertyEdit(
 	if (selectedXmlPath === undefined || !selectedXmlPath.startsWith("/")) return undefined;
 	const selected = componentIdentity(selectedXmlPath);
 	return {
+		...(renameComponent ? { requestId: ++propertyRequestId } : {}),
 		contextToken: currentContextToken(),
 		effect: editEffect,
 		removeElementWhenEmpty: element.dataset.removeElementWhenEmpty === "true",
@@ -625,12 +664,14 @@ function takeFocusedPropertyEdit(): PropertyPanelValueRequest | undefined {
 	const handedOff = handedOffPropertyInputs.get(element);
 	/* 输入框尚未失焦时可以连续切换目标，同一值只交给第一个选择消息。 */
 	if (handedOff !== undefined && handedOff.value === element.value
+		&& handedOff.renderVersion === currentRenderVersion()
 		&& handedOff.selectedXmlPath === element.dataset.selectedXmlPath
 		&& handedOff.xmlPath === element.dataset.xmlPath) return undefined;
 	const edit = createPropertyEdit(element, element.value);
 	if (edit !== undefined) {
 		handedOffPropertyInputs.set(element, {
 			value: element.value,
+			renderVersion: edit.renderVersion,
 			selectedXmlPath: element.dataset.selectedXmlPath,
 			xmlPath: element.dataset.xmlPath
 		});
@@ -638,7 +679,7 @@ function takeFocusedPropertyEdit(): PropertyPanelValueRequest | undefined {
 	return edit;
 }
 
-/** 提交普通属性编辑；已随选择交出的同一输入不再由随后失焦重复提交。 */
+/** 提交普通属性编辑；同一模型下已提交或随选择交出的输入不重发。 */
 function submitProperty(
 	element: HTMLInputElement | HTMLSelectElement | HTMLButtonElement,
 	value: string,
@@ -648,11 +689,18 @@ function submitProperty(
 		const handedOff = handedOffPropertyInputs.get(element);
 		handedOffPropertyInputs.delete(element);
 		if (handedOff !== undefined && handedOff.value === value
+			&& handedOff.renderVersion === currentRenderVersion()
 			&& handedOff.selectedXmlPath === element.dataset.selectedXmlPath
 			&& handedOff.xmlPath === element.dataset.xmlPath) return;
 	}
 	const edit = createPropertyEdit(element, value, allowEmpty);
-	if (edit !== undefined) post(edit);
+	if (edit !== undefined) {
+		if (element instanceof HTMLInputElement) handedOffPropertyInputs.set(element, {
+			value, renderVersion: edit.renderVersion,
+			selectedXmlPath: element.dataset.selectedXmlPath, xmlPath: element.dataset.xmlPath
+		});
+		post(edit);
+	}
 }
 
 /** 返回当前 XML 组件继承后的 SDK 事件菜单。 */
@@ -2195,6 +2243,10 @@ function onWindowMessage(event: MessageEvent<unknown>): void {
 	const value = event.data;
 	if (typeof value !== "object" || value === null) return;
 	const hostMessage = value as DesignerWebviewHostMessage;
+	if (hostMessage.type === "propertyOperationResult") {
+		if (hostMessage.contextToken === pendingRename.value?.contextToken && hostMessage.requestId === pendingRename.value?.requestId) clearPendingRename();
+		return;
+	}
 	if (hostMessage.type === "componentClipboardStatus") {
 		if (
 			hostMessage.contextToken === currentContextToken()
@@ -2205,6 +2257,7 @@ function onWindowMessage(event: MessageEvent<unknown>): void {
 	}
 	if (hostMessage.type !== "renderDesigner") return;
 	const renderMessage: DesignerWebviewRenderMessage = hostMessage;
+	if (pendingRename.value !== undefined && renderMessage.contextToken !== pendingRename.value.contextToken) clearPendingRename();
 	message.value = renderMessage;
 	const gridSelection = selectedGridCell.value;
 	if (gridSelection !== undefined) {
@@ -2388,6 +2441,7 @@ onMounted(() => {
 	document.addEventListener("keydown", onKeydown);
 	document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 	window.addEventListener("blur", hideContextMenu);
+	window.addEventListener("focus", notifyFocus);
 	window.addEventListener("message", onWindowMessage);
 	window.addEventListener("resize", onResize);
 	post({ type: "ready" });
@@ -2395,10 +2449,12 @@ onMounted(() => {
 
 /** 卸载时对称释放全局事件和尚未执行的动画帧。 */
 onBeforeUnmount(() => {
+	clearPendingRename();
 	finishDrag();
 	document.removeEventListener("keydown", onKeydown);
 	document.removeEventListener("scroll", onScroll, true);
 	window.removeEventListener("blur", hideContextMenu);
+	window.removeEventListener("focus", notifyFocus);
 	window.removeEventListener("message", onWindowMessage);
 	window.removeEventListener("resize", onResize);
 	if (designSurfaceFrame !== undefined) window.cancelAnimationFrame(designSurfaceFrame);

@@ -28,6 +28,12 @@ export interface ReadyDesignerMessage {
 	readonly type: "ready";
 }
 
+/** 浏览器中的真实点击／焦点进入，供宿主结束尚未同步的代码声明编辑。 */
+export interface FocusDesignerMessage {
+	readonly type: "focus";
+	readonly contextToken: string;
+}
+
 interface DesignerRenderBoundMessage {
 	readonly contextToken: string;
 	readonly renderVersion: number;
@@ -228,6 +234,7 @@ export type DesignerWebviewMessage =
 	| PasteDesignerComponentMessage
 	| PropertyPanelValueRequest
 	| ReadyDesignerMessage
+	| FocusDesignerMessage
 	| RelocateDesignerComponentMessage
 	| ResizeDesignerComponentMessage
 	| RevealDesignerLibraryDefinitionMessage
@@ -239,7 +246,16 @@ export type DesignerWebviewMessage =
 
 export type DesignerWebviewHostMessage =
 	| DesignerComponentClipboardStatusMessage
+	| DesignerPropertyOperationResultMessage
 	| DesignerWebviewRenderMessage;
+
+/** 结果确认只结束匹配请求的前端临时显示，正式状态仍由完整投影提供。 */
+export interface DesignerPropertyOperationResultMessage {
+	readonly type: "propertyOperationResult";
+	readonly contextToken: string;
+	readonly requestId: number;
+	readonly succeeded: boolean;
+}
 
 function isXmlPath(value: unknown): value is string {
 	return typeof value === "string" && value.startsWith("/");
@@ -391,6 +407,8 @@ export function parseDesignerWebviewMessage(message: unknown): DesignerWebviewMe
 	if (typeof candidate.contextToken !== "string") return undefined;
 
 		switch (candidate.type) {
+		case "focus":
+			return candidate as unknown as FocusDesignerMessage;
 		case "openCode":
 			return candidate as unknown as OpenDesignerCodeMessage;
 		case "activateComponentEvent":

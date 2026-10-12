@@ -20,7 +20,7 @@ xhwsd@qq.com 2026-8-30
 					:source="model.icon"
 					:type="model.subtitle ?? '组件'"
 				/>
-				<div class="component-name">{{ model.title ?? "当前单元" }}</div>
+				<div class="component-name">{{ previewName ?? model.title ?? "当前单元" }}</div>
 				<div class="component-type">{{ model.subtitle ?? "" }}</div>
 			</header>
 			<main class="property-list" role="table" aria-label="组件属性">
@@ -51,7 +51,8 @@ xhwsd@qq.com 2026-8-30
 										v-if="row.choices === undefined || row.allowCustomValue === true"
 										class="property-editor-control property-input"
 										type="text"
-										:value="propertyEditorValue(row)"
+										:value="row.editTarget?.effect === 'renameComponent' && previewName !== undefined ? previewName : propertyEditorValue(row)"
+										:readonly="row.editTarget?.effect === 'renameComponent' && previewName !== undefined"
 										:placeholder="propertyEditorPlaceholder(row)"
 										:aria-label="propertyValueAriaLabel(row)"
 										:data-atomic-expression="isAtomicPropertyExpression(row) ? 'true' : 'false'"
@@ -161,6 +162,7 @@ import {
 const props = defineProps<{
 	readonly hoverHint?: string;
 	readonly model: PropertyPanelModel;
+	readonly previewName?: string;
 	readonly selectedPath?: string;
 }>();
 
@@ -173,6 +175,9 @@ const openPropertyChoiceKey = ref<string>();
 const propertyChoiceMenuStyle = ref<Record<string, string>>({});
 const PROPERTY_CHOICE_MENU_MAX_HEIGHT = 240;
 const PROPERTY_CHOICE_MENU_MARGIN = 4;
+// 只对尚未收到宿主新模型的重复提交去重，不保存第二份属性状态。
+let submittedInputs = new WeakMap<HTMLInputElement, string>();
+watch(() => props.model, () => { submittedInputs = new WeakMap<HTMLInputElement, string>(); });
 interface OverflowTitleState {
 	readonly observer: ResizeObserver;
 	value: string;
@@ -363,10 +368,21 @@ function editData(
 	};
 }
 
-/** 输入框失去焦点时，将当前值交给根组件检查并提交。 */
+/** 回车和失焦共用提交入口；同一模型下重复回车或随后失焦只发送一次。 */
+function submitPropertyInput(element: HTMLInputElement): void {
+	const submission = JSON.stringify([
+		element.dataset.selectedXmlPath, element.dataset.xmlPath,
+		element.dataset.originalInputValue, element.value
+	]);
+	if (submittedInputs.get(element) === submission) return;
+	submittedInputs.set(element, submission);
+	emit("submit", element, element.value);
+}
+
+/** 输入框失去焦点时，将尚未提交的当前值交给根组件检查。 */
 function blurProperty(event: FocusEvent): void {
 	const element = event.currentTarget;
-	if (element instanceof HTMLInputElement) emit("submit", element, element.value);
+	if (element instanceof HTMLInputElement) submitPropertyInput(element);
 }
 
 /** 将浏览器选择的颜色交给统一属性提交边界转换为 Simple 字面量。 */
@@ -418,9 +434,10 @@ function propertyBeforeInput(event: InputEvent): void {
 	}
 }
 
-/** 回车提交当前编辑，Escape 恢复进入编辑前的显示值。 */
+/** 回车直接提交并保持焦点；输入法选字不提交，Escape 恢复原显示值。 */
 function propertyKeydown(event: KeyboardEvent): void {
 	if (!(event.currentTarget instanceof HTMLInputElement)) return;
+	if (event.isComposing || event.keyCode === 229) return;
 	if (
 		event.currentTarget.dataset.atomicExpression === "true"
 		&& (event.key === "Backspace" || event.key === "Delete")
@@ -429,7 +446,11 @@ function propertyKeydown(event: KeyboardEvent): void {
 		clearAtomicPropertyInput(event.currentTarget);
 		return;
 	}
-	if (event.key === "Enter") event.currentTarget.blur();
+	if (event.key === "Enter") {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!event.repeat) submitPropertyInput(event.currentTarget);
+	}
 	if (event.key === "Escape") {
 		event.currentTarget.value = event.currentTarget.dataset.originalInputValue ?? "";
 		event.currentTarget.blur();

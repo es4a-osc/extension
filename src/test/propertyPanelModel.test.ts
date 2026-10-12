@@ -82,7 +82,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		]);
 		assert.equal(
 			model.groups[0]?.rows[0]?.description,
-			"组件在当前窗口中的唯一名称。\n名称必须符合 Simple 标识符规则，且不能与其他组件重名。\n修改名称后，会同步更新用户代码和 XML 属性中的组件引用。"
+			"组件在当前窗口中的唯一名称。\n名称必须符合 Simple 标识符规则，且不能与其他组件重名。\n启用组件自动重构时，重命名会更新代码和 XML 中的组件引用。"
 		);
 		assert.deepEqual(model.groups[0]?.rows[0]?.editTarget, {
 			effect: "renameComponent",
@@ -718,13 +718,13 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	test("组件属性按直接父容器布局过滤并支持 SDK 自定义子分组", async () => {
 		const sdk = await loadSdk(path.join(ROOT_DIRECTORY, "..", "sdk", "sdk.json"));
 		const relativeComponentRows = [
-			"位于左边", "位于顶边", "位于右边", "位于底边", "对齐基线",
+			"位于左边", "位于顶边", "位于右边", "位于底边", "位于开始", "位于结束",
 			"对齐左边", "对齐顶边", "对齐右边", "对齐底边",
-			"位于开始", "位于结束", "对齐开始", "对齐结束"
+			"对齐开始", "对齐结束", "对齐基线"
 		];
 		const relativeParentRows = [
-			"对齐父左边", "对齐父顶边", "对齐父右边", "对齐父底边",
 			"居中于父", "居中水平", "居中垂直",
+			"对齐父左边", "对齐父顶边", "对齐父右边", "对齐父底边",
 			"对齐父开始", "对齐父结束"
 		];
 		for (const [layout, expectedGroups] of [

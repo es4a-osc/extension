@@ -45,3 +45,30 @@ export function stripSimpleLineComment(value: string): string {
 	}
 	return value;
 }
+
+/** 屏蔽字符串和注释但保留物理行及 UTF-16 偏移，供引用扫描使用。 */
+export function maskSimpleIgnoredText(source: string): string {
+	let comment = false;
+	let quoted = false;
+	const result = source.split("");
+	for (let index = 0; index < source.length; index += 1) {
+		const character = source[index];
+		if (character === "\r" || character === "\n") {
+			comment = false;
+			quoted = false;
+			continue;
+		}
+		if (comment) result[index] = " ";
+		else if (quoted) {
+			result[index] = " ";
+			if (character === "\\" && index + 1 < source.length && !/[\r\n]/u.test(source[index + 1]!)) {
+				result[++index] = " ";
+			} else if (character === "\"") quoted = false;
+		} else if (character === "'" || character === "\"") {
+			result[index] = " ";
+			comment = character === "'";
+			quoted = character === "\"";
+		}
+	}
+	return result.join("");
+}

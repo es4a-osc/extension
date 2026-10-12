@@ -24,6 +24,11 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"configurationDefaults": {
+			"[simple]": {
+				"editor.wordBasedSuggestions": "off"
+			}
+		},
 		"languages": [
 			{
 				"id": "simple",
@@ -658,6 +663,30 @@
 							}
 						}
 					}
+				},
+				"es4a.automaticSync.variable": {
+					"type": "boolean",
+					"default": true,
+					"scope": "resource",
+					"description": "变量自动重构：直接修改变量、参数或成员变量的声明名称并结束编辑后，更新关联代码引用。"
+				},
+				"es4a.automaticSync.component": {
+					"type": "boolean",
+					"default": true,
+					"scope": "resource",
+					"description": "组件自动重构：在设计器中重命名组件后，更新代码及 XML 中的组件引用。"
+				},
+				"es4a.automaticSync.unit": {
+					"type": "boolean",
+					"default": true,
+					"scope": "resource",
+					"description": "单元自动重构：重命名或移动单元后，更新关联代码、XML、单元自身名称及项目 main。关闭后只修改文件名或位置。"
+				},
+				"es4a.automaticSync.package": {
+					"type": "boolean",
+					"default": true,
+					"scope": "resource",
+					"description": "包自动重构：重命名或移动源码文件夹后，更新关联代码、XML 及项目 main。整个文件夹操作由本项控制。"
 				},
 				"es4a.sdk.path": {
 					"type": "string",

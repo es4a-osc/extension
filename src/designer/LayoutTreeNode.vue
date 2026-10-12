@@ -27,7 +27,7 @@ xhwsd@qq.com 2026-8-30
 			@click="$emit('select', node.path)"
 		>
 			<ComponentIcon modifier="component-icon-tree" :source="node.icon" :type="node.typeName ?? node.type" />
-			<span class="tree-name">{{ node.name }}</span>
+			<span class="tree-name">{{ namePreview?.xmlPath === node.path ? namePreview.newName : node.name }}</span>
 			<span class="tree-type">{{ node.typeName ?? node.type }}</span>
 		</button>
 		<div v-if="node.children.length > 0" class="layout-tree-children">
@@ -36,6 +36,7 @@ xhwsd@qq.com 2026-8-30
 				:key="child.path"
 				:hovered-path="hoveredPath"
 				:node="child"
+				:name-preview="namePreview"
 				:selected-path="selectedPath"
 				:deletable="true"
 				:move="{
@@ -51,13 +52,14 @@ xhwsd@qq.com 2026-8-30
 <script setup lang="ts">
 import type { DesignerComponentNode } from "../designerModel";
 import ComponentIcon from "./ComponentIcon.vue";
-import { componentHoverHint, type LayoutMoveAvailability } from "./designerView";
+import { componentHoverHint, type DesignerNamePreview, type LayoutMoveAvailability } from "./designerView";
 
 defineProps<{
 	readonly deletable: boolean;
 	readonly hoveredPath?: string;
 	readonly move?: LayoutMoveAvailability;
 	readonly node: DesignerComponentNode;
+	readonly namePreview?: DesignerNamePreview;
 	readonly selectedPath?: string;
 }>();
 

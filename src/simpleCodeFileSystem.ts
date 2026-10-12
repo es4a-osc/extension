@@ -5,11 +5,13 @@ xhwsd@qq.com 2026-9-1
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { KeyedTaskQueue } from "./keyedTaskQueue";
 import { resolvePropertySourceFormatting } from "./propertyFormatting";
 import {
 	inspectSimplePropertyXml,
+	serializePropertyXml,
 	serializeSimplePropertySource,
 	type SimplePropertySourceFormatting,
 	type SimplePropertyXmlDocument,
@@ -21,9 +23,42 @@ import {
 	splitSimpleUnitSource
 } from "./simpleUnitSource";
 import { detectSimpleSourceEncoding } from "./simpleSourceEncoding";
+import { filePathKey, isPathInsideOrEqual } from "./simpleProjectPaths";
+import { minimalSimpleCodeChange, type RefactoringUnit } from "./refactoringModel";
 
 /** 用户代码虚拟文档的 URI 协议。 */
 export const SIMPLE_CODE_SCHEME = "simple-code";
+
+/** 项目 XML 修改使用虚拟资源改名登记撤销，不在用户代码中插入标记。 */
+export const SIMPLE_REFACTOR_SCHEME = "simple-refactor";
+
+interface PropertyRefactorReceipt {
+	sourceUri: vscode.Uri;
+	readonly before: string;
+	after?: string;
+	document?: SimplePropertyXmlDocument;
+	readonly formatting: SimplePropertySourceFormatting;
+	state: "before" | "after";
+	readonly beforeUserCode: string;
+	readonly afterUserCode: string;
+	readonly persistUserCode: boolean;
+	readonly componentRename?: { readonly from: string; readonly to: string };
+	/** 预览可能停留很久；首次写入前复核整次事务，而不只检查 XML 所属单元。 */
+	validate?: () => Promise<void>;
+	history?: { readonly before: number; readonly after: number };
+}
+
+/** 跨单元改名所需的代码版本，文本均为可编辑用户代码区。 */
+export interface RelatedSimpleCodeEdit {
+	readonly document: vscode.TextDocument;
+	readonly before: string;
+	readonly after: string;
+}
+
+export interface RefactoringUnitSnapshot extends RefactoringUnit {
+	/** 冲突基线封闭在持久化边界，业务层只能校验，不能读取或改写。 */
+	readonly assertUnchanged: () => Promise<void>;
+}
 
 /** 生成不会冒充真实文件、可匹配 `*(代码)` 图标且能还原真实单元路径的虚拟路径。 */
 function codeDisplayPath(sourceUri: vscode.Uri): string {
@@ -51,6 +86,8 @@ interface PendingPropertyEdit {
 	readonly history: readonly SimplePropertyXmlDocument[];
 	readonly userCodeHistory: readonly string[];
 	readonly index: number;
+	/** XML 资源撤销先于代码撤销时，下一次代码事件只确认已经选中的版本。 */
+	readonly refactorUserCode?: string;
 }
 
 /** 由设计器独立持有、等待设计器标签保存的 XML 属性修改。 */
@@ -129,7 +166,8 @@ export function toSimpleCodeUri(sourceUri: vscode.Uri): vscode.Uri {
 
 	return sourceUri.with({
 		fragment: "",
-		path: codeDisplayPath(sourceUri),
+		// fsPath 统一 Windows 盘符大小写，避免同一虚拟文件创建两个模型并丢失资源撤销记录。
+		path: codeDisplayPath(vscode.Uri.file(sourceUri.fsPath)),
 		query: "",
 		scheme: SIMPLE_CODE_SCHEME
 	});
@@ -143,7 +181,7 @@ export function toSimpleDesignerUri(sourceUri: vscode.Uri): vscode.Uri {
 
 	return sourceUri.with({
 		fragment: "",
-		path: designerDisplayPath(sourceUri),
+		path: designerDisplayPath(vscode.Uri.file(sourceUri.fsPath)),
 		query: `source=${encodeURIComponent(sourceUri.toString())}`,
 		scheme: SIMPLE_CODE_SCHEME
 	});
@@ -203,14 +241,133 @@ export function toSimpleSourceUri(uri: vscode.Uri): vscode.Uri | undefined {
  */
 export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, vscode.Disposable {
 	private readonly allowedUnitRenames = new Set<string>();
+	private readonly nativeUnitRenames = new Map<string, { readonly oldPath: string; readonly newPath: string; currentPath: string }>();
 	private readonly changeEmitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	private readonly documentSessions = new Map<string, SimpleDocumentSession>();
 	private readonly designerDocumentReferences = new Map<string, number>();
 	private readonly persistenceOperations = new KeyedTaskQueue();
 	private readonly propertyDirtyTransactions = new Set<string>();
 	private readonly sourceWatchers = new Map<string, SourceWatcher>();
+	private readonly propertyReceipts = new Map<string, PropertyRefactorReceipt>();
+	private readonly propertyRefactorEmitter = new vscode.EventEmitter<{ readonly sourceUri: vscode.Uri; readonly componentRename?: { readonly from: string; readonly to: string } }>();
 
 	readonly onDidChangeFile = this.changeEmitter.event;
+	readonly onDidRefactorProperty = this.propertyRefactorEmitter.event;
+
+	/** 未打开单元只创建此次操作的临时快照，不留项目级 XML 缓存。 */
+	async readRefactoringUnit(sourceUri: vscode.Uri, sourceRoot: string): Promise<RefactoringUnitSnapshot> {
+		const bytes = await vscode.workspace.fs.readFile(sourceUri);
+		const encoding = detectSimpleSourceEncoding(bytes);
+		const source = await vscode.workspace.decode(bytes, { encoding });
+		const document = this.getOpenDocument(sourceUri);
+		const session = this.documentSessions.get(uriKey(toSimpleCodeUri(sourceUri)));
+		const userCode = document?.getText() ?? getVisibleSimpleUnitUserCode(source);
+		const property = session === undefined ? inspectSimplePropertyXml(source) : sessionProperty(session);
+		const propertyBaseline = property.document === undefined ? undefined : serializePropertyXml(property.document);
+		return {
+			filePath: sourceUri.fsPath, sourceRoot, userCode, property,
+			assertUnchanged: async () => {
+				const current = this.getOpenDocument(sourceUri);
+				const currentSession = this.documentSessions.get(uriKey(toSimpleCodeUri(sourceUri)));
+				const currentProperty = currentSession === undefined ? undefined : sessionProperty(currentSession).document;
+				if ((current !== undefined && current.getText() !== userCode) || (currentSession !== undefined && (currentProperty === undefined ? undefined : serializePropertyXml(currentProperty)) !== propertyBaseline)) {
+					throw new Error("单元在重构准备期间发生编辑，请按最新状态重试。");
+				}
+				if (!Buffer.from(bytes).equals(Buffer.from(await vscode.workspace.fs.readFile(sourceUri)))) {
+					throw new Error(`单元在重构准备期间发生外部修改：${sourceUri.fsPath}`);
+				}
+			}
+		};
+	}
+
+	/** XML 修改以资源编辑参与工作区撤销，磁盘基线仅保存在此持久化边界。 */
+	async preparePropertyRefactor(sourceUri: vscode.Uri, document: SimplePropertyXmlDocument | undefined, updatedUserCode?: string, persistUserCode = false, componentRename?: { readonly from: string; readonly to: string }, validate?: () => Promise<void>): Promise<{ readonly before: vscode.Uri; readonly after: vscode.Uri; readonly isApplied: () => boolean; readonly wasApplied: () => boolean; readonly dispose: () => void }> {
+		const session = this.documentSessions.get(uriKey(toSimpleCodeUri(sourceUri)));
+		if (session?.designerPropertyEdit !== undefined || (session?.pendingPropertyEdit !== undefined && pendingPropertySource(session.pendingPropertyEdit) !== session.basePropertySource)) throw new Error("关联单元还有未保存的属性修改，请先保存后再重构。");
+		const bytes = await vscode.workspace.fs.readFile(sourceUri);
+		const source = await vscode.workspace.decode(bytes, { encoding: detectSimpleSourceEncoding(bytes) });
+		const id = randomUUID();
+		this.propertyReceipts.set(id, {
+			sourceUri, before: splitSimpleUnitSource(source).propertySource, document, persistUserCode, componentRename, validate,
+			beforeUserCode: this.getOpenDocument(sourceUri)?.getText() ?? getVisibleSimpleUnitUserCode(source),
+			afterUserCode: updatedUserCode ?? this.getOpenDocument(sourceUri)?.getText() ?? getVisibleSimpleUnitUserCode(source),
+			formatting: resolvePropertySourceFormatting(this.getOpenDocument(sourceUri)), state: "before"
+		});
+		return {
+			before: vscode.Uri.from({ scheme: SIMPLE_REFACTOR_SCHEME, path: `/${id}/before` }),
+			after: vscode.Uri.from({ scheme: SIMPLE_REFACTOR_SCHEME, path: `/${id}/after` }),
+			isApplied: () => this.propertyReceipts.get(id)?.state === "after",
+			wasApplied: () => this.propertyReceipts.get(id)?.after !== undefined,
+			dispose: () => this.propertyReceipts.delete(id)
+		};
+	}
+
+	private receipt(uri: vscode.Uri): PropertyRefactorReceipt {
+		const receipt = this.propertyReceipts.get(uri.path.split("/")[1] ?? "");
+		if (receipt === undefined || !uri.path.endsWith("/" + receipt.state)) throw vscode.FileSystemError.FileNotFound(uri);
+		return receipt;
+	}
+
+	/** 普通 XML 事务保留最新代码；移动单元的跨区事务同时校验并恢复实际改动代码。 */
+	private async renamePropertyReceipt(oldUri: vscode.Uri, newUri: vscode.Uri): Promise<void> {
+		const receipt = this.receipt(oldUri);
+		const state = newUri.path.endsWith("/after") ? "after" : newUri.path.endsWith("/before") ? "before" : undefined;
+		if (state === undefined || oldUri.path.split("/")[1] !== newUri.path.split("/")[1]) return noPermissions(oldUri);
+		await this.enqueuePersistence(toSimpleCodeUri(receipt.sourceUri), async () => {
+			if (receipt.after === undefined) await receipt.validate?.();
+			const preparedSession = this.documentSessions.get(uriKey(toSimpleCodeUri(receipt.sourceUri)));
+			// 原生预览可能停留很久；首次应用时再次拒绝覆盖期间产生的属性编辑。
+			if (receipt.after === undefined && (preparedSession?.designerPropertyEdit !== undefined || (preparedSession?.pendingPropertyEdit !== undefined && pendingPropertySource(preparedSession.pendingPropertyEdit) !== preparedSession.basePropertySource))) throw new Error("关联 XML 属性已变化，请重新执行重命名。");
+			const backingUri = await this.nativeBackingUri(receipt.sourceUri);
+			const bytes = await vscode.workspace.fs.readFile(backingUri);
+			const encoding = detectSimpleSourceEncoding(bytes);
+			const source = await vscode.workspace.decode(bytes, { encoding });
+			const current = splitSimpleUnitSource(source).propertySource;
+			const expected = receipt.state === "before" ? receipt.before : receipt.after;
+			if (current !== expected) throw new Error("关联单元的属性已变化，无法应用或撤销此次重构。");
+			const next = state === "before" ? receipt.before : receipt.after
+				?? (receipt.document === undefined ? receipt.before : serializeSimplePropertySource(receipt.document, receipt.formatting));
+			const currentCode = getVisibleSimpleUnitUserCode(source);
+			const expectedCode = receipt.state === "before" ? receipt.beforeUserCode : receipt.afterUserCode;
+			const nextCode = state === "before" ? receipt.beforeUserCode : receipt.afterUserCode;
+			if (receipt.persistUserCode && (currentCode !== expectedCode || (this.getOpenDocument(receipt.sourceUri)?.isDirty === true && this.getOpenDocument(receipt.sourceUri)?.getText() !== expectedCode))) throw new Error("移动单元的代码已经变化，无法应用或撤销此次重构。");
+			const merged = assembleSimpleUnitSource(source, receipt.persistUserCode ? nextCode : currentCode, next);
+			await vscode.workspace.fs.writeFile(backingUri, await vscode.workspace.encode(merged, { encoding }));
+			const session = this.documentSessions.get(uriKey(toSimpleCodeUri(receipt.sourceUri)));
+			if (session !== undefined) {
+				const previousDocument = sessionProperty(session).document;
+				const nextDocument = state === "after" && receipt.document !== undefined ? receipt.document : inspectSimplePropertyXml(merged).document;
+				if (previousDocument !== undefined && nextDocument !== undefined) {
+					if (receipt.history === undefined) {
+						const previous = session.pendingPropertyEdit;
+						const history = previous?.history.slice(0, previous.index + 1) ?? [previousDocument];
+						const codeHistory = previous?.userCodeHistory.slice(0, previous.index + 1) ?? [receipt.beforeUserCode];
+						let before = codeHistory.lastIndexOf(receipt.beforeUserCode);
+						if (before < 0) { before = history.length; history.push(previousDocument); codeHistory.push(receipt.beforeUserCode); }
+						receipt.history = { before, after: history.length };
+						session.pendingPropertyEdit = { formatting: receipt.formatting, history: [...history, nextDocument], userCodeHistory: [...codeHistory, receipt.afterUserCode], index: history.length };
+					}
+					const pending = session.pendingPropertyEdit;
+					const index = state === "before" ? receipt.history.before : receipt.history.after;
+					if (pending !== undefined && pending.history[index] !== undefined) {
+						const expectedCode = state === "before" ? receipt.beforeUserCode : receipt.afterUserCode;
+						session.pendingPropertyEdit = { ...pending, index, refactorUserCode: this.getOpenDocument(receipt.sourceUri)?.getText() !== expectedCode ? expectedCode : undefined };
+					}
+				}
+				if (receipt.persistUserCode) session.userCodeSnapshot = nextCode;
+				session.basePropertySource = next;
+				const active = session.pendingPropertyEdit === undefined ? nextDocument : pendingPropertyDocument(session.pendingPropertyEdit);
+				session.property = active === undefined ? inspectSimplePropertyXml(merged) : { document: active, issues: active.issues, status: active.status };
+			}
+			if (state === "after") receipt.after = next;
+			receipt.document = undefined;
+			receipt.validate = undefined;
+			receipt.state = state;
+			if (receipt.persistUserCode) this.changeEmitter.fire([{ type: vscode.FileChangeType.Changed, uri: toSimpleCodeUri(receipt.sourceUri) }]);
+			this.propertyRefactorEmitter.fire({ sourceUri: receipt.sourceUri, componentRename: receipt.componentRename === undefined ? undefined
+				: state === "after" ? receipt.componentRename : { from: receipt.componentRename.to, to: receipt.componentRename.from } });
+		});
+	}
 
 	/** 通知 VS Code 同一路径的真实单元已经重新创建，清除虚拟代码和设计器 URI 的失效缓存。 */
 	notifySourceCreated(sourceUri: vscode.Uri): void {
@@ -234,12 +391,23 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 	notifySourceMoved(oldSourceUri: vscode.Uri, newSourceUri: vscode.Uri): void {
 		this.requireLocalSource(oldSourceUri);
 		this.requireLocalSource(newSourceUri);
+		if (this.isNativePathRename(oldSourceUri, newSourceUri)) { this.notifyNativePathComplete(newSourceUri); return; }
 		this.changeEmitter.fire([
 			{ type: vscode.FileChangeType.Deleted, uri: toSimpleCodeUri(oldSourceUri) },
 			{ type: vscode.FileChangeType.Deleted, uri: toSimpleDesignerUri(oldSourceUri) },
 			{ type: vscode.FileChangeType.Created, uri: toSimpleCodeUri(newSourceUri) },
 			{ type: vscode.FileChangeType.Created, uri: toSimpleDesignerUri(newSourceUri) }
 		]);
+	}
+
+	/** 原生虚拟迁移完成后刷新目标代码模型，避免持久化先完成、模型迁移后保留旧文本。 */
+	notifyNativePathComplete(newSourceUri: vscode.Uri): void {
+		const events = vscode.workspace.textDocuments.flatMap((document) => {
+			const sourceUri = toSimpleSourceUri(document.uri);
+			return document.uri.scheme === SIMPLE_CODE_SCHEME && sourceUri !== undefined && isPathInsideOrEqual(newSourceUri.fsPath, sourceUri.fsPath)
+				? [{ type: vscode.FileChangeType.Changed, uri: document.uri }] : [];
+		});
+		if (events.length > 0) this.changeEmitter.fire(events);
 	}
 
 	/** 返回真实单元当前打开的用户代码文档。 */
@@ -261,13 +429,29 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 	/** 允许一次受控单元移动，并保留路径对以支持 VS Code 撤销和重做。 */
 	allowUnitRename(
 		oldSourceUri: vscode.Uri,
-		newSourceUri: vscode.Uri
+		newSourceUri: vscode.Uri,
+		native = false
 	): vscode.Disposable {
 		const key = unitRenameKey(oldSourceUri, newSourceUri);
+		const previousAllowed = this.allowedUnitRenames.has(key);
+		const previousNative = this.nativeUnitRenames.get(key);
 		this.allowedUnitRenames.add(key);
+		if (native) this.nativeUnitRenames.set(key, { oldPath: oldSourceUri.fsPath, newPath: newSourceUri.fsPath, currentPath: oldSourceUri.fsPath });
 		return new vscode.Disposable(() => {
-			this.allowedUnitRenames.delete(key);
+			if (!previousAllowed) this.allowedUnitRenames.delete(key);
+			if (previousNative === undefined) this.nativeUnitRenames.delete(key);
+			else this.nativeUnitRenames.set(key, previousNative);
 		});
+	}
+
+	isNativePathRename(oldSourceUri: vscode.Uri, newSourceUri: vscode.Uri): boolean {
+		return this.nativeUnitRenames.has(unitRenameKey(oldSourceUri, newSourceUri));
+	}
+
+	/** 预览可跳过附加编辑；只保留真正执行过的会话迁移记录供撤销使用。 */
+	isNativePathRenameApplied(oldSourceUri: vscode.Uri, newSourceUri: vscode.Uri): boolean {
+		const current = this.nativeUnitRenames.get(unitRenameKey(oldSourceUri, newSourceUri))?.currentPath;
+		return current !== undefined && filePathKey(current) === filePathKey(newSourceUri.fsPath);
 	}
 
 	/** 返回当前打开代码文档共享的 XML 属性状态。 */
@@ -294,7 +478,11 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		}
 		const key = uriKey(document.uri);
 		this.designerDocumentReferences.set(key, (this.designerDocumentReferences.get(key) ?? 0) + 1);
-		return new vscode.Disposable(() => this.releaseDesignerDocument(key));
+		const session = this.documentSessions.get(key);
+		return new vscode.Disposable(() => {
+			const currentKey = [...this.documentSessions].find(([, value]) => value === session)?.[0] ?? key;
+			this.releaseDesignerDocument(currentKey);
+		});
 	}
 
 	/**
@@ -306,7 +494,8 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		document: vscode.TextDocument,
 		currentPropertyDocument: SimplePropertyXmlDocument,
 		updatedPropertyDocument: SimplePropertyXmlDocument,
-		updatedUserCode: string
+		updatedUserCode: string,
+		relatedCode: readonly RelatedSimpleCodeEdit[] = []
 	): Promise<void> {
 		const session = this.requireDocumentSession(document);
 		if (sessionProperty(session).document !== currentPropertyDocument) {
@@ -328,6 +517,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			session.pendingPropertyEdit = undefined;
 		}
 
+		for (const change of relatedCode) if (change.document.getText() !== change.before) throw new Error("关联代码在组件改名准备期间发生变化，请重试。");
 		const previousDesignerEdit = session.designerPropertyEdit;
 		session.designerPropertyEdit = {
 			basePropertySource: previousDesignerEdit?.basePropertySource ?? session.basePropertySource,
@@ -335,26 +525,24 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			formatting: previousDesignerEdit?.formatting ?? resolvePropertySourceFormatting(document)
 		};
 
-		if (document.getText() === updatedUserCode) {
-			return;
-		}
-
+		if (document.getText() === updatedUserCode && relatedCode.every((change) => change.before === change.after)) return;
 		const edit = new vscode.WorkspaceEdit();
-		edit.replace(
-			document.uri,
-			new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)),
-			updatedUserCode
-		);
+		for (const change of [{ document, before: document.getText(), after: updatedUserCode }, ...relatedCode]) {
+			if (change.before === change.after) continue;
+			// 只修改差异范围，避免整个用户代码区替换导致光标、选择和诊断全部移动。
+			const difference = minimalSimpleCodeChange(change.before, change.after)!;
+			edit.replace(change.document.uri, new vscode.Range(change.document.positionAt(difference.start), change.document.positionAt(difference.end)), difference.replacement);
+		}
 		try {
 			if (await vscode.workspace.applyEdit(edit)) {
 				return;
 			}
 		} catch (error) {
 			session.designerPropertyEdit = previousDesignerEdit;
-			throw new Error("无法同步设计器产生的用户代码修改。", { cause: error });
+			throw new Error("无法应用设计器产生的代码重构。", { cause: error });
 		}
 		session.designerPropertyEdit = previousDesignerEdit;
-		throw new Error("无法同步设计器产生的用户代码修改。");
+		throw new Error("无法应用设计器产生的代码重构。");
 	}
 
 	/** 把设计器 XML 状态切换到指定版本，供 CustomDocument 撤销和重做使用。 */
@@ -653,6 +841,10 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		}
 
 		const userCode = document.getText();
+		if (pending.refactorUserCode !== undefined && pending.refactorUserCode === userCode) {
+			session.pendingPropertyEdit = { ...pending, refactorUserCode: undefined };
+			return;
+		}
 		if (reason === undefined) {
 			if (pending.index >= 0 && pending.userCodeHistory[pending.index] === userCode) {
 				return;
@@ -694,11 +886,13 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			}
 			this.documentSessions.delete(key);
 			this.propertyDirtyTransactions.delete(key);
+			this.releaseUnappliedPropertyReceipts(key);
 		}
 	}
 
 	/** 监视真实单元的外部修改，让干净的虚拟文档可及时刷新。 */
 	watch(uri: vscode.Uri): vscode.Disposable {
+		if (uri.scheme === SIMPLE_REFACTOR_SCHEME) return new vscode.Disposable(() => undefined);
 		const sourceUri = this.requireSourceUri(uri);
 		const key = uriKey(uri);
 		const existing = this.sourceWatchers.get(key);
@@ -732,7 +926,12 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 
 	/** 返回用户代码文档的类型、时间和切分后大小。 */
 	async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-		const sourceUri = this.requireBackingUri(uri);
+		if (uri.scheme === SIMPLE_REFACTOR_SCHEME) {
+			if (uri.path === "/" || (uri.path.split("/").filter(Boolean).length === 1 && this.propertyReceipts.has(uri.path.slice(1)))) return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
+			this.receipt(uri);
+			return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: 0 };
+		}
+		const sourceUri = await this.nativeBackingUri(this.requireBackingUri(uri), true);
 		const sourceStat = await vscode.workspace.fs.stat(sourceUri);
 		if ((sourceStat.type & vscode.FileType.Directory) !== 0) {
 			return sourceStat;
@@ -760,14 +959,19 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 	}
 
 	/** 虚拟用户代码协议禁止创建目录。 */
-	createDirectory(uri: vscode.Uri): never {
+	createDirectory(uri: vscode.Uri): void {
+		if (uri.scheme === SIMPLE_REFACTOR_SCHEME && this.propertyReceipts.has(uri.path.split("/")[1] ?? "")) return;
 		return noPermissions(uri);
 	}
 
 	/** 从真实单元读取并返回用户代码。 */
 	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+		if (uri.scheme === SIMPLE_REFACTOR_SCHEME) {
+			this.receipt(uri);
+			return new Uint8Array();
+		}
 		const sourceUri = this.requireSourceUri(uri);
-		const sourceBytes = await vscode.workspace.fs.readFile(sourceUri);
+		const sourceBytes = await vscode.workspace.fs.readFile(await this.nativeBackingUri(sourceUri, true));
 		const key = uriKey(uri);
 		const encoding = detectSimpleSourceEncoding(sourceBytes);
 		const source = await vscode.workspace.decode(sourceBytes, { encoding });
@@ -863,7 +1067,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			);
 		}
 
-		const writtenPropertySource = pendingProperty === undefined
+		const writtenPropertySource = pendingProperty === undefined || (pendingPropertyDocument(pendingProperty) === session?.property.document && currentPropertySource === session?.basePropertySource)
 			? currentPropertySource
 			: pendingPropertySource(pendingProperty);
 		const mergedSource = assembleSimpleUnitSource(
@@ -906,8 +1110,12 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		newUri: vscode.Uri,
 		options: { readonly overwrite: boolean }
 	): Promise<void> {
-		const oldSourceUri = this.requireSourceUri(oldUri);
-		const newSourceUri = this.requireSourceUri(newUri);
+		if (oldUri.scheme === SIMPLE_REFACTOR_SCHEME && newUri.scheme === SIMPLE_REFACTOR_SCHEME && !options.overwrite) {
+			await this.renamePropertyReceipt(oldUri, newUri);
+			return;
+		}
+		const oldSourceUri = this.requireBackingUri(oldUri);
+		const newSourceUri = this.requireBackingUri(newUri);
 		const renameKey = unitRenameKey(oldSourceUri, newSourceUri);
 		if (
 			options.overwrite
@@ -916,12 +1124,27 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			return noPermissions(oldUri);
 		}
 
-		await vscode.workspace.fs.rename(oldSourceUri, newSourceUri, { overwrite: false });
-		this.migrateUnitSession(oldUri, newUri);
-		this.changeEmitter.fire([
+		const native = this.nativeUnitRenames.get(renameKey);
+		if (native === undefined) await vscode.workspace.fs.rename(oldSourceUri, newSourceUri, { overwrite: false });
+		else native.currentPath = newSourceUri.fsPath;
+		if (toSimpleSourceUri(oldUri) !== undefined) this.migrateUnitSession(oldUri, newUri);
+		else {
+			for (const key of [...this.documentSessions.keys()]) {
+				const codeUri = vscode.Uri.parse(key);
+				const source = toSimpleSourceUri(codeUri);
+				if (source !== undefined && isPathInsideOrEqual(oldSourceUri.fsPath, source.fsPath)) {
+					this.migrateUnitSession(codeUri, toSimpleCodeUri(vscode.Uri.file(path.join(newSourceUri.fsPath, path.relative(oldSourceUri.fsPath, source.fsPath)))));
+				}
+			}
+		}
+		for (const receipt of this.propertyReceipts.values()) {
+			if (isPathInsideOrEqual(oldSourceUri.fsPath, receipt.sourceUri.fsPath)) receipt.sourceUri = vscode.Uri.file(path.join(newSourceUri.fsPath, path.relative(oldSourceUri.fsPath, receipt.sourceUri.fsPath)));
+		}
+		// 原生工作区已迁移旧模型，只通知目标创建，避免重复删除旧文档。
+		this.changeEmitter.fire(native === undefined ? [
 			{ type: vscode.FileChangeType.Deleted, uri: oldUri },
 			{ type: vscode.FileChangeType.Created, uri: newUri }
-		]);
+		] : [{ type: vscode.FileChangeType.Created, uri: newUri }]);
 	}
 
 	/** 释放文件监视器、打开文档会话和事件发送器。 */
@@ -931,9 +1154,12 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		}
 		this.sourceWatchers.clear();
 		this.allowedUnitRenames.clear();
+		this.nativeUnitRenames.clear();
 		this.designerDocumentReferences.clear();
 		this.documentSessions.clear();
 		this.propertyDirtyTransactions.clear();
+		this.propertyReceipts.clear();
+		this.propertyRefactorEmitter.dispose();
 		this.changeEmitter.dispose();
 	}
 
@@ -969,6 +1195,21 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		return uri.with({ fragment: "", query: "", scheme: "file" });
 	}
 
+	/** 原生文件改名参与者先迁移虚拟模型，真实文件由 VS Code 随后移动。 */
+	private async nativeBackingUri(sourceUri: vscode.Uri, virtual = false): Promise<vscode.Uri> {
+		if (virtual) for (const rename of this.nativeUnitRenames.values()) {
+			if ((isPathInsideOrEqual(rename.oldPath, sourceUri.fsPath) || isPathInsideOrEqual(rename.newPath, sourceUri.fsPath)) && !isPathInsideOrEqual(rename.currentPath, sourceUri.fsPath)) throw vscode.FileSystemError.FileNotFound(sourceUri);
+		}
+		try { await vscode.workspace.fs.stat(sourceUri); return sourceUri; } catch { /* 仅在原生改名的短暂窗口使用另一侧路径。 */ }
+		for (const rename of this.nativeUnitRenames.values()) {
+			if (!isPathInsideOrEqual(rename.currentPath, sourceUri.fsPath)) continue;
+			const other = filePathKey(rename.currentPath) === filePathKey(rename.oldPath) ? rename.newPath : rename.oldPath;
+			const alternative = vscode.Uri.file(path.join(other, path.relative(rename.currentPath, sourceUri.fsPath)));
+			try { await vscode.workspace.fs.stat(alternative); return alternative; } catch { /* 继续检查其它受控路径对。 */ }
+		}
+		return sourceUri;
+	}
+
 	/** 在虚拟 URI 改名时迁移共享 XML 会话、脏事务索引并关闭旧路径监视器。 */
 	private migrateUnitSession(oldUri: vscode.Uri, newUri: vscode.Uri): void {
 		const oldKey = uriKey(oldUri);
@@ -995,15 +1236,20 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 
 	/** 检查监视目标是变更还是被删除，并通知 VS Code。 */
 	private async fireSourceChange(uri: vscode.Uri, sourceUri: vscode.Uri): Promise<void> {
+		const key = uriKey(uri);
+		const registration = this.sourceWatchers.get(key);
+		if (registration === undefined) return;
 		let type = vscode.FileChangeType.Changed;
 
 		try {
-			await vscode.workspace.fs.stat(sourceUri);
+			await vscode.workspace.fs.stat(await this.nativeBackingUri(sourceUri, true));
 		} catch {
 			type = vscode.FileChangeType.Deleted;
 		}
 
-		this.changeEmitter.fire([{ type, uri }]);
+		// 路径迁移会关闭旧监视器；已排队的异步检测不能再删除新会话关联的代码模型。
+		if (type === vscode.FileChangeType.Deleted && [...this.nativeUnitRenames.values()].some((rename) => (isPathInsideOrEqual(rename.oldPath, sourceUri.fsPath) || isPathInsideOrEqual(rename.newPath, sourceUri.fsPath)) && !isPathInsideOrEqual(rename.currentPath, sourceUri.fsPath))) return;
+		if (this.sourceWatchers.get(key) === registration) this.changeEmitter.fire([{ type, uri }]);
 	}
 
 	/** 引用归零时关闭真实文件监视器。 */
@@ -1062,6 +1308,14 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		);
 	}
 
+	/** 会话关闭时清理未应用的 XML 准备结果，保留已执行事务的撤销凭据。 */
+	private releaseUnappliedPropertyReceipts(key: string): void {
+		for (const [id, receipt] of this.propertyReceipts) {
+			// 未应用的预览不能在会话结束后继续持有 XML；已执行事务的凭据仍供跨单元撤销使用。
+			if (receipt.after === undefined && uriKey(toSimpleCodeUri(receipt.sourceUri)) === key) this.propertyReceipts.delete(id);
+		}
+	}
+
 	/** 设计器最后一个文档引用释放后，仅在代码文档也已关闭时销毁共享会话。 */
 	private releaseDesignerDocument(key: string): void {
 		const references = this.designerDocumentReferences.get(key);
@@ -1076,6 +1330,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		if (!vscode.workspace.textDocuments.some((document) => uriKey(document.uri) === key)) {
 			this.documentSessions.delete(key);
 			this.propertyDirtyTransactions.delete(key);
+			this.releaseUnappliedPropertyReceipts(key);
 		}
 	}
 }

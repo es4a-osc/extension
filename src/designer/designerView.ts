@@ -20,6 +20,12 @@ import type {
 import { markdownDocumentationToPlainText } from "../markdownDocumentation";
 import { resolveDesignerRelativePositions, type DesignerProjectedRelativePosition } from "./designerRelativeLayout";
 
+/** 未确认改名只覆盖显示文字，不修改宿主投影中的组件身份、XML 路径和属性值。 */
+export interface DesignerNamePreview {
+	readonly xmlPath: string;
+	readonly newName: string;
+}
+
 /**
  * 计算拖动指针相对组件左边或顶边的偏移。
  * 组件名称标签位于组件外侧，必须保留负数或超过组件尺寸的真实偏移，避免起拖后跳位。

@@ -35,6 +35,8 @@ export class PropertyPanelSymbolValidationError extends Error {
 
 /** Webview 属性编辑提交给 XML 事务边界的完整请求。 */
 export interface PropertyPanelValueRequest {
+	/** 仅用于前端临时反馈与后端结果配对，不作为 XML 或组件身份。 */
+	readonly requestId?: number;
 	readonly contextToken: string;
 	readonly effect?: "editComponentComment" | "renameComponent";
 	readonly removeElementWhenEmpty: boolean;
@@ -53,6 +55,7 @@ export function isPropertyPanelValueRequest(message: unknown): message is Proper
 	}
 	const candidate = message as Record<string, unknown>;
 	return candidate.type === "updateXmlValue"
+		&& (candidate.requestId === undefined || Number.isSafeInteger(candidate.requestId) && (candidate.requestId as number) >= 0)
 		&& typeof candidate.contextToken === "string"
 		&& Number.isSafeInteger(candidate.renderVersion)
 		&& (candidate.renderVersion as number) >= 0
@@ -105,7 +108,8 @@ export function updatePropertyPanelValue(
 	sdk: Sdk | undefined,
 	unitName: string | undefined,
 	request: PropertyPanelValueRequest,
-	semanticContext?: SimpleProjectSemanticContext
+	semanticContext?: SimpleProjectSemanticContext,
+	synchronizeComponentReferences = true
 ): {
 	readonly propertyDocument: SimplePropertyXmlDocument;
 	readonly selectedPath?: string;
@@ -150,7 +154,8 @@ export function updatePropertyPanelValue(
 			propertyDocument,
 			selectedPath,
 			request.value,
-			sdk
+			sdk,
+			synchronizeComponentReferences
 		);
 	}
 

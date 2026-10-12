@@ -5,7 +5,8 @@ xhwsd@qq.com 2026-9-1
 
 import {
 	resolveSimpleBinding,
-	resolveSimpleQualifier
+	resolveSimpleQualifier,
+	type SimpleSourceAnalysis
 } from "./completionModel";
 import {
 	getEffectiveMembers,
@@ -16,6 +17,9 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	isSimpleAliasName,
+	resolveSimpleDefinitionName,
+	resolveSimpleNamespaceName,
 	isStaticProjectMember,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
@@ -31,6 +35,7 @@ const IDENTIFIER_CHARACTER = /[\p{L}\p{N}_]/u;
 
 /** 编辑器适配层可直接转换为目标位置的一次定义解析结果。 */
 export interface SimpleDefinitionTarget {
+	readonly symbolKind?: "alias" | "unit" | "member" | "binding";
 	readonly end: number;
 	readonly filePath?: string;
 	readonly librarySymbol?: LibrarySymbolTarget;
@@ -43,12 +48,12 @@ export interface SimpleDefinitionTarget {
 	readonly targetOffset?: number;
 }
 
-/** 返回光标所在标识符范围。 */
+/** 返回光标所在标识符范围；名称末尾的插入位置仍属于紧邻左侧的名称。 */
 function identifierRange(
 	source: string,
 	offset: number
 ): { readonly end: number; readonly name: string; readonly start: number } | undefined {
-	const actualOffset = offset === source.length ? offset - 1 : offset;
+	const actualOffset = IDENTIFIER_CHARACTER.test(source[offset] ?? "") ? offset : offset - 1;
 	if (actualOffset < 0 || !IDENTIFIER_CHARACTER.test(source[actualOffset] ?? "")) {
 		return undefined;
 	}
@@ -64,30 +69,7 @@ function identifierRange(
 	return { end, name: source.slice(start, end), start };
 }
 
-/** 从成员前读取不含空白的点号限定链。 */
-function qualifierBefore(source: string, start: number): string | undefined {
-	let cursor = start;
-	while (cursor > 0 && /[ \t]/u.test(source[cursor - 1] ?? "")) {
-		cursor -= 1;
-	}
-	if (source[cursor - 1] !== ".") {
-		return undefined;
-	}
-	cursor -= 1;
-	while (cursor > 0 && /[ \t]/u.test(source[cursor - 1] ?? "")) {
-		cursor -= 1;
-	}
-	const end = cursor;
-	while (
-		cursor > 0
-		&& (IDENTIFIER_CHARACTER.test(source[cursor - 1] ?? "") || source[cursor - 1] === ".")
-	) {
-		cursor -= 1;
-	}
-	return cursor === end ? undefined : source.slice(cursor, end);
-}
-
-/** 读取包含当前标识符的完整限定名。 */
+/** 读取包含当前标识符的点号链，允许点号两侧空白，保留原文范围而统一解析名称。 */
 function qualifiedNameAt(
 	source: string,
 	start: number,
@@ -95,21 +77,31 @@ function qualifiedNameAt(
 ): { readonly end: number; readonly name: string; readonly start: number } {
 	let qualifiedStart = start;
 	let qualifiedEnd = end;
-	while (qualifiedStart > 0 && source[qualifiedStart - 1] === ".") {
-		qualifiedStart -= 1;
-		while (qualifiedStart > 0 && IDENTIFIER_CHARACTER.test(source[qualifiedStart - 1] ?? "")) {
-			qualifiedStart -= 1;
-		}
+	while (qualifiedStart > 0) {
+		let cursor = qualifiedStart;
+		while (cursor > 0 && /[ \t]/u.test(source[cursor - 1]!)) cursor -= 1;
+		if (source[cursor - 1] !== ".") break;
+		cursor -= 1;
+		while (cursor > 0 && /[ \t]/u.test(source[cursor - 1]!)) cursor -= 1;
+		const end = cursor;
+		while (cursor > 0 && IDENTIFIER_CHARACTER.test(source[cursor - 1]!)) cursor -= 1;
+		if (cursor === end) break;
+		qualifiedStart = cursor;
 	}
-	while (qualifiedEnd < source.length && source[qualifiedEnd] === ".") {
-		qualifiedEnd += 1;
-		while (qualifiedEnd < source.length && IDENTIFIER_CHARACTER.test(source[qualifiedEnd] ?? "")) {
-			qualifiedEnd += 1;
-		}
+	while (qualifiedEnd < source.length) {
+		let cursor = qualifiedEnd;
+		while (cursor < source.length && /[ \t]/u.test(source[cursor]!)) cursor += 1;
+		if (source[cursor] !== ".") break;
+		cursor += 1;
+		while (cursor < source.length && /[ \t]/u.test(source[cursor]!)) cursor += 1;
+		const start = cursor;
+		while (cursor < source.length && IDENTIFIER_CHARACTER.test(source[cursor]!)) cursor += 1;
+		if (cursor === start) break;
+		qualifiedEnd = cursor;
 	}
 	return {
 		end: qualifiedEnd,
-		name: source.slice(qualifiedStart, qualifiedEnd),
+		name: source.slice(qualifiedStart, qualifiedEnd).replace(/[ \t]/gu, ""),
 		start: qualifiedStart
 	};
 }
@@ -134,6 +126,7 @@ function definitionTarget(
 	return {
 		...origin,
 		filePath,
+		symbolKind: "unit",
 		targetLine: 0
 	};
 }
@@ -158,8 +151,10 @@ function memberTarget(
 	return {
 		...origin,
 		filePath,
+		symbolKind: "member",
 		memberGroup: group,
 		propertySource: member.component === true || undefined,
+		targetOffset: typeof member.declarationOffset === "number" ? member.declarationOffset : undefined,
 		targetLine: typeof line === "number" ? Math.max(0, line - 1) : undefined
 	};
 }
@@ -237,17 +232,20 @@ export function findSimpleDefinition(
 	source: string,
 	offset: number,
 	sdk: Sdk | undefined,
-	context?: SimpleProjectSemanticContext
+	context?: SimpleProjectSemanticContext,
+	analysis?: SimpleSourceAnalysis
 ): SimpleDefinitionTarget | undefined {
-	if (offset < 0 || offset > source.length || isSimpleIgnoredOffset(source, offset, true)) {
+	if (offset < 0 || offset > source.length) {
 		return undefined;
 	}
 	const range = identifierRange(source, offset);
-	if (range === undefined) {
+	if (range === undefined || isSimpleIgnoredOffset(source, range.start, true)) {
 		return undefined;
 	}
+	const qualified = qualifiedNameAt(source, range.start, range.end);
+	const qualifier = qualified.start === range.start ? undefined : source.slice(qualified.start, range.start).replace(/[ \t]/gu, "").slice(0, -1);
 	/* R 成员直接定位 res 中的首个真实来源，不依赖构建目录或 R.txt。 */
-	if (qualifierBefore(source, range.start) === "R") {
+	if (qualifier === "R" && resolveSimpleBinding(source, range.start, "R", context, analysis) === undefined) {
 		const resource = context?.resources?.symbols.find((symbol) => symbol.name === range.name);
 		const filePath = resource?.sourceFiles[0];
 		return filePath === undefined ? undefined : {
@@ -261,11 +259,10 @@ export function findSimpleDefinition(
 		return undefined;
 	}
 
-	const definitions = buildSemanticDefinitionIndex(sdk, context);
+	const definitions = analysis?.definitions ?? buildSemanticDefinitionIndex(sdk, context);
 	const callArity = findCallableArgumentCount(source, range.end);
-	const qualifier = qualifierBefore(source, range.start);
 	if (qualifier !== undefined) {
-		const resolved = resolveSimpleQualifier(source, range.start, qualifier, sdk, context);
+		const resolved = resolveSimpleQualifier(source, range.start, qualifier, sdk, context, analysis);
 		if (resolved !== undefined) {
 			return effectiveMemberTarget(
 				resolved.reference,
@@ -281,11 +278,12 @@ export function findSimpleDefinition(
 		}
 	}
 
-	const binding = resolveSimpleBinding(source, range.start, range.name, context);
+	const binding = qualifier === undefined ? resolveSimpleBinding(source, range.start, range.name, context, analysis) : undefined;
 	if (binding?.declarationStart !== undefined) {
 		return {
 			...range,
 			filePath: currentUnit.filePath,
+			symbolKind: "binding",
 			targetOffset: binding.declarationStart
 		};
 	}
@@ -299,25 +297,28 @@ export function findSimpleDefinition(
 		}
 	}
 
-	const qualified = qualifiedNameAt(source, range.start, range.end);
-	const alias = qualified.name === range.name
+	const alias = qualifier === undefined
 		? currentUnit.aliases.find((candidate) => candidate.name === range.name)
 		: undefined;
-	if (alias !== undefined) {
+	const aliasDeclaration = /^[ \t]*别名[ \t]*$/u.test(source.slice(source.lastIndexOf("\n", range.start - 1) + 1, range.start));
+	if (alias !== undefined && (aliasDeclaration || isSimpleAliasName(alias.name, definitions) || (resolveSimpleDefinitionName(alias.name, definitions) === undefined && resolveSimpleNamespaceName(alias.name, definitions) === undefined))) {
 		return {
 			...range,
 			filePath: currentUnit.filePath,
+			symbolKind: "alias",
 			targetLine: Math.max(0, alias.line - 1)
 		};
 	}
 
-	const aliasTarget = currentUnit.aliases.find((candidate) => candidate.name === qualified.name)?.target;
-	const definition = definitions.get(aliasTarget ?? qualified.name)
-		?? definitions.get(range.name);
+	const root = qualified.name.split(".")[0]!;
+	if (qualifier !== undefined && resolveSimpleBinding(source, qualified.start, root, context, analysis) !== undefined) return undefined;
+	const definition = resolveSimpleDefinitionName(qualified.name, definitions)
+		?? (qualifier === undefined ? resolveSimpleDefinitionName(range.name, definitions) : undefined);
 	const target = definition === undefined ? undefined : definitionTarget(definition, qualified);
 	if (target !== undefined) {
 		return target;
 	}
+	if (qualifier !== undefined) return undefined;
 
 	const currentReference = definitions.get(currentUnit.qualifiedName);
 	const currentMember = currentReference === undefined

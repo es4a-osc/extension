@@ -283,14 +283,14 @@ test("R 成员只按 res 索引定位首个真实资源文件", () => {
 	);
 });
 
-test("运行库对象、方法和常量返回类库树导航目标", async () => {
+test("SDK 对象、方法和常量返回所属类库树导航目标", async () => {
 	const fullSource = [
 		"过程 Run()",
 		"\t变量 value 为 意图",
 		"\tvalue.置附加(\"key\", \"value\")",
 		"\t变量 unit 为 整数型 = 像素转换.像素_绝对",
 		"\t子文本替换(text, \"a\", \"b\", 0, -1)",
-		"\t变量 list 为 分组列表框",
+		"\t变量 list 为 simple.library.wsd.grouplist.分组列表框",
 		"\tlist.添加子项(1, \"\")",
 		"\tlist.添加子项(1, \"\", \"\", \"\", \"\", \"\")",
 		"结束 过程",
@@ -331,5 +331,7 @@ test("运行库对象、方法和常量返回类库树导航目标", async () =>
 	const longOverload = findSimpleDefinition(source, secondAdd + 1, sdk, contextFor(current, [current]));
 	assert.equal(shortOverload?.librarySymbol?.definitionName, "分组列表框");
 	assert.equal(longOverload?.librarySymbol?.definitionName, "分组列表框");
+	assert.equal(shortOverload?.librarySymbol?.manifestFilePath,
+		path.resolve("..", "sdk", "libraries", "simple.library.wsd.grouplist", "library.json"));
 	assert.notEqual(shortOverload?.librarySymbol?.memberKey, longOverload?.librarySymbol?.memberKey);
 });

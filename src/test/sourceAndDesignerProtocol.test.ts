@@ -21,6 +21,8 @@ test("选择消息可携带同会话同版本的属性编辑，拒绝混入其�
 	assert.deepEqual(parseDesignerWebviewMessage(selection), selection);
 	const combined = { ...selection, pendingPropertyEdit: edit };
 	assert.deepEqual(parseDesignerWebviewMessage(combined), combined);
+	assert.deepEqual(parseDesignerWebviewMessage({ ...edit, requestId: 3 }), { ...edit, requestId: 3 });
+	for (const requestId of [-1, 1.5, "3", null]) assert.equal(parseDesignerWebviewMessage({ ...edit, requestId }), undefined);
 	for (const pendingPropertyEdit of [null, {}, { ...edit, contextToken: "other" },
 		{ ...edit, renderVersion: 6 }, { ...edit, xmlPath: "bad" }]) {
 		assert.equal(parseDesignerWebviewMessage({ ...selection, pendingPropertyEdit }), undefined);
@@ -37,6 +39,8 @@ test("共享词法扫描区分代码、字符串和单行注释", () => {
 
 test("设计器协议统一校验上下文令牌、XML 路径和插入位置", () => {
 	assert.deepEqual(parseDesignerWebviewMessage({ type: "ready" }), { type: "ready" });
+	assert.deepEqual(parseDesignerWebviewMessage({ type: "focus", contextToken: "designer" }), { type: "focus", contextToken: "designer" });
+	assert.equal(parseDesignerWebviewMessage({ type: "focus" }), undefined);
 	assert.deepEqual(parseDesignerWebviewMessage({
 		contextToken: "designer",
 		option: "designerDebug",

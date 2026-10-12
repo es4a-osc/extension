@@ -13,7 +13,7 @@ import type { DirectoryNode, FileNode } from "../../programTree";
 import { splitSimpleUnitSource } from "../../simpleUnitSource";
 
 suite("主窗口包目录改名", () => {
-	test("同步 main 并立即保存，目录与配置一起撤销重做，其他包改名不改配置", async function () {
+	test("同步 main 后等待保存，目录与配置一起撤销重做，其他包改名不改配置", async function () {
 		this.timeout(30000);
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-main-package-"));
@@ -35,9 +35,10 @@ suite("主窗口包目录改名", () => {
 			await vscode.window.showTextDocument(document, { preview: false });
 			/* 改名直接同步，不传确认参数，也不等待新增的确认框。 */
 			await vscode.commands.executeCommand("es4a.renameUnitFolder", node, "new");
-			assert.equal(await fs.readFile(projectFile, "utf8"), updatedSource);
-			assert.equal(document.isDirty, false);
-			assert.equal((await loadSimpleProject(projectFile)).main, "new.nested.主窗口");
+			assert.equal(await fs.readFile(projectFile, "utf8"), projectSource);
+			assert.equal(document.getText(), updatedSource);
+			assert.equal(document.isDirty, true);
+			assert.equal((await loadSimpleProject(projectFile)).main, "old.nested.主窗口");
 			assert.equal(await fs.readFile(path.join(newDirectory, relativeUnit), "utf8"), unitSource);
 			assert.equal(await fs.stat(oldDirectory).then(() => true, () => false), false);
 
@@ -85,7 +86,11 @@ suite("主窗口包目录改名", () => {
 			const node: FileNode = { kind: "unit", filePath: sourceFile, label: "主窗口", unitType: "窗口", project };
 			await vscode.commands.executeCommand("es4a.renameUnitFile", node, "新主窗口");
 			const expectedProperties = properties.replace("demo.主窗口", "demo.新主窗口");
-			assert.equal(await fs.readFile(projectFile, "utf8"), expectedProperties);
+			const document = await vscode.workspace.openTextDocument(vscode.Uri.file(projectFile));
+			assert.equal(document.getText(), expectedProperties);
+			assert.equal(document.isDirty, true);
+			assert.equal(await fs.readFile(projectFile, "utf8"), properties);
+			await document.save();
 			assert.equal((await loadSimpleProject(projectFile)).main, "demo.新主窗口");
 			assert.equal(await fs.stat(sourceFile).then(() => true, () => false), false);
 			const renamed = splitSimpleUnitSource(await fs.readFile(targetFile, "utf8"));

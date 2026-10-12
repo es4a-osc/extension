@@ -96,17 +96,9 @@ async function indexProject(project: SimpleProjectInfo): Promise<IndexedProject>
 	return { project, resources, units };
 }
 
-/** 建立隐藏的项目清单，并只为项目内唯一短名称创建别名。 */
+/** 项目清单只登记规范单元身份，可见名称由共享作用域索引派生。 */
 function projectManifest(project: SimpleProjectInfo, units: readonly SimpleUnitSymbol[]): LibraryManifest {
-	const counts = new Map<string, number>();
-	for (const unit of units) {
-		counts.set(unit.name, (counts.get(unit.name) ?? 0) + 1);
-	}
-
-	const definitions: LibraryDefinition[] = units.map((unit) => ({
-		...unit.definition,
-		aliases: counts.get(unit.name) === 1 ? [unit.name] : []
-	}));
+	const definitions: LibraryDefinition[] = units.map((unit) => unit.definition);
 
 	return {
 		categories: [{ definitions, hidden: true, name: "项目单元" }],
@@ -132,6 +124,11 @@ function standaloneManifest(unit: SimpleUnitSymbol): LibraryManifest {
 
 /** 缓存项目磁盘快照，并允许活动单元用未保存源码覆盖自己的快照。 */
 export class ProjectSymbolIndex {
+	/** 文件夹创建、删除和移动也会改变单元或资源语义，不能只按扩展名判断。 */
+	containsProjectPath(filePath: string): boolean {
+		return this.projects.some(({ project }) => [...project.sourceDirectories, project.resourceDirectory, project.assetsDirectory]
+			.some((directory) => isPathInsideOrEqual(directory, filePath) || isPathInsideOrEqual(filePath, directory)));
+	}
 	private readonly contextCache = new WeakMap<object, CachedSemanticContext>();
 	private readonly openUnitCache = new WeakMap<object, CachedOpenUnitSymbol>();
 	private projects: readonly IndexedProject[] = [];
@@ -313,6 +310,7 @@ export class ProjectSymbolIndex {
 		return cacheContext({
 			currentUnit,
 			manifest: projectManifest(indexed.project, [...unitsByPath.values()]),
+			units: [...unitsByPath.values()],
 			resources: indexed.resources
 		});
 	}

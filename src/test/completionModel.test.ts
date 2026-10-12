@@ -4,6 +4,7 @@ xhwsd@qq.com 2026-8-27
 */
 
 import * as assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { test } from "node:test";
 import { pinyinInitials, provideSimpleCompletions } from "../completionModel";
@@ -55,6 +56,29 @@ test("将中文候选转换为连续拼音首字母", () => {
 	assert.equal(pinyinInitials("如果"), "rg");
 	assert.equal(pinyinInitials("数组"), "sz");
 	assert.equal(pinyinInitials("分割文本"), "fgwb");
+});
+
+test("中英文混合输入转首拼匹配，同时保留原名称和作用域约束", async () => {
+	for (const query of ["分割", "fgwb", "分割wb", "fg文本", "分g文b", "分割WB"]) {
+		assert.deepEqual(
+			await complete(unit(`过程 Run()\r\n\t数组操作.${query}¦\r\n结束 过程`)),
+			["分割文本"],
+			query
+		);
+	}
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t数组操作.分割wx¦\r\n结束 过程")), []);
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t未知对象.分割wb¦\r\n结束 过程")), []);
+
+	for (const query of ["HTTP服", "http服", "局_HTTP服", "局_httpfw1"]) {
+		const candidates = await complete(unit([
+			"过程 Run()",
+			"\t变量 HTTP服务1 为 文本型",
+			"\t变量 局_HTTP服务1 为 文本型",
+			`\t${query}¦`,
+			"结束 过程"
+		].join("\r\n")));
+		assert.ok(candidates.includes(query.startsWith("局_") ? "局_HTTP服务1" : "HTTP服务1"), query);
+	}
 });
 
 test("执行代码支持首拼，但顶层和接口方法体不提示流程语句", async () => {
@@ -110,7 +134,7 @@ test("组件事件定义补全插入参数类型且普通调用保持参数值�
 	assert.deepEqual(declaration.map((candidate) => candidate.name), ["收到消息"]);
 	assert.equal(
 		declaration[0]?.snippet,
-		"收到消息(${1:what} 为 整数型, ${2:payload} 为 变体型)"
+		"收到消息(${1:标记} 为 整数型, ${2:载荷} 为 变体型)"
 	);
 
 	const invocation = await completionCandidates([
@@ -121,7 +145,7 @@ test("组件事件定义补全插入参数类型且普通调用保持参数值�
 	].join("\r\n"));
 	assert.equal(
 		invocation.find((candidate) => candidate.name === "发送消息")?.snippet,
-		"发送消息(${1:what}, ${2:payload})"
+		"发送消息(${1:标记}, ${2:载荷})"
 	);
 });
 
@@ -153,6 +177,49 @@ test("事件拥有者位置支持当前单元和有事件组件的首拼补全",
 test("不完整变量和静态声明只提示当前位置合法的声明关键字", async () => {
 	assert.deepEqual(await complete(unit("变量 a w¦")), ["为"]);
 	assert.deepEqual(await complete(unit("静态 bl¦")), ["变量"]);
+});
+
+test("变量声明名称位置不提示自身、同名候选或其它已有符号", async () => {
+	for (const declaration of [
+		"变量 ¦",
+		"变量 局_服务意图1¦ 为 意图",
+		"变量 局_服务¦意图1 为 意图",
+		"变量 局_服¦",
+		"变量 rg¦ 为 整数型",
+		"变量 前项 为 整数型, 局_服务意图1¦ 为 意图",
+		"变量 矩阵 为 整数型(2, 3), 局_服务意图1¦ 为 意图",
+		"变量 前项 为 整数型, _\r\n\t局_服务意图1¦ 为 意图",
+		"变量 前项 为 整数型: 变量 局_服务意图1¦ 为 意图"
+	]) {
+		assert.deepEqual(await complete(unit([
+			"过程 Run()",
+			"\t变量 局_服务意图 为 意图",
+			`\t${declaration}`,
+			"结束 过程"
+		].join("\r\n"))), [], declaration);
+	}
+	assert.deepEqual(await complete(unit("静态 变量 成_意图1¦ 为 意图")), []);
+});
+
+test("变量声明抑制补全不影响类型、数组维度及正文引用", async () => {
+	assert.ok((await complete(unit("过程 Run()\r\n\t变量 值 为 yt¦\r\n结束 过程"))).includes("意图"));
+	assert.ok((await complete(unit("过程 Run()\r\n\t变量 后项 w¦\r\n结束 过程"))).includes("为"));
+	for (const use of ["局_服务¦", "变量 矩阵 为 整数型(2, 局_服务¦)"]) {
+		assert.ok((await complete(unit([
+			"过程 Run()",
+			"\t变量 局_服务意图1 为 整数型",
+			`\t${use}`,
+			"结束 过程"
+		].join("\r\n")))).includes("局_服务意图1"), use);
+	}
+});
+
+test("真实冒烟测试单元的变量声明名称不补全且正文引用仍补全", async () => {
+	const source = await fs.readFile(path.resolve("..", "simple", "tests", "simple", "runtime", "DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "others", "测试其它.simple"), "utf8");
+	const declaration = "变量 局_测试对象 为 对象";
+	assert.ok(source.includes(declaration));
+	assert.deepEqual(await complete(source.replace(declaration, "变量 局_测试对象1¦ 为 对象")), []);
+	assert.ok((await complete(source.replace("局_测试对象 =", "局_测试对¦ ="))).includes("局_测试对象"));
 });
 
 test("如果和否则如果的条件末尾提示则且不重复提示", async () => {
@@ -525,18 +592,19 @@ test("同名过程按参数个数分别提供补全项", () => {
 	assert.deepEqual(candidates.map((candidate) => candidate.snippet), ["执行()", "执行(${1:value})"]);
 });
 
-test("运行库同名方法重载分别提供补全项", async () => {
+test("扩展类库同名方法重载分别提供补全项", async () => {
 	const candidates = await completionCandidates(unit([
 		"过程 Run()",
-		"\t变量 list 为 分组列表框",
+		"\t变量 list 为 simple.library.wsd.grouplist.分组列表框",
 		"\tlist.tjzx¦",
 		"结束 过程"
 	].join("\r\n")));
 	const overloads = candidates.filter((candidate) => candidate.name === "添加子项");
 
-	assert.deepEqual(overloads.map((candidate) => candidate.overloadArity), [2, 6]);
-	assert.equal(overloads[0]?.snippet?.split("${").length, 3);
-	assert.equal(overloads[1]?.snippet?.split("${").length, 7);
+	// 重载沿用清单声明顺序，每个签名保留自己的参数占位符。
+	assert.deepEqual(overloads.map((candidate) => candidate.overloadArity), [6, 2]);
+	assert.equal(overloads[0]?.snippet, "添加子项(${1:groupid}, ${2:image}, ${3:title}, ${4:info}, ${5:buttonimage}, ${6:buttontitle})");
+	assert.equal(overloads[1]?.snippet, "添加子项(${1:groupid}, ${2:title})");
 });
 
 test("变体型布局不推断具体成员，显式布局变量正常提示", async () => {

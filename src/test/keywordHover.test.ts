@@ -44,7 +44,7 @@ test("长关键字、操作符和属性区标记返回清单说明及准确范�
 	assert.equal(objectType?.name, "对象");
 	assert.equal(objectType?.kind, "type");
 	assert.equal(objectType?.category, "数据类型");
-	assert.equal(objectType?.description, "可保存对象实例引用或空值的数据类型。");
+	assert.equal(objectType?.description, "可保存对象实例引用或空值的数据类型。\n所有Simple对象（包括窗口、对象单元、组件）的基础对象。");
 
 	const statementSeparator = await hover("Run() ¦: Next()");
 	assert.equal(statementSeparator?.name, ":");
@@ -473,11 +473,11 @@ test("参数个数错误时仍显示唯一的全局函数签名", async () => {
 	assert.deepEqual(result?.parameters?.map((parameter) => parameter.name), ["title", "message", "btnOK"]);
 });
 
-test("运行库方法调用按实参数量显示对应重载签名", async () => {
+test("扩展类库方法调用按实参数量显示对应重载签名", async () => {
 	const sourceRoot = "C:\\project\\src";
 	const fullSource = [
 		"过程 Run()",
-		"\t变量 list 为 分组列表框",
+		"\t变量 list 为 simple.library.wsd.grouplist.分组列表框",
 		"\tlist.添加子项(1, \"\")",
 		"\tlist.添加子项(1, \"\", \"\", \"\", \"\", \"\")",
 		"\tlist.添加子项(1)",

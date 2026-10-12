@@ -4,7 +4,7 @@ xhwsd@qq.com 2026-8-27
 */
 
 import * as vscode from "vscode";
-import { provideSimpleCompletions, type SimpleCompletionKind } from "./completionModel";
+import { pinyinInitials, provideSimpleCompletions, type SimpleCompletionKind } from "./completionModel";
 import { markdownDocumentationForDisplay } from "./markdownDocumentation";
 import type { Sdk } from "./sdk";
 import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
@@ -71,6 +71,7 @@ export class SimpleCompletionProvider implements vscode.CompletionItemProvider {
 			return new vscode.CompletionList([], false);
 		}
 		const callParenthesisFollows = /^[ \t]*\(/u.test(source.slice(result.end));
+		const normalizedQuery = pinyinInitials(result.query);
 
 		const range = new vscode.Range(document.positionAt(result.start), document.positionAt(result.end));
 		const items = result.candidates.map((candidate, index) => {
@@ -79,7 +80,10 @@ export class SimpleCompletionProvider implements vscode.CompletionItemProvider {
 			item.documentation = candidate.description === undefined
 				? undefined
 				: new vscode.MarkdownString(markdownDocumentationForDisplay(candidate.description));
-			item.filterText = /[\u3400-\u9fff]/u.test(result.query) ? candidate.name : candidate.initials;
+			// VS Code 仍按原输入过滤；混合首拼候选必须保留已输入文本，避免被编辑器再次排除。
+			item.filterText = candidate.name.startsWith(result.query)
+				? candidate.name
+				: result.query + candidate.initials.slice(normalizedQuery.length);
 			item.insertText = candidate.snippet === undefined || callParenthesisFollows
 				? candidate.name
 				: new vscode.SnippetString(candidate.snippet);
@@ -88,6 +92,7 @@ export class SimpleCompletionProvider implements vscode.CompletionItemProvider {
 			return item;
 		});
 
-		return new vscode.CompletionList(items, false);
+		// 后续中文输入也需要重新计算，不能沿用只包含上一次首拼的过滤文本。
+		return new vscode.CompletionList(items, true);
 	}
 }

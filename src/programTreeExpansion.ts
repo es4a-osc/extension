@@ -22,6 +22,8 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 	private revealDepth = 0;
 	private readonly expandListener: vscode.Disposable;
 	private readonly collapseListener: vscode.Disposable;
+	/** 自动定位的选择事件不能冒充用户点击树导致的代码失焦。 */
+	get isRevealing(): boolean { return this.revealDepth > 0; }
 
 	constructor(
 		private readonly provider: ProgramTreeExpansionProvider,

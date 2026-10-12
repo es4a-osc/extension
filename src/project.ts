@@ -260,7 +260,7 @@ export function updateProjectMainForRenamedUnits(
 		const oldRoot = mostSpecificSourceRoot(project.sourceDirectories, unit.oldFile);
 		if (oldRoot === undefined || simpleQualifiedName(oldRoot, unit.oldFile) !== project.main) continue;
 		const newRoot = mostSpecificSourceRoot(project.sourceDirectories, unit.newFile);
-		if (newRoot === undefined) throw new Error("主窗口改名后的路径不属于项目源码目录，无法同步 main。");
+		if (newRoot === undefined) throw new Error("主窗口重命名后的路径不属于项目源码目录，无法更新 main。");
 		const nextMain = simpleQualifiedName(newRoot, unit.newFile);
 		if (nextMain === project.main) return undefined;
 		const updated = updateProjectProperty(source, "main", nextMain);

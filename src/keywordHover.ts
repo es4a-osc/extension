@@ -21,8 +21,12 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	isSimpleAliasName,
+	resolveSimpleDefinitionName,
+	resolveSimpleNamespaceName,
 	isStaticProjectMember,
-	type SimpleProjectSemanticContext
+	type SimpleProjectSemanticContext,
+	type SimpleUnitSymbol
 } from "./simpleUnitSymbols";
 import { findAdjacentSimpleDocumentationComment } from "./simpleDocumentation";
 import { findPropertySectionStart } from "./simpleUnitSource";
@@ -216,11 +220,12 @@ function compilerDefinitions(sdk: Sdk): readonly CompilerDefinition[] {
 /** 按名称建立运行库定义索引，并保留清单分类。 */
 function runtimeDefinitions(
 	sdk: Sdk | undefined,
-	context: SimpleProjectSemanticContext | undefined
+	context: SimpleProjectSemanticContext | undefined,
+	semanticDefinitions: ReadonlyMap<string, LibraryDefinitionReference> = buildSemanticDefinitionIndex(sdk, context)
 ): ReadonlyMap<string, RuntimeDefinition> {
 	const definitions = new Map<string, RuntimeDefinition>();
 
-	for (const [name, reference] of buildSemanticDefinitionIndex(sdk, context)) {
+	for (const [name, reference] of semanticDefinitions) {
 		if (reference.manifest.kind === "compiler") {
 			continue;
 		}
@@ -408,6 +413,20 @@ function formatParameters(member: LibraryMember): string {
 	}).join(", ");
 }
 
+/** 项目类型提示使用完整身份，保留数组维数和 SDK 已有显示名。 */
+function projectTypeDisplay(type: string | undefined, definitions: ReadonlyMap<string, LibraryDefinitionReference>, unit?: SimpleUnitSymbol): string | undefined {
+	if (type === undefined) return undefined;
+	const name = type.replace(/\([^()]*\)$/u, "");
+	const reference = resolveSimpleDefinitionName(name, definitions, unit);
+	return reference?.manifest.kind === "project" ? reference.definition.name + type.slice(name.length) : type;
+}
+
+/** 只规范提示里的项目类型身份，不改源码，也不改变 SDK 的类型显示名称。 */
+function displayedProjectMember(member: LibraryMember, definitions: ReadonlyMap<string, LibraryDefinitionReference>, unit?: SimpleUnitSymbol): LibraryMember {
+	return { ...member, type: projectTypeDisplay(member.type, definitions, unit), return: projectTypeDisplay(member.return, definitions, unit),
+		params: member.params?.map((parameter) => ({ ...parameter, type: projectTypeDisplay(parameter.type, definitions, unit) ?? parameter.type })) };
+}
+
 /** 构造运行库成员的完整显示签名。 */
 function memberSignature(member: LibraryMember, group: LibraryMemberGroup): string {
 	if (group === "functions" || group === "events") {
@@ -451,9 +470,7 @@ function definitionSignature(entry: RuntimeDefinition): string {
 				return isComponentDefinitionKind(definition.kind) ? "组件" : undefined;
 		}
 	})();
-	const displayName = entry.reference.manifest.kind === "project"
-		? typeof definition.unitName === "string" ? definition.unitName : definition.name
-		: definition.name;
+	const displayName = definition.name;
 	return declaration === undefined ? displayName : `${declaration} ${displayName}`;
 }
 
@@ -623,7 +640,8 @@ function runtimeOverloadHover(
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	start: number,
 	end: number,
-	accessReference?: LibraryDefinitionReference
+	accessReference?: LibraryDefinitionReference,
+	context?: SimpleProjectSemanticContext
 ): SimpleKeywordHoverInfo | undefined {
 	const hovers = [...candidates]
 		.sort((left, right) => (left.member.params?.length ?? 0) - (right.member.params?.length ?? 0))
@@ -632,7 +650,8 @@ function runtimeOverloadHover(
 			accessReference ?? candidate.owner,
 			definitions,
 			start,
-			end
+			end,
+			context
 		));
 	const first = hovers[0];
 	return first === undefined ? undefined : hovers.length === 1
@@ -672,7 +691,7 @@ function runtimeDefinitionHover(
 			? { librarySymbol: libraryDefinitionTarget(entry.reference) }
 			: {}),
 		manifest: entry.reference.manifest.name,
-		name,
+		name: entry.reference.manifest.kind === "project" ? definition.name : name,
 		signature: definitionSignature(entry),
 		start
 	};
@@ -684,7 +703,8 @@ function runtimeMemberHover(
 	accessReference: LibraryDefinitionReference,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	start: number,
-	end: number
+	end: number,
+	context?: SimpleProjectSemanticContext
 ): SimpleKeywordHoverInfo {
 	const relations = memberRelations(
 		accessReference,
@@ -722,7 +742,9 @@ function runtimeMemberHover(
 				))
 			}),
 		...(relations.length === 0 ? {} : { relations }),
-		signature: memberSignature(member.member, member.group),
+		signature: memberSignature(member.owner.manifest.kind === "project"
+			? displayedProjectMember(member.member, definitions, context?.units?.find((unit) => unit.filePath === member.owner.definition.sourceFile))
+			: member.member, member.group),
 		start
 	};
 }
@@ -769,14 +791,15 @@ function sourceBindingHover(
 			manifest: context?.manifest.name,
 			name: binding.name,
 			...(relations.length === 0 ? {} : { relations }),
-			signature: memberSignature(projectMember, "functions"),
+			signature: memberSignature(displayedProjectMember(projectMember, definitions, context?.currentUnit), "functions"),
 			start
 		};
 	}
 
+	const type = projectTypeDisplay(binding.typeName, definitions, context?.currentUnit);
 	const typeDescription = binding.declaredTypeName === undefined
-		? binding.typeName
-		: `${binding.declaredTypeName}（当前收窄为 ${binding.typeName}）`;
+		? type
+		: `${projectTypeDisplay(binding.declaredTypeName, definitions, context?.currentUnit)}（当前收窄为 ${type}）`;
 	const passing = binding.passing === undefined ? "" : `${binding.passing} `;
 	const signatures: Readonly<Record<SimpleBinding["kind"], string>> = {
 		componentBinding: `组件 ${binding.name} 为 ${typeDescription}`,
@@ -818,10 +841,13 @@ function findRuntimeHover(
 		return undefined;
 	}
 
-	const entries = runtimeDefinitions(sdk, context);
-	const references = new Map(
-		[...entries].map(([name, entry]) => [name, entry.reference])
-	);
+	const semanticDefinitions = buildSemanticDefinitionIndex(sdk, context);
+	const entries = runtimeDefinitions(sdk, context, semanticDefinitions);
+	const visibleEntry = (name: string): RuntimeDefinition | undefined => {
+		const reference = resolveSimpleDefinitionName(name, semanticDefinitions);
+		return reference === undefined ? undefined : { reference, category: runtimeCategory(reference.manifest, reference.definition) };
+	};
+	const references = semanticDefinitions;
 	const qualifier = qualifierBefore(source, range.start);
 	const callArity = findCallableArgumentCount(source, range.end);
 
@@ -842,7 +868,7 @@ function findRuntimeHover(
 				? undefined
 				: findEffectiveMember(currentReference, ["events"], range.name, references);
 			if (member !== undefined && currentReference !== undefined && objectEvent !== undefined && context !== undefined) {
-				const result = runtimeMemberHover(member, currentReference, references, range.start, range.end);
+				const result = runtimeMemberHover(member, currentReference, references, range.start, range.end, context);
 				return {
 					...result,
 					// 根组件可能与当前单元同名；声明行仍属于编译器的对象事件。
@@ -860,7 +886,8 @@ function findRuntimeHover(
 
 		if (resolved === undefined) {
 			const qualifiedName = `${qualifier}.${range.name}`;
-			const qualifiedDefinition = entries.get(qualifiedName);
+			if (resolveSimpleBinding(source, range.start, qualifier.split(".")[0]!, context) !== undefined) return undefined;
+			const qualifiedDefinition = visibleEntry(qualifiedName);
 			return qualifiedDefinition === undefined
 				? undefined
 				: runtimeDefinitionHover(
@@ -917,10 +944,10 @@ function findRuntimeHover(
 			if (overloads.length === 0 && resolved.directCurrentUnit && resolved.access === "instance") {
 				overloads.push(...findFunctionOverloads(reference, range.name, references, staticFilter));
 			}
-			return runtimeOverloadHover(overloads, references, range.start, range.end, reference);
+			return runtimeOverloadHover(overloads, references, range.start, range.end, reference, context);
 		}
 
-		const result = runtimeMemberHover(member, reference, references, range.start, range.end);
+		const result = runtimeMemberHover(member, reference, references, range.start, range.end, context);
 		if (
 			member.group === "events"
 			&& isSourceEventDeclaration(source, range.start, qualifier, range.name)
@@ -958,7 +985,10 @@ function findRuntimeHover(
 	}
 
 	const alias = context?.currentUnit?.aliases.find((candidate) => candidate.name === range.name);
-	if (alias !== undefined) {
+	const aliasDeclaration = /^[ \t]*别名[ \t]*$/u.test(source.slice(source.lastIndexOf("\n", range.start - 1) + 1, range.start));
+	if (alias !== undefined && (aliasDeclaration || isSimpleAliasName(alias.name, semanticDefinitions) || (resolveSimpleDefinitionName(alias.name, semanticDefinitions) === undefined && resolveSimpleNamespaceName(alias.name, semanticDefinitions) === undefined))) {
+		const targetName = resolveSimpleDefinitionName(alias.target, semanticDefinitions)?.definition.name
+			?? resolveSimpleNamespaceName(alias.target, semanticDefinitions) ?? alias.target;
 		return {
 			category: "当前文档",
 			declarationSource: context?.currentUnit?.qualifiedName,
@@ -968,7 +998,7 @@ function findRuntimeHover(
 			kind: "alias",
 			manifest: context?.manifest.name,
 			name: alias.name,
-			signature: `别名 ${alias.name} = ${alias.target}`,
+			signature: `别名 ${alias.name} = ${targetName}`,
 			start: range.start
 		};
 	}
@@ -986,14 +1016,15 @@ function findRuntimeHover(
 			callArity
 		);
 		if (member !== undefined) {
-			return runtimeMemberHover(member, currentReference, references, range.start, range.end);
+			return runtimeMemberHover(member, currentReference, references, range.start, range.end, context);
 		}
 		const overload = runtimeOverloadHover(
 			findFunctionOverloads(currentReference, range.name, references),
 			references,
 			range.start,
 			range.end,
-			currentReference
+			currentReference,
+			context
 		);
 		if (overload !== undefined) {
 			return overload;
@@ -1016,7 +1047,7 @@ function findRuntimeHover(
 					group,
 					member,
 					owner: entry.reference
-				}, entry.reference, references, range.start, range.end);
+				}, entry.reference, references, range.start, range.end, context);
 			}
 		}
 	}
@@ -1035,12 +1066,12 @@ function findRuntimeHover(
 			});
 		}
 	}
-	const globalOverload = runtimeOverloadHover(globalOverloads, references, range.start, range.end);
+	const globalOverload = runtimeOverloadHover(globalOverloads, references, range.start, range.end, undefined, context);
 	if (globalOverload !== undefined) {
 		return globalOverload;
 	}
 
-	let definition = entries.get(range.name);
+	let definition = visibleEntry(range.name);
 	let definitionName = range.name;
 	let definitionStart = range.start;
 	if (definition === undefined) {
@@ -1051,7 +1082,7 @@ function findRuntimeHover(
 				cursor -= 1;
 			}
 			const candidate = source.slice(cursor, range.end);
-			const candidateDefinition = entries.get(candidate);
+			const candidateDefinition = visibleEntry(candidate);
 			if (candidateDefinition !== undefined) {
 				definition = candidateDefinition;
 				definitionName = candidate;

@@ -28,6 +28,7 @@ import {
 } from "./simpleDocumentation";
 import { splitSimpleUnitSource } from "./simpleUnitSource";
 import type { SimpleProjectResourceIndex } from "./simpleResourceSymbols";
+import { simpleQualifiedName } from "./simpleProjectPaths";
 import { stripSimpleLineComment } from "./simpleSourceLexical";
 
 const IDENTIFIER = "[\\p{L}][\\p{L}\\p{N}_]*";
@@ -58,6 +59,8 @@ export interface SimpleUnitSymbol {
 export interface SimpleProjectSemanticContext {
 	readonly currentUnit?: SimpleUnitSymbol;
 	readonly manifest: LibraryManifest;
+	/** 当前语义快照中的单元，用于按成员声明处解析其类型和别名。 */
+	readonly units?: readonly SimpleUnitSymbol[];
 	/** 仅由项目 res 目录推导、供资源补全、着色、悬停和定义跳转使用的独立索引。 */
 	readonly resources?: SimpleProjectResourceIndex;
 }
@@ -284,6 +287,7 @@ function parseCodeMembers(
 		const member: LibraryMember = {
 			...(description === undefined ? {} : { description }),
 			line: userCode.slice(0, match.index).split(/\r\n|\n|\r/u).length,
+			declarationOffset: match.index + match[0].indexOf(owner === undefined ? name : owner + "." + name, match[0].indexOf(declarationKind) + declarationKind.length) + (owner === undefined ? 0 : owner.length + 1),
 			name,
 			params: declarationKind === "属性" ? undefined : parseParameters(match[5] ?? ""),
 			return: declarationKind === "函数" ? match[6]?.trim() : undefined,
@@ -331,6 +335,7 @@ function parseCodeMembers(
 					initializer: { label: initializer, value: initializer }
 				}),
 				line: userCode.slice(0, match.index).split(/\r\n|\n|\r/u).length,
+				declarationOffset: match.index + match[0].indexOf(name, match[0].indexOf(match[2]!) + match[2]!.length),
 				name,
 				static: match[1] !== undefined || undefined,
 				type: valueMatch?.[2],
@@ -370,11 +375,7 @@ export function parseSimpleUnitSymbolsFromModel(
 ): SimpleUnitSymbol {
 	const resolvedFilePath = path.resolve(filePath);
 	const resolvedSourceRoot = path.resolve(sourceRoot);
-	const relativePath = path.relative(resolvedSourceRoot, resolvedFilePath);
-	const qualifiedName = relativePath
-		.slice(0, -path.extname(relativePath).length)
-		.split(path.sep)
-		.join(".");
+	const qualifiedName = simpleQualifiedName(resolvedSourceRoot, resolvedFilePath);
 	const name = path.basename(resolvedFilePath, path.extname(resolvedFilePath));
 	const unitType = property.document === undefined
 		? undefined
@@ -424,7 +425,7 @@ export function buildSemanticDefinitionIndex(
 ): ReadonlyMap<string, LibraryDefinitionReference> {
 	const definitions = new Map(buildDefinitionIndex(sdk?.manifests ?? []));
 	if (context === undefined) {
-		return definitions;
+		return scopedDefinitionIndex(definitions, context);
 	}
 
 	for (const category of context.manifest.categories) {
@@ -442,5 +443,115 @@ export function buildSemanticDefinitionIndex(
 		}
 	}
 
+	return scopedDefinitionIndex(definitions, context);
+}
+
+/** 规范身份供继承图使用，可见写法供源码解析使用，两者不能混为全局短名。 */
+class ScopedDefinitionIndex extends Map<string, LibraryDefinitionReference> {
+	readonly visible = new Map<string, LibraryDefinitionReference>();
+	readonly namespaces = new Map<string, string>();
+	readonly aliases = new Set<string>();
+	constructor(readonly canonical: ReadonlyMap<string, LibraryDefinitionReference>) { super(canonical); }
+}
+
+/** 源码名称只能通过当前作用域的可见入口解析。 */
+export function resolveSimpleDefinitionName(name: string, definitions: ReadonlyMap<string, LibraryDefinitionReference>, declaringUnit?: SimpleUnitSymbol): LibraryDefinitionReference | undefined {
+	if (declaringUnit !== undefined) return scopedDefinitionIndex(definitions instanceof ScopedDefinitionIndex ? definitions.canonical : definitions, { currentUnit: declaringUnit }).visible.get(name);
+	return definitions instanceof ScopedDefinitionIndex ? definitions.visible.get(name) : definitions.get(name);
+}
+
+/** 相对包路径必须先确定首段实际指向的命名空间，不能绕过近处遮蔽。 */
+export function resolveSimpleNamespaceName(name: string, definitions: ReadonlyMap<string, LibraryDefinitionReference>): string | undefined {
+	return definitions instanceof ScopedDefinitionIndex ? definitions.namespaces.get(name) : undefined;
+}
+
+/** 只有未被当前或父级命名空间遮蔽的别名才作为别名引用处理。 */
+export function isSimpleAliasName(name: string, definitions: ReadonlyMap<string, LibraryDefinitionReference>): boolean {
+	return definitions instanceof ScopedDefinitionIndex && definitions.aliases.has(name);
+}
+
+/** 单次分析派生可见入口，不建立长期缓存或 XML 副本。 */
+function scopedDefinitionIndex(canonical: ReadonlyMap<string, LibraryDefinitionReference>, context: Pick<SimpleProjectSemanticContext, "currentUnit"> | undefined): ScopedDefinitionIndex {
+	const definitions = new ScopedDefinitionIndex(canonical);
+	const types = new Map<string, LibraryDefinitionReference>();
+	const namespaces = new Set<string>();
+	for (const reference of new Set(canonical.values())) {
+		if (reference.manifest.kind === "compiler") continue;
+		const name = reference.definition.type?.trim() || reference.definition.name;
+		types.set(name, reference);
+		const parts = name.split(".");
+		for (let length = 1; length < parts.length; length += 1) namespaces.add(parts.slice(0, length).join("."));
+	}
+	const scopes: string[] = [];
+	let scope = context?.currentUnit?.qualifiedName.split(".").slice(0, -1).join(".") ?? "";
+	for (;;) {
+		scopes.push(scope);
+		if (scope.length === 0) break;
+		scope = scope.split(".").slice(0, -1).join(".");
+	}
+	type Entry = { readonly path: string; readonly reference?: LibraryDefinitionReference; readonly alias?: boolean };
+	const firstNames = new Map<string, Entry>();
+	const globals = new Map<string, Entry>();
+	for (const enclosing of scopes) {
+		const names = enclosing.length === 0 ? globals : firstNames;
+		const prefix = enclosing.length === 0 ? "" : enclosing + ".";
+		for (const name of namespaces) {
+			if (!name.startsWith(prefix)) continue;
+			const short = name.slice(prefix.length);
+			if (!short.includes(".") && !names.has(short)) names.set(short, { path: name });
+		}
+		for (const [name, reference] of types) {
+			if (!name.startsWith(prefix)) continue;
+			const short = name.slice(prefix.length);
+			if (!short.includes(".") && !names.has(short)) names.set(short, { path: name, reference });
+		}
+	}
+	/* SDK 公开名称保留既有清单入口；项目短名不再按全项目唯一性推断。 */
+	for (const [name, reference] of canonical) {
+		if (reference.manifest.kind !== "project" && !name.includes(".")) globals.set(name, { path: reference.definition.type?.trim() || reference.definition.name, reference });
+	}
+	const populate = (): void => {
+		definitions.visible.clear(); definitions.namespaces.clear(); definitions.aliases.clear();
+		const selected = new Map([...globals, ...firstNames]);
+		for (const [short, entry] of selected) {
+			if (entry.alias === true) definitions.aliases.add(short);
+			if (entry.reference !== undefined) definitions.visible.set(short, entry.reference);
+			else definitions.namespaces.set(short, entry.path);
+		}
+		for (const enclosing of scopes) {
+			const prefix = enclosing.length === 0 ? "" : enclosing + ".";
+			for (const [name, reference] of types) {
+				if (!name.startsWith(prefix)) continue;
+				const spelling = name.slice(prefix.length);
+				const first = spelling.split(".")[0]!;
+				if (selected.get(first)?.path === prefix + first) definitions.visible.set(spelling, reference);
+			}
+			for (const name of namespaces) {
+				if (!name.startsWith(prefix)) continue;
+				const spelling = name.slice(prefix.length);
+				const first = spelling.split(".")[0]!;
+				if (selected.get(first)?.path === prefix + first) definitions.namespaces.set(spelling, name);
+			}
+		}
+		/* 命名空间别名可以继续限定，但不能回退到其它同名空间。 */
+		for (const [short, entry] of selected) {
+			if (entry.reference !== undefined) continue;
+			for (const [name, reference] of types) {
+				if (name.startsWith(entry.path + ".")) definitions.visible.set(short + name.slice(entry.path.length), reference);
+			}
+			for (const name of namespaces) {
+				if (name.startsWith(entry.path + ".")) definitions.namespaces.set(short + name.slice(entry.path.length), name);
+			}
+		}
+	};
+	populate();
+	for (const alias of context?.currentUnit?.aliases ?? []) {
+		const reference = definitions.visible.get(alias.target);
+		const namespace = definitions.namespaces.get(alias.target);
+		if (reference !== undefined) globals.set(alias.name, { path: reference.definition.type?.trim() || reference.definition.name, reference, alias: true });
+		else if (namespace !== undefined) globals.set(alias.name, { path: namespace, alias: true });
+		populate();
+	}
+	for (const [name, reference] of definitions.visible) if (!definitions.has(name)) definitions.set(name, reference);
 	return definitions;
 }

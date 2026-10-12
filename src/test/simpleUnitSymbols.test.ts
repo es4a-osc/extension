@@ -219,7 +219,7 @@ test("项目索引让用户单元和属性组件共同参与补全、悬停与�
 	assert.ok(context);
 	const localVariableOffset = source.indexOf("变量 t 为 Test") + "变量 ".length;
 	const localVariable = findSimpleKeywordHover(source, localVariableOffset, sdk, context);
-	assert.equal(localVariable?.signature, "变量 t 为 Test");
+	assert.equal(localVariable?.signature, "变量 t 为 simple.smoketest.Test");
 	assert.equal(localVariable?.description, undefined);
 	const definitions = context.manifest.categories[0]?.definitions ?? [];
 	assert.ok(definitions.some((definition) => definition.name === "simple.smoketest.Test"));
@@ -245,9 +245,9 @@ test("项目索引让用户单元和属性组件共同参与补全、悬停与�
 
 	const hoverOffset = memberSource.indexOf("Test") + 1;
 	const hover = findSimpleKeywordHover(memberSource, hoverOffset, sdk, memberContext);
-	assert.equal(hover?.name, "Test");
+	assert.equal(hover?.name, "simple.smoketest.Test");
 	assert.equal(hover?.category, "项目单元");
-	assert.equal(hover?.signature, "接口 Test");
+	assert.equal(hover?.signature, "接口 simple.smoketest.Test");
 	assert.equal(hover?.description, undefined);
 	assert.equal(hover?.manifest, "SmokeTest");
 	assert.equal(hover?.declarationSource, "simple.smoketest.Test");
@@ -315,7 +315,7 @@ test("真实项目显式传址参数在声明和事件体中保持同一悬停",
 
 	const unitOffset = source.indexOf("StartTests.PrevTest") + 1;
 	const unitHover = findSimpleKeywordHover(source, unitOffset, sdk, context);
-	assert.equal(unitHover?.signature, "窗口 StartTests");
+	assert.equal(unitHover?.signature, "窗口 simple.runtime.tests.StartTests");
 	assert.equal(unitHover?.description, undefined);
 	assert.equal(unitHover?.manifest, "StartTests");
 	assert.equal(unitHover?.declarationSource, "simple.runtime.tests.StartTests");
@@ -426,34 +426,35 @@ test("SmokeTests 跨单元静态变量继续推导窗口实例成员", async () 
 	await index.updateProjects([project]);
 	const filePath = await simpleTestUnitPath("SmokeTests", "测试水平滚动框");
 	const original = fs.readFileSync(filePath, "utf8");
+	assert.ok(original.includes("切换窗口(主窗口.成_窗口实例)"), "真实样例必须包含本用例验证的窗口实例引用");
 	const source = original.replace(
-		"切换窗口(主窗口.成_主窗口)",
-		"切换窗口(主窗口.成_主窗口.bt)"
+		"切换窗口(主窗口.成_窗口实例)",
+		"切换窗口(主窗口.成_窗口实例.bt)"
 	);
-	const offset = source.indexOf("主窗口.成_主窗口.bt") + "主窗口.成_主窗口.bt".length;
+	const offset = source.indexOf("主窗口.成_窗口实例.bt") + "主窗口.成_窗口实例.bt".length;
 	const context = index.contextForFile(filePath, source);
 	const completion = provideSimpleCompletions(source, offset, await SDK, context);
 
 	assert.ok(completion?.candidates.some((candidate) => candidate.name === "标题"));
 
-	const staticVariableOffset = source.indexOf("成_主窗口") + 1;
+	const staticVariableOffset = source.indexOf("成_窗口实例") + 1;
 	const staticVariableHover = findSimpleKeywordHover(source, staticVariableOffset, await SDK, context);
-	assert.equal(staticVariableHover?.name, "成_主窗口");
+	assert.equal(staticVariableHover?.name, "成_窗口实例");
 	assert.equal(staticVariableHover?.kind, "staticVariable");
-	assert.equal(staticVariableHover?.signature, "静态 变量 成_主窗口 为 窗口");
+	assert.equal(staticVariableHover?.signature, "静态 变量 成_窗口实例 为 窗口");
 
 	const qualifiedSource = original.replace(
-		"主窗口.成_主窗口",
-		"simple.runtime.smoketests.主窗口.成_主窗口"
+		"主窗口.成_窗口实例",
+		"simple.runtime.smoketests.主窗口.成_窗口实例"
 	);
 	const qualifiedContext = index.contextForFile(filePath, qualifiedSource);
-	const qualifiedOffset = qualifiedSource.indexOf(".成_主窗口") + 2;
+	const qualifiedOffset = qualifiedSource.indexOf(".成_窗口实例") + 2;
 	const qualifiedHover = findSimpleKeywordHover(qualifiedSource, qualifiedOffset, await SDK, qualifiedContext);
-	assert.equal(qualifiedHover?.name, "成_主窗口");
+	assert.equal(qualifiedHover?.name, "成_窗口实例");
 	assert.equal(qualifiedHover?.kind, "staticVariable");
-	assert.equal(qualifiedHover?.signature, "静态 变量 成_主窗口 为 窗口");
+	assert.equal(qualifiedHover?.signature, "静态 变量 成_窗口实例 为 窗口");
 
-	const titleSource = source.replace("主窗口.成_主窗口.bt", "主窗口.成_主窗口.标题");
+	const titleSource = source.replace("主窗口.成_窗口实例.bt", "主窗口.成_窗口实例.标题");
 	const titleContext = index.contextForFile(filePath, titleSource);
 	const titleOffset = titleSource.indexOf(".标题") + 2;
 	const titleHover = findSimpleKeywordHover(titleSource, titleOffset, await SDK, titleContext);
@@ -476,11 +477,12 @@ test("SmokeTests 静态变量声明悬停明确标识静态语义", async () => 
 	);
 	const source = fs.readFileSync(filePath, "utf8");
 	const context = index.contextForFile(filePath, source);
-	const offset = source.indexOf("成_主窗口") + 1;
+	assert.ok(source.includes("静态 变量 成_窗口实例 为 窗口"));
+	const offset = source.indexOf("成_窗口实例") + 1;
 	const hover = findSimpleKeywordHover(source, offset, await SDK, context);
 
 	assert.equal(hover?.kind, "staticVariable");
-	assert.equal(hover?.signature, "静态 变量 成_主窗口 为 窗口");
+	assert.equal(hover?.signature, "静态 变量 成_窗口实例 为 窗口");
 });
 
 test("SmokeTest 当前单元短名和全限定名访问静态变量时提供悬停", async () => {
@@ -550,7 +552,7 @@ test("Ell 从属性 XML 继承 Brick 并提供当前对象及继承成员提示"
 	);
 	assert.equal(
 		ellHover?.signature,
-		"对象 Ell"
+		"对象 simple.samples.tetris.Ell"
 	);
 	assert.equal(ellHover?.baseObject, "simple.samples.tetris.Brick");
 	assert.deepEqual(

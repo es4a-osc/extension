@@ -93,6 +93,13 @@ describe("Simple 组件改名", () => {
 		);
 	});
 
+	test("同一窗口的不同容器也不能使用重复组件名", () => {
+		const source = '$属性\r\n\t$资源 $窗口\r\n\t$定义 主窗口 $为 窗口\r\n\t\t$定义 面板1 $为 面板\r\n\t\t\t$定义 按钮1 $为 按钮\r\n\t\t\t$结束 $定义\r\n\t\t$结束 $定义\r\n\t\t$定义 面板2 $为 面板\r\n\t\t\t$定义 按钮2 $为 按钮\r\n\t\t\t$结束 $定义\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n$结束 $属性\r\n';
+		const document = parseSimplePropertyXml(source)!;
+		assert.throws(() => renameSimpleComponent("", document, "/属性/定义[1]/定义[1]/定义[1]", "按钮2"), /已经存在/u);
+		assert.equal(serializeSimplePropertySource(document), source);
+	});
+
 	test("组件改名只同步直接兄弟的 simple.anchor XML 表达式", async () => {
 		const source = [
 			"事件 按钮1.被单击()",
@@ -123,6 +130,9 @@ describe("Simple 组件改名", () => {
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
 		const sdk = await loadSdk(path.join(ROOT_DIRECTORY, "..", "sdk", "sdk.json"));
+		const unsynchronized = renameSimpleComponent(splitSimpleUnitSource(source).userCode, document, "/属性/定义[1]/定义[1]/定义[1]", "中心按钮", sdk, false);
+		assert.equal(unsynchronized.userCode, splitSimpleUnitSource(source).userCode);
+		assert.equal(serializeSimplePropertySource(unsynchronized.propertyDocument), splitSimpleUnitSource(source).propertySource.replace("$定义 按钮1 $为", "$定义 中心按钮 $为"));
 		const updated = renameSimpleComponent(
 			splitSimpleUnitSource(source).userCode,
 			document,

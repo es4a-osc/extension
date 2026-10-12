@@ -507,7 +507,7 @@ suite("ES4A 扩展", () => {
 		assert.notEqual(eventHeader, -1);
 
 		const unitHover = hoverText(eventHeader + "事件 ".length + 1);
-		assert.match(unitHover, /对象 Ell/u);
+		assert.match(unitHover, /对象 simple\.samples\.tetris\.Ell/u);
 		assert.match(unitHover, /基础对象：simple\.samples\.tetris\.Brick/u);
 		assert.match(unitHover, /所属项目：Tetris/u);
 		assert.match(unitHover, /所属单元：simple\.samples\.tetris\.Ell/u);
@@ -1116,7 +1116,12 @@ suite("ES4A 扩展", () => {
 
 			const cleanResult = await reconcileSimpleUnitTabs([]);
 			assert.ok(cleanResult.closed >= 1);
-			assert.equal(cleanResult.retainedDirtySources.length, 0);
+			// 同一宿主的前序测试可以留下其它未保存单元，只核对当前样例的保留行为。
+			assert.equal(cleanResult.retainedDirtySources.some((uri) => sameLocalPath(uri.fsPath, cleanFile)), false);
+			// 关闭请求完成与宿主标签列表事件分开传递；等实际列表收敛后检查界面。
+			for (let attempt = 0; attempt < 100 && tabsForFile(cleanFile).length > 0; attempt += 1) {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			}
 			assert.equal(tabsForFile(cleanFile).length, 0);
 
 			await fs.writeFile(dirtyFile, windowSource, "utf8");
@@ -1130,7 +1135,7 @@ suite("ES4A 扩展", () => {
 			await vscode.commands.executeCommand("vscode.openWith", dirtyUri, "es4a.simpleDesigner");
 
 			const dirtyResult = await reconcileSimpleUnitTabs([]);
-			assert.equal(dirtyResult.retainedDirtySources.length, 1);
+			assert.equal(dirtyResult.retainedDirtySources.filter((uri) => sameLocalPath(uri.fsPath, dirtyFile)).length, 1);
 			assert.equal(tabsForFile(dirtyFile).some((tab) => (
 				tab.input instanceof vscode.TabInputCustom
 			)), false);
@@ -1808,7 +1813,7 @@ suite("ES4A 扩展", () => {
 			"恢复设计器前必须先注册 simple-code 虚拟文档协议"
 		);
 		assert.doesNotMatch(mainSource, /resolveRestoredDesignerTabTitles/u);
-		assert.doesNotMatch(unitTabsSource, /resolveRestoredDesignerTabTitles|"vscode\.openWith"/u);
+		assert.doesNotMatch(unitTabsSource, /resolveRestoredDesignerTabTitles/u);
 		assert.match(css, /\.designer-shell \{[^}]*display: flex;[^}]*gap: 8px;[^}]*align-items: stretch;/u);
 		assert.match(css, /\.left-column \{[^}]*min-height: 0;[^}]*flex-direction: column;[^}]*gap: 8px;/u);
 		assert.match(css, /\.property-section \{[^}]*min-height: 0;[^}]*flex: 1 1 0;/u);
@@ -2213,6 +2218,100 @@ suite("ES4A 扩展", () => {
 		assert.equal(alias.kind, vscode.CompletionItemKind.Reference);
 		assert.ok(alias.documentation instanceof vscode.MarkdownString);
 		assert.equal(alias.documentation.value, "**日期工具说明**");
+	});
+
+	test("VS Code 补全保留原名称并使混合首拼通过编辑器过滤", async () => {
+		const extension = vscode.extensions.getExtension("es4a.es4a");
+		assert.ok(extension);
+		const provider = new SimpleCompletionProvider();
+		provider.updateSdk(await loadSdk(path.resolve(extension.extensionPath, "..", "sdk", "sdk.json")));
+		for (const [query, filterText] of [
+			["分割", "分割文本"],
+			["fgwb", "fgwb"],
+			["分割wb", "分割wb"],
+			["fg文本", "fg文本"],
+			["分g文", "分g文b"],
+			["分割WB", "分割WB"]
+		] as const) {
+			const prefix = `过程 Run()\r\n\t数组操作.${query}`;
+			const document = await vscode.workspace.openTextDocument({
+				content: `${prefix}\r\n结束 过程`, language: "simple"
+			});
+			const result = provider.provideCompletionItems(document, document.positionAt(prefix.length));
+			const item = result.items.find((candidate) => candidate.label === "分割文本");
+			assert.ok(item, query);
+			assert.equal(item.filterText, filterText);
+			assert.equal(document.getText(item.range as vscode.Range), query);
+			assert.ok(item.insertText instanceof vscode.SnippetString);
+			assert.ok(item.insertText.value.startsWith("分割文本("));
+			assert.equal(result.isIncomplete, true);
+		}
+	});
+
+	test("编辑器修改变量声明名称不推荐自身且正文引用仍能补全", async () => {
+		await vscode.commands.executeCommand("es4a.refreshLibraries");
+		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-declaration-completion-"));
+		try {
+			const sourceFile = path.join(temporaryDirectory, "声明.simple");
+			const prefix = "过程 Run()\r\n\t变量 局_服务意图";
+			await fs.writeFile(sourceFile, `${prefix} 为 意图\r\n\t局_服务\r\n结束 过程`, "utf8");
+			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(sourceFile)));
+			const editor = await vscode.window.showTextDocument(document, { preview: false });
+			assert.equal(vscode.workspace.getConfiguration("editor", { uri: document.uri, languageId: "simple" }).get("wordBasedSuggestions"), "off");
+			editor.selection = new vscode.Selection(document.positionAt(prefix.length), document.positionAt(prefix.length));
+			try {
+				await vscode.commands.executeCommand("type", { text: "1" });
+				assert.ok(document.getText().includes("变量 局_服务意图1 为 意图"));
+				const declaration = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", document.uri, editor.selection.active);
+				assert.deepEqual(declaration.items.map((item) => typeof item.label === "string" ? item.label : item.label.label), []);
+				await vscode.commands.executeCommand("editor.action.triggerSuggest");
+				await vscode.commands.executeCommand("hideSuggestWidget");
+				const referenceOffset = document.getText().indexOf("\r\n\t局_服务\r\n") + "\r\n\t局_服务".length;
+				const reference = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", document.uri, document.positionAt(referenceOffset));
+				assert.ok(reference.items.some((item) => item.label === "局_服务意图1"));
+			} finally {
+				await vscode.commands.executeCommand("hideSuggestWidget");
+				if (document.isDirty) await vscode.commands.executeCommand("workbench.action.files.revert");
+				await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+			}
+		} finally {
+			assert.equal(path.dirname(temporaryDirectory), os.tmpdir());
+			await fs.rm(temporaryDirectory, { recursive: true, force: true });
+		}
+	});
+
+	test("编辑器补全列表在中文与字母交替输入后仍能接受正确候选", async () => {
+		await vscode.commands.executeCommand("es4a.refreshLibraries");
+		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-mixed-completion-"));
+		try {
+			for (const [prefixQuery, suffix] of [["分割", "wb"], ["fg", "文本"]] as const) {
+				const sourceFile = path.join(temporaryDirectory, `${prefixQuery}.simple`);
+				const prefix = `过程 Run()\r\n\t数组操作.${prefixQuery}`;
+				await fs.writeFile(sourceFile, `${prefix}\r\n结束 过程`, "utf8");
+				const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(sourceFile)));
+				const editor = await vscode.window.showTextDocument(document, { preview: false });
+				editor.selection = new vscode.Selection(document.positionAt(prefix.length), document.positionAt(prefix.length));
+				try {
+					await vscode.commands.executeCommand("editor.action.triggerSuggest");
+					await new Promise((resolve) => setTimeout(resolve, 150));
+					await vscode.commands.executeCommand("type", { text: suffix });
+					for (let attempt = 0; attempt < 20 && !document.getText().includes("数组操作.分割文本("); attempt += 1) {
+						await new Promise((resolve) => setTimeout(resolve, 100));
+						await vscode.commands.executeCommand("selectFirstSuggestion");
+						await vscode.commands.executeCommand("acceptSelectedSuggestion");
+					}
+					assert.ok(document.getText().includes("数组操作.分割文本("), `${prefixQuery + suffix}: ${document.getText()}`);
+				} finally {
+					await vscode.commands.executeCommand("hideSuggestWidget");
+					await vscode.commands.executeCommand("leaveSnippet");
+					if (document.isDirty) await vscode.commands.executeCommand("workbench.action.files.revert");
+					await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+				}
+			}
+		} finally {
+			assert.equal(path.dirname(temporaryDirectory), os.tmpdir());
+			await fs.rm(temporaryDirectory, { recursive: true, force: true });
+		}
 	});
 
 	test("方法补全复用光标后已有括号且缺少括号时插入参数片段", async () => {
@@ -5049,7 +5148,7 @@ ${propertySource}`;
 				}
 				await new Promise((resolve) => setTimeout(resolve, 20));
 			}
-			assert.fail(`单元移动状态未同步到 ${existingFile}`);
+			assert.fail(`单元移动状态未同步到 ${existingFile}：当前标签 ${[...tabKindsAt(existingFile)].join("、")}，旧路径标签 ${[...tabKindsAt(missingFile)].join("、")}`);
 		};
 		try {
 			await fs.mkdir(sourceDirectory, { recursive: true });
@@ -5083,23 +5182,14 @@ ${propertySource}`;
 			await waitForMoveState(targetFile, sourceFile);
 			assert.deepEqual(tabKindsAt(targetFile), new Set(["code", "contentPreview", "xmlPreview"]));
 
-			const undoEdit = new vscode.WorkspaceEdit();
-			undoEdit.renameFile(
-				toSimpleCodeUri(vscode.Uri.file(targetFile)),
-				toSimpleCodeUri(vscode.Uri.file(sourceFile)),
-				{ overwrite: false }
-			);
-			assert.equal(await vscode.workspace.applyEdit(undoEdit), true);
+			// 文件参与者协调真实路径和虚拟会话，验证同一平台事务，不能只反向移动虚拟会话。
+			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(targetFile))), { preview: false });
+			await vscode.commands.executeCommand("undo");
 			await waitForMoveState(sourceFile, targetFile);
 			assert.deepEqual(tabKindsAt(sourceFile), new Set(["code", "contentPreview", "xmlPreview"]));
 
-			const redoEdit = new vscode.WorkspaceEdit();
-			redoEdit.renameFile(
-				toSimpleCodeUri(vscode.Uri.file(sourceFile)),
-				toSimpleCodeUri(vscode.Uri.file(targetFile)),
-				{ overwrite: false }
-			);
-			assert.equal(await vscode.workspace.applyEdit(redoEdit), true);
+			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(sourceFile))), { preview: false });
+			await vscode.commands.executeCommand("redo");
 			await waitForMoveState(targetFile, sourceFile);
 			assert.deepEqual(tabKindsAt(targetFile), new Set(["code", "contentPreview", "xmlPreview"]));
 		} finally {
@@ -5116,7 +5206,7 @@ ${propertySource}`;
 		}
 	});
 
-	test("设计器打开时拒绝移动单元并保留原文件", async () => {
+	test("干净的设计器标签随单元移动重新绑定新 URI", async () => {
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-move-open-designer-"));
 		const sourceRoot = path.join(temporaryDirectory, "src");
 		const sourceDirectory = path.join(sourceRoot, "old");
@@ -5153,19 +5243,20 @@ ${propertySource}`;
 				project
 			};
 			await vscode.commands.executeCommand("es4a.openDesigner", source);
-			await assert.rejects(
-				async () => vscode.commands.executeCommand("es4a.internal.moveUnitToFolder", source, target),
-				/请先关闭设计器后再移动/u
-			);
-			assert.equal(await fileExists(sourceFile), true);
-			assert.equal(await fileExists(targetFile), false);
+			await vscode.commands.executeCommand("es4a.internal.moveUnitToFolder", source, target);
+			assert.equal(await fileExists(sourceFile), false);
+			assert.equal(await fileExists(targetFile), true);
+			assert.ok(vscode.window.tabGroups.all.some((group) => group.tabs.some((tab) => {
+				const binding = resolveSimpleUnitTab(tab);
+				return binding?.kind === "designer" && sameLocalPath(binding.sourceUri.fsPath, targetFile);
+			})));
 		} finally {
 			await vscode.commands.executeCommand("es4a.internal.removeProject", projectFile);
 			await fs.rm(temporaryDirectory, { force: true, recursive: true });
 		}
 	});
 
-	test("单元移动只改变文件路径并可整体撤销重做", async function () {
+	test("单元移动同步用户代码、XML 关系和 main 并可整体撤销重做", async function () {
 		this.timeout(60_000);
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
@@ -5227,7 +5318,13 @@ ${propertySource}`;
 			assert.equal(await fileExists(movedFile), false);
 			assert.equal(await fileExists(movedTargetFile), true);
 			assert.equal(await fs.readFile(movedTargetFile, "utf8"), movedSource);
-			assert.equal(await fs.readFile(callerFile, "utf8"), callerSource);
+			const callerDocument = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(callerFile)));
+			const projectDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(projectFile));
+			assert.equal(callerDocument.getText(), getVisibleSimpleUnitUserCode(callerSource.replaceAll("old.目标", "new.目标")));
+			assert.equal(callerDocument.isDirty, true);
+			assert.equal(getVisibleSimpleUnitUserCode(await fs.readFile(callerFile, "utf8")), getVisibleSimpleUnitUserCode(callerSource));
+			assert.equal(projectDocument.getText(), projectSource.replace("old.目标", "new.目标"));
+			assert.equal(projectDocument.isDirty, true);
 			assert.equal(await fs.readFile(projectFile, "utf8"), projectSource);
 			assert.ok(vscode.workspace.textDocuments.some((candidate) => (
 				sameLocalPath(toSimpleSourceUri(candidate.uri)?.fsPath, movedTargetFile)
@@ -5237,15 +5334,17 @@ ${propertySource}`;
 			assert.equal(await fileExists(movedFile), true);
 			assert.equal(await fileExists(movedTargetFile), false);
 			assert.equal(await fs.readFile(movedFile, "utf8"), movedSource);
-			assert.equal(await fs.readFile(callerFile, "utf8"), callerSource);
-			assert.equal(await fs.readFile(projectFile, "utf8"), projectSource);
+			assert.equal(callerDocument.getText(), getVisibleSimpleUnitUserCode(callerSource));
+			assert.equal(projectDocument.getText(), projectSource);
 
 			await vscode.commands.executeCommand("redo");
 			assert.equal(await fileExists(movedFile), false);
 			assert.equal(await fileExists(movedTargetFile), true);
 			assert.equal(await fs.readFile(movedTargetFile, "utf8"), movedSource);
-			assert.equal(await fs.readFile(callerFile, "utf8"), callerSource);
-			assert.equal(await fs.readFile(projectFile, "utf8"), projectSource);
+			assert.equal(callerDocument.getText(), getVisibleSimpleUnitUserCode(callerSource.replaceAll("old.目标", "new.目标")));
+			assert.equal(projectDocument.getText(), projectSource.replace("old.目标", "new.目标"));
+			assert.ok(await callerDocument.save());
+			assert.ok(await projectDocument.save());
 		} finally {
 			await vscode.commands.executeCommand("es4a.internal.removeProject", projectFile);
 			const activeSource = toSimpleSourceUri(
@@ -6353,14 +6452,14 @@ ${propertySource}`;
 		try {
 			await provider.refresh();
 			const library = provider.getChildren().find(
-				(node) => node.kind === "manifest" && node.manifest.name === "HTTP服务扩展库"
+				(node) => node.kind === "manifest" && node.manifest.name === "HTTP服务库"
 			);
 			assert.ok(library?.kind === "manifest", "没有找到 HTTP 服务扩展库根节点");
 			const item = provider.getTreeItem(library);
 			assert.equal(item.description, "0.1.0");
 			assert.equal(item.contextValue, "es4a.libraryManifest");
 			assert.ok(item.tooltip instanceof vscode.MarkdownString);
-			assert.match(item.tooltip.value, /^\*\*HTTP服务扩展库\*\*  \n提供 HTTP 服务器路由注册与请求响应功能。\n\n类别：扩展库  \n版本：0\.1\.0/u);
+			assert.match(item.tooltip.value, /^\*\*HTTP服务库\*\*  \n基于\[AndroidAsync\]\(https:\/\/github\.com\/koush\/AndroidAsync\)封装的HTTP服务端，支持HTTP、WebSocket通信功能。\n\n类别：扩展库  \n版本：0\.1\.0/u);
 			assert.match(item.tooltip.value, /作者：树先生（\[xhwsd@qq\.com\]\(mailto:xhwsd%40qq\.com\)）/u);
 			assert.match(item.tooltip.value, /目录：simple\.library\.wsd\.httpserver/u);
 			assert.ok(item.tooltip.value.endsWith("目录：simple.library.wsd.httpserver"));
@@ -6544,8 +6643,8 @@ ${propertySource}`;
 			assert.equal(memberItem.label, "置边距");
 			assert.equal(memberItem.description, "← 可视组件");
 			assert.ok(memberItem.tooltip instanceof vscode.MarkdownString);
-			assert.match(memberItem.tooltip.value, /leftMargin 为 整数型/);
-			assert.match(memberItem.tooltip.value, /^\*\*置边距\([^\r\n]+\*\*  \n设置组件的边距。\n\n\*左边距：\*/u);
+			assert.match(memberItem.tooltip.value, /^\*\*置边距\(左边距 为 变体型, 顶边距 为 变体型, 右边距 为 变体型, 底边距 为 变体型\)\*\*  \n\*左边距：\*/u);
+			assert.match(memberItem.tooltip.value, /\n\n设置组件的边距。\n\n继承自：可视组件$/u);
 			assert.match(memberItem.tooltip.value, /\*底边距：\*[\s\S]+\n\n继承自：可视组件$/u);
 			const declaredSetMargin = await provider.findSymbol(
 				libraryMemberTarget(setMargin.value.owner, "functions", setMargin.value.member)
@@ -6747,14 +6846,14 @@ ${propertySource}`;
 		);
 	});
 
-	test("参数提示按限定变量类型列出运行库重载", async () => {
+	test("参数提示按完整限定变量类型列出扩展类库重载", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(path.resolve(extension.extensionPath, "..", "sdk", "sdk.json"));
 		const sourceRoot = "C:\\project\\src";
 		const fullSource = [
 			"过程 Run()",
-			"\t变量 list 为 分组列表框",
+			"\t变量 list 为 simple.library.wsd.grouplist.分组列表框",
 			"\tlist.添加子项(1, \"\", \"\", \"\", ",
 			"结束 过程",
 			"$属性",
@@ -6790,10 +6889,10 @@ ${propertySource}`;
 
 		assert.ok(help);
 		assert.deepEqual(help.signatures.map((signature) => signature.label), [
-			"list.添加子项(groupid 为 整数型, title 为 文本型)",
-			"list.添加子项(groupid 为 整数型, image 为 文本型, title 为 文本型, info 为 文本型, buttonimage 为 文本型, buttontitle 为 文本型)"
+			"list.添加子项(groupid 为 整数型, image 为 文本型, title 为 文本型, info 为 文本型, buttonimage 为 文本型, buttontitle 为 文本型)",
+			"list.添加子项(groupid 为 整数型, title 为 文本型)"
 		]);
 		assert.equal(help.activeParameter, 4);
-		assert.equal(help.activeSignature, 1);
+		assert.equal(help.activeSignature, 0);
 	});
 });

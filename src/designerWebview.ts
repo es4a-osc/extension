@@ -7,6 +7,9 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { isAutomaticSyncEnabled } from "./automaticSyncSettings";
+import type { SimpleUnitChange } from "./refactoringModel";
+import type { RelatedSimpleCodeEdit } from "./simpleCodeFileSystem";
 import { createComponentIconSources } from "./componentIcon";
 import {
 	collectUnavailableComponentNames,
@@ -49,9 +52,9 @@ import {
 } from "./designerComponentEvents";
 import {
 	PropertyPanelSymbolValidationError,
-	updatePropertyPanelValue,
 	type PropertyPanelValueRequest
 } from "./propertyPanel";
+import { executeSimplePropertyOperation } from "./propertyOperations";
 import { createPropertyPanelModel, type PropertyPanelModel } from "./propertyPanelModel";
 import {
 	getPropertyXmlAttribute,
@@ -275,13 +278,16 @@ export function createDesignerWebviewModel(
 /** 在设计器标签页中复用当前单元树上下文，并独立管理 XML 修改状态。 */
 export class SimpleDesignerProvider implements vscode.CustomEditorProvider<SimpleDesignerDocument>, vscode.Disposable {
 	private readonly panels = new Set<DesignerPanelState>();
+	private readonly propertyCommits = new Set<SimpleDesignerDocument>();
 	private readonly documentOperations = new KeyedTaskQueue();
 	private readonly documentChangeEmitter = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<SimpleDesignerDocument>>();
 	private readonly propertyChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+	private readonly focusEmitter = new vscode.EventEmitter<void>();
 	private propertyValidationStatus?: vscode.Disposable;
 	private sdk?: Sdk;
 
 	readonly onDidChangeProperty = this.propertyChangeEmitter.event;
+	readonly onDidFocus = this.focusEmitter.event;
 	readonly onDidChangeCustomDocument = this.documentChangeEmitter.event;
 	private readonly defaultComponentIconPath: string;
 
@@ -293,7 +299,8 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		private readonly semanticContextForDocument?: (
 			document: vscode.TextDocument,
 			source: string
-		) => SimpleProjectSemanticContext | undefined
+		) => SimpleProjectSemanticContext | undefined,
+		private readonly planComponentRename?: (document: vscode.TextDocument, componentPath: string, newName: string) => Promise<readonly SimpleUnitChange[]>
 	) {
 		this.defaultComponentIconPath = vscode.Uri.joinPath(
 			extensionUri,
@@ -444,9 +451,10 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 	}
 
 	/** 当前标签页文档变化时刷新同一单元的所有设计器，并保持仍有效的 XML 选择。 */
-	refreshDocument(document: vscode.TextDocument): void {
+	refreshDocument(document: vscode.TextDocument, componentRename?: { readonly from: string; readonly to: string }): void {
 		for (const state of this.panels) {
 			if (sameDocumentSource(document.uri, state.document.uri)) {
+				if (componentRename !== undefined && state.selectedComponentName === componentRename.from) state.selectedComponentName = componentRename.to;
 				state.document.observeCodeDocument(document);
 				this.render(state);
 			}
@@ -515,6 +523,8 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		if (!state.initialized || !state.ready || !state.panel.visible) {
 			return;
 		}
+		// 跨区事务先切换 XML 再更新代码；中途刷新不能拿旧组件名解析新 XML 并清空选择。
+		if ([...this.propertyCommits].some((document) => sameDocumentSource(document.uri, state.document.uri))) return;
 		const result = this.currentResult(state);
 		const rootPath = result.document === undefined ? undefined : "/" + result.document.root.name;
 		if (result.document !== undefined && state.selectedComponentName !== undefined) {
@@ -568,14 +578,17 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			return;
 		}
 		if (parsedMessage.contextToken !== state.contextToken) {
+			this.finishPropertyRequest(state, parsedMessage, false);
 			/* 令牌不属于当前标签页时拒绝修改，同时重发模型使仍存活的 Webview 恢复同步。 */
 			this.render(state);
 			return;
 		}
+		if (parsedMessage.type === "focus") { this.focusEmitter.fire(); return; }
 		if (parsedMessage.type === "selectNode") {
 			/* 先失焦的写入可能已经重绘：纯选择按当前组件身份定位；携带编辑仍严格校验版本。 */
 			if (parsedMessage.renderVersion > state.renderVersion
 				|| parsedMessage.pendingPropertyEdit !== undefined && parsedMessage.renderVersion !== state.renderVersion) {
+				this.finishPropertyRequest(state, parsedMessage, false);
 				this.render(state);
 				return;
 			}
@@ -583,6 +596,7 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 				/* 先记住点击目标；有待提交值时延后重绘，避免输入框在失焦前被旧模型覆盖。 */
 				this.selectNode(state, parsedMessage, parsedMessage.pendingPropertyEdit === undefined);
 			} catch (error) {
+				this.finishPropertyRequest(state, parsedMessage, false);
 				const detail = error instanceof Error ? error.message : String(error);
 				void vscode.window.showErrorMessage("设计器操作失败：" + detail);
 				this.render(state);
@@ -598,6 +612,7 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			"renderVersion" in parsedMessage
 			&& parsedMessage.renderVersion !== state.renderVersion
 		) {
+			this.finishPropertyRequest(state, parsedMessage, false);
 			this.render(state);
 			return;
 		}
@@ -643,6 +658,7 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		>
 	): Promise<void> {
 		if (!this.panels.has(state)) return;
+		let succeeded = false;
 		try {
 			switch (parsedMessage.type) {
 				case "selectNode":
@@ -721,11 +737,22 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 					await this.updateProperty(state, parsedMessage);
 					break;
 			}
+			succeeded = true;
 		} catch (error) {
 			const detail = error instanceof Error ? error.message : String(error);
-			await vscode.window.showErrorMessage("设计器操作失败：" + detail);
+			void vscode.window.showErrorMessage("设计器操作失败：" + detail);
 			this.render(state);
+		} finally {
+			this.finishPropertyRequest(state, parsedMessage, succeeded);
 		}
+	}
+
+	/** 即使请求过期或操作失败，也立即结束对应的临时显示，不等待用户关闭错误通知。 */
+	private finishPropertyRequest(state: DesignerPanelState, message: DesignerWebviewMessage, succeeded: boolean): void {
+		const request = message.type === "updateXmlValue" ? message
+			: message.type === "selectNode" || message.type === "saveDocument" ? message.pendingPropertyEdit : undefined;
+		if (request?.requestId === undefined || !this.panels.has(state)) return;
+		void state.panel.webview.postMessage({ type: "propertyOperationResult", contextToken: request.contextToken, requestId: request.requestId, succeeded });
 	}
 
 	/** 读取真实系统剪贴板并只返回是否为有效组件 XML，不触发任何文档修改。 */
@@ -873,6 +900,16 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		}
 	}
 
+	/** 提交期间阻止同一单元的中间投影；调用者协调选择后再统一通知，失败则保留原选择。 */
+	private async withPropertyCommit(document: SimpleDesignerDocument, commit: () => Promise<void>): Promise<void> {
+		this.propertyCommits.add(document);
+		try {
+			await commit();
+		} finally {
+			this.propertyCommits.delete(document);
+		}
+	}
+
 	/** 提交一次设计器独立 XML 事务，并向 VS Code 登记设计器自己的撤销和修改状态。 */
 	private async applyDesignerEdit(
 		state: DesignerPanelState,
@@ -882,37 +919,42 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		updatedUserCode: string,
 		selectedXmlPath?: string,
 		label = "修改设计器",
-	renamedComponent?: { readonly from: string; readonly to: string }
+		renamedComponent?: { readonly from: string; readonly to: string },
+		relatedCode: readonly RelatedSimpleCodeEdit[] = []
 	): Promise<void> {
+		const previousUserCode = codeDocument.getText();
 		const previousSelection = {
 			componentName: state.selectedComponentName,
 			xmlPath: state.selectedXmlPath
 		};
-		await this.codeDocuments.applyDesignerPropertyEdit(
-			codeDocument,
-			currentPropertyDocument,
-			updatedPropertyDocument,
-			updatedUserCode
-		);
-		const retainedSelection = selectedXmlPath === undefined && state.selectedComponentName !== undefined
-			? resolveDesignerComponentIdentity(updatedPropertyDocument, {
-				componentName: renamedComponent?.from === state.selectedComponentName
-					? renamedComponent.to
-					: state.selectedComponentName,
-				xmlPath: state.selectedXmlPath ?? "/"
-			}, this.sdk).xmlPath
-			: selectedXmlPath ?? state.selectedXmlPath;
-		const nextIdentity = componentIdentityAtPath(updatedPropertyDocument, retainedSelection);
-		state.selectedComponentName = nextIdentity?.componentName;
-		state.selectedXmlPath = retainedSelection;
-		if (renamedComponent !== undefined) {
-			for (const panel of this.panels) {
-				if (
-					sameDocumentSource(panel.document.uri, state.document.uri)
-					&& panel.selectedComponentName === renamedComponent.from
-				) panel.selectedComponentName = renamedComponent.to;
+		await this.withPropertyCommit(state.document, async () => {
+			await this.codeDocuments.applyDesignerPropertyEdit(
+				codeDocument,
+				currentPropertyDocument,
+				updatedPropertyDocument,
+				updatedUserCode,
+				relatedCode
+			);
+			const retainedSelection = selectedXmlPath === undefined && state.selectedComponentName !== undefined
+				? resolveDesignerComponentIdentity(updatedPropertyDocument, {
+					componentName: renamedComponent?.from === state.selectedComponentName
+						? renamedComponent.to
+						: state.selectedComponentName,
+					xmlPath: state.selectedXmlPath ?? "/"
+				}, this.sdk).xmlPath
+				: selectedXmlPath ?? state.selectedXmlPath;
+			const nextIdentity = componentIdentityAtPath(updatedPropertyDocument, retainedSelection);
+			state.selectedComponentName = nextIdentity?.componentName;
+			state.selectedXmlPath = retainedSelection;
+			if (renamedComponent !== undefined) {
+				for (const panel of this.panels) {
+					if (
+						sameDocumentSource(panel.document.uri, state.document.uri)
+						&& panel.selectedComponentName === renamedComponent.from
+					) panel.selectedComponentName = renamedComponent.to;
+				}
 			}
-		}
+		});
 		const nextSelection = {
 			componentName: state.selectedComponentName,
 			xmlPath: state.selectedXmlPath
@@ -922,25 +964,39 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			current: SimplePropertyXmlDocument,
 			updated: SimplePropertyXmlDocument,
 			selection: typeof previousSelection,
-			rename?: { readonly from: string; readonly to: string }
+			rename?: { readonly from: string; readonly to: string },
+			undo = false
 		): Promise<void> => {
-			this.codeDocuments.setDesignerPropertyDocument(
-				await state.document.getCodeDocument(),
-				current,
-				updated
-			);
-			if (rename !== undefined) {
-				for (const panel of this.panels) {
-					if (
-						sameDocumentSource(panel.document.uri, state.document.uri)
-						&& panel.selectedComponentName === rename.from
-					) panel.selectedComponentName = rename.to;
+			await this.withPropertyCommit(state.document, async () => {
+				if (renamedComponent === undefined) {
+					this.codeDocuments.setDesignerPropertyDocument(await state.document.getCodeDocument(), current, updated);
+				} else {
+					const document = await state.document.getCodeDocument();
+					const expected = undo ? updatedUserCode : previousUserCode;
+					const wanted = undo ? previousUserCode : updatedUserCode;
+					if (document.getText() !== expected && document.getText() !== wanted) throw new Error("组件关联代码已经变化，请先处理后再撤销或重做改名。");
+					const related = await Promise.all(relatedCode.map(async (change) => {
+						const target = await vscode.workspace.openTextDocument(change.document.uri);
+						const before = undo ? change.after : change.before;
+						const after = undo ? change.before : change.after;
+						if (target.getText() !== before && target.getText() !== after) throw new Error("其它单元的组件引用已经变化，无法覆盖。");
+						return { document: target, before: target.getText(), after };
+					}));
+					await this.codeDocuments.applyDesignerPropertyEdit(document, current, updated, wanted, related);
 				}
-			}
-			if (this.panels.has(state)) {
-				state.selectedComponentName = selection.componentName;
-				state.selectedXmlPath = selection.xmlPath;
-			}
+				if (rename !== undefined) {
+					for (const panel of this.panels) {
+						if (
+							sameDocumentSource(panel.document.uri, state.document.uri)
+							&& panel.selectedComponentName === rename.from
+						) panel.selectedComponentName = rename.to;
+					}
+				}
+				if (this.panels.has(state)) {
+					state.selectedComponentName = selection.componentName;
+					state.selectedXmlPath = selection.xmlPath;
+				}
+			});
 			this.notifyPropertyDocumentChanged(state.document);
 		};
 		this.documentChangeEmitter.fire({
@@ -958,7 +1014,8 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 				previousSelection,
 				renamedComponent === undefined
 					? undefined
-					: { from: renamedComponent.to, to: renamedComponent.from }
+					: { from: renamedComponent.to, to: renamedComponent.from },
+				true
 			)
 		});
 		this.notifyPropertyDocumentChanged(state.document);
@@ -967,54 +1024,30 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 	/** 将属性框请求应用到当前 XML 节点；组件改名同时更新用户代码引用。 */
 	private async updateProperty(state: DesignerPanelState, message: PropertyPanelValueRequest): Promise<void> {
 		const { codeDocument, propertyDocument } = await this.currentPropertyContext(state);
-		const selectedPath = message.selectedComponentName === undefined
-			? message.selectedXmlPath
-			: resolveDesignerComponentIdentity(propertyDocument, {
-				componentName: message.selectedComponentName,
-				xmlPath: message.selectedXmlPath
-			}, this.sdk).xmlPath;
-		const projection = createSimpleDesignerModel(propertyDocument, this.sdk, selectedPath);
-		const selectedComponent = projection.root === undefined
-			? undefined
-			: findDesignerComponentNode(projection.root, selectedPath);
-		if (selectedComponent?.layoutReadOnly === true) {
-			throw new Error("当前布局尚未适配，只能查看和复制其中的组件。");
-		}
 		const userCode = codeDocument.getText();
-		let updated: ReturnType<typeof updatePropertyPanelValue>;
 		try {
-			updated = updatePropertyPanelValue(
-				userCode,
-				propertyDocument,
-				this.sdk,
-				documentUnitName(state.document.uri),
-				message,
-				this.semanticContextForDocument?.(codeDocument, userCode)
-			);
+			const changed = await executeSimplePropertyOperation({
+				codeDocument, propertyDocument, sdk: this.sdk,
+				sourceFile: this.documentSourceFile(state.document)!,
+				unitName: documentUnitName(state.document.uri),
+				semanticContext: this.semanticContextForDocument?.(codeDocument, userCode),
+				synchronizeComponentReferences: () => isAutomaticSyncEnabled("component", codeDocument.uri),
+				onComponentRename: this.planComponentRename === undefined ? undefined
+					: (event) => this.planComponentRename!(codeDocument, event.xmlPath, event.newName),
+				commit: (result) => this.applyDesignerEdit(
+					state, codeDocument, propertyDocument, result.propertyDocument, result.userCode,
+					undefined, "修改属性",
+					result.rename === undefined ? undefined : { from: result.rename.oldName, to: result.rename.newName },
+					result.relatedCode
+				)
+			}, message);
+			if (!changed) this.render(state);
 		} catch (error) {
 			if (!(error instanceof PropertyPanelSymbolValidationError)) throw error;
 			this.propertyValidationStatus?.dispose();
 			this.propertyValidationStatus = vscode.window.setStatusBarMessage(`$(warning) ${error.message}`, 3000);
 			this.render(state);
-			return;
 		}
-		if (updated.propertyDocument === propertyDocument && updated.userCode === userCode) {
-			this.render(state);
-			return;
-		}
-		await this.applyDesignerEdit(
-			state,
-			codeDocument,
-			propertyDocument,
-			updated.propertyDocument,
-			updated.userCode,
-			/* 属性写入保留此时最新的选择，不能把随后点击的目标重新拉回编辑源组件。 */
-			undefined,
-			"修改属性",
-			message.effect === "renameComponent" && message.selectedComponentName !== undefined
-				? { from: message.selectedComponentName, to: message.value.trim() }
-				: undefined
-		);
 	}
 
 	/** 抵抗过期 DOM 身份，把 Webview 停靠目标重新解析为当前 XML 路径。 */
@@ -1351,5 +1384,6 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		this.propertyValidationStatus?.dispose();
 		this.documentChangeEmitter.dispose();
 		this.propertyChangeEmitter.dispose();
+		this.focusEmitter.dispose();
 	}
 }

@@ -244,7 +244,8 @@ import {
 	isDesignerGridPlacedChild,
 	type DesignerGridCell,
 	type DesignerGridCellSelection,
-	weightRemainder
+	weightRemainder,
+	type DesignerNamePreview
 } from "./designerView";
 
 const props = defineProps<{
@@ -252,6 +253,7 @@ const props = defineProps<{
 	readonly dragFeedback?: DesignerDragFeedback;
 	readonly dragHoveredPath?: string | null;
 	readonly projection: SimpleDesignerModel;
+	readonly namePreview?: DesignerNamePreview;
 	readonly selectedGridCell?: DesignerGridCellSelection;
 	readonly showComponentLabels: boolean;
 }>();
@@ -380,12 +382,14 @@ function projectedComponentName(path: string | undefined): string | undefined {
 	return findProjectedComponent(root, path)?.name;
 }
 
-const selectedComponentName = computed(() => projectedComponentName(props.projection.selectedPath));
+const selectedComponentName = computed(() => props.namePreview !== undefined && props.namePreview.xmlPath === props.projection.selectedPath
+	? props.namePreview.newName : projectedComponentName(props.projection.selectedPath));
 /** 原生拖拽期间没有稳定 pointermove，改用 dragover 给出的接纳组件；其它时间继续使用普通点燃。 */
 const displayedHoveredPath = computed(() => props.dragHoveredPath === undefined
 	? hoveredComponentPath.value
 	: props.dragHoveredPath ?? undefined);
-const hoveredComponentName = computed(() => projectedComponentName(displayedHoveredPath.value));
+const hoveredComponentName = computed(() => props.namePreview !== undefined && props.namePreview.xmlPath === displayedHoveredPath.value
+	? props.namePreview.newName : projectedComponentName(displayedHoveredPath.value));
 const dragFeedbackStyle = computed<CSSProperties>(() => props.dragFeedback === undefined
 	? { visibility: "hidden" }
 	: {

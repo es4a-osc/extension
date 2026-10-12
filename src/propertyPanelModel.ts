@@ -489,7 +489,7 @@ export function createPropertyPanelModel(
 		name: "组件",
 		rows: [
 			{
-				description: "组件在当前窗口中的唯一名称。\n名称必须符合 Simple 标识符规则，且不能与其他组件重名。\n修改名称后，会同步更新用户代码和 XML 属性中的组件引用。",
+				description: "组件在当前窗口中的唯一名称。\n名称必须符合 Simple 标识符规则，且不能与其他组件重名。\n启用组件自动重构时，重命名会更新代码和 XML 中的组件引用。",
 				editTarget: {
 					effect: "renameComponent",
 					xmlPath: selectedPath + "/@名称"
