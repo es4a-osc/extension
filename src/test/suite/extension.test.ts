@@ -612,7 +612,8 @@ suite("ES4A 扩展", () => {
 			(content) => typeof content === "string" ? content : content.value
 		).join("\n") ?? "");
 		assert.match(hoverText, /事件 局部布局\.加载\(\)/u);
-		assert.match(hoverText, /当该对象首次加载（使用）时触发。/u);
+		assert.match(hoverText, /单元类型首次初始化时触发一次。/u);
+		assert.match(hoverText, /只能访问静态成员，不能使用本对象。/u);
 		assert.match(hoverText, /所属单元：simple\.runtime\.smoketests\.layouts\.局部布局/u);
 	});
 

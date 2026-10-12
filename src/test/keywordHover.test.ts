@@ -178,8 +178,8 @@ test("当前窗口单元的加载和初始化事件使用编译器对象事件�
 	assert.ok(unit.definition.variables?.some((member) => member.component === true && member.name === unit.name));
 
 	for (const [eventName, description] of [
-		["加载", "当该对象首次加载（使用）时触发。"],
-		["初始化", "当该对象被创建（实例化）时触发。"]
+		["加载", "单元类型首次初始化时触发一次。\n只能访问静态成员，不能使用本对象。"],
+		["初始化", "每次创建实例时触发，可使用本对象及实例成员。"]
 	] as const) {
 		const offset = userCode.indexOf(`事件 局部布局.${eventName}()`);
 		assert.notEqual(offset, -1);
