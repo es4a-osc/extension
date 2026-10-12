@@ -1673,8 +1673,24 @@ function frameLocation(container: HTMLElement, event: DragEvent): ComponentDropL
 	};
 }
 
-/** 按容器布局方向和指针位置选择最接近的组件插入锚点。 */
+/** 将独立覆盖层还原为真实组件，再按布局和指针选择落点，保留各布局的接纳规则。 */
 function resolveComponentDropLocation(target: Element, event: DragEvent): ComponentDropLocation | undefined {
+	if (target.closest(".designer-interaction-layer, .designer-label-layer, .designer-drag-layer") !== null) {
+		const canvas = target.closest<HTMLElement>(".designer-canvas");
+		if (canvas === null) return undefined;
+		const anchor = target.closest<HTMLElement>("[data-component-path], [data-selected-move-path]");
+		const path = anchor?.dataset.componentPath ?? anchor?.dataset.selectedMovePath;
+		const component = visualComponentByPath(canvas, path);
+		const surface = path === undefined ? undefined
+			: [...canvas.querySelectorAll<HTMLElement>("[data-layout-surface-path]")]
+				.find((element) => element.dataset.layoutSurfacePath === path);
+		const underlying = component ?? surface ?? document.elementsFromPoint(event.clientX, event.clientY)
+			.find((element) => canvas.contains(element)
+				&& element.closest(".designer-interaction-layer, .designer-label-layer, .designer-drag-layer") === null
+				&& element.closest("[data-insert-parent], [data-drop-target], [data-grid-cell-parent]") !== null);
+		if (underlying === undefined) return undefined;
+		target = underlying;
+	}
 	const insertion = target.closest("[data-insert-parent]");
 	const container = target.closest("[data-drop-target]");
 	if (insertion instanceof HTMLElement && container instanceof HTMLElement) {
@@ -1961,6 +1977,7 @@ function onDragStart(event: DragEvent): void {
 	const item = event.target instanceof Element ? event.target.closest(".toolbox-item") : null;
 	if (item instanceof HTMLElement) {
 		const visual = item.dataset.visual === "true";
+		componentDragging.value = true;
 		const type = item.dataset.componentType ?? "";
 		const toolboxItem = message.value?.projection.toolbox
 			.flatMap((group) => group.items)

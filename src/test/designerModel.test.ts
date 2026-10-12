@@ -322,7 +322,7 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 	assert.equal(model.toolbox.filter((group) => group.name === "扩展可视组件").length, 1);
 	assert.deepEqual(
 		model.toolbox.find((group) => group.name === "扩展可视组件")?.items.map((item) => item.name),
-		["演示按钮", "滑动页面框"]
+		["演示按钮", "滑动页面框", "分组列表框"]
 	);
 	assert.deepEqual(
 		model.toolbox.find((group) => group.name === "扩展组件")?.items.map((item) => item.name),
