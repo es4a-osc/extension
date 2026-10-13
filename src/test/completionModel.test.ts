@@ -603,8 +603,8 @@ test("扩展类库同名方法重载分别提供补全项", async () => {
 
 	// 重载沿用清单声明顺序，每个签名保留自己的参数占位符。
 	assert.deepEqual(overloads.map((candidate) => candidate.overloadArity), [6, 2]);
-	assert.equal(overloads[0]?.snippet, "添加子项(${1:groupid}, ${2:image}, ${3:title}, ${4:info}, ${5:buttonimage}, ${6:buttontitle})");
-	assert.equal(overloads[1]?.snippet, "添加子项(${1:groupid}, ${2:title})");
+	assert.equal(overloads[0]?.snippet, "添加子项(${1:分组索引}, ${2:图片}, ${3:标题}, ${4:信息}, ${5:按钮图片}, ${6:按钮标题})");
+	assert.equal(overloads[1]?.snippet, "添加子项(${1:分组索引}, ${2:标题})");
 });
 
 test("变体型布局不推断具体成员，显式布局变量正常提示", async () => {

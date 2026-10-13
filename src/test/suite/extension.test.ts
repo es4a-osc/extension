@@ -24,7 +24,7 @@ import {
 } from "../../completionProvider";
 import { SimpleDefinitionProvider } from "../../definitionProvider";
 import { SimpleHoverProvider } from "../../hoverProvider";
-import { loadSdk, type LibraryManifest, type Sdk } from "../../sdk";
+import { loadSdk, type LibraryDefinition, type LibraryManifest, type LibraryMember, type Sdk } from "../../sdk";
 import { SimpleSemanticTokensProvider } from "../../semanticTokens";
 import { SimpleSignatureHelpProvider } from "../../signatureHelp";
 import { LibraryTreeProvider } from "../../libraryTree";
@@ -2402,6 +2402,8 @@ suite("ES4A 扩展", () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
+		// 单独运行此测试时也等待所选 SDK 加载完成。
+		await vscode.commands.executeCommand("es4a.refreshLibraries");
 
 		const keyword = (await hoverContents("如¦果 真 则")).join("\n");
 		assert.match(keyword, /如果/);
@@ -2421,17 +2423,17 @@ suite("ES4A 扩展", () => {
 		assert.match(documentedVariable, /\*\*加粗说明\*\*  \n- 列表项/u);
 
 		const runtimeFunction = (await hoverContents("数组操作.分割¦文本(内容, 分隔符, 1)")).join("\n");
-		assert.match(runtimeFunction, /函数 分割文本\(str 为 文本型/);
+		assert.match(runtimeFunction, /函数 分割文本\(文本 为 文本型/);
 		assert.match(runtimeFunction, /所属库：运行库/u);
 		assert.match(runtimeFunction, /所属类：simple\.runtime\.数组操作/u);
 		assert.match(runtimeFunction, /查找指定文本来分割文本/);
-		assert.match(runtimeFunction, /```\n\*str：\*/u);
-		assert.ok(runtimeFunction.indexOf("*str：*") < runtimeFunction.indexOf("查找指定文本来分割文本。"));
-		assert.match(runtimeFunction, /\*count：\*&#8203;分割次数\n\n查找指定文本来分割文本。\n\n所属库：运行库/u);
+		assert.match(runtimeFunction, /```\n\*文本：\*/u);
+		assert.ok(runtimeFunction.indexOf("*文本：*") < runtimeFunction.indexOf("查找指定文本来分割文本。"));
+		assert.match(runtimeFunction, /\*数量：\*&#8203;分割次数\n\n查找指定文本来分割文本。\n\n所属库：运行库/u);
 		assert.doesNotMatch(runtimeFunction, /参数：/u);
-		assert.match(runtimeFunction, /\*str：\*&#8203;欲分割的文本/u);
-		assert.match(runtimeFunction, /\*separator：\*&#8203;欲查找的分割文本/u);
-		assert.match(runtimeFunction, /\*count：\*&#8203;分割次数/u);
+		assert.match(runtimeFunction, /\*文本：\*&#8203;欲分割的文本/u);
+		assert.match(runtimeFunction, /\*分隔符：\*&#8203;欲查找的分割文本/u);
+		assert.match(runtimeFunction, /\*数量：\*&#8203;分割次数/u);
 		assert.doesNotMatch(runtimeFunction, /command:es4a\.revealLibrarySymbol/u);
 
 		const noParameterFunction = (await hoverContents("取现行¦时间()")).join("\n");
@@ -2478,8 +2480,16 @@ suite("ES4A 扩展", () => {
 			"  tests.加¦入(创建 ExampleTest)",
 			"结束 过程"
 		].join("\r\n"))).join("\n");
-		assert.match(collectionMember, /过程 加入\(item 为 变体型\)/);
+		assert.match(collectionMember, /过程 加入\(项目 为 变体型\)/);
 		assert.match(collectionMember, /将新项添加到集合中/);
+		const wifiMember = (await hoverContents([
+			"过程 Run()",
+			"\t变量 wireless 为 WIFI管理器",
+			"\twireless.置WIFI状¦态(真)",
+			"结束 过程"
+		].join("\r\n"))).join("\n");
+		assert.match(wifiMember, /函数 置WIFI状态\(启用 为 逻辑型\) 为 逻辑型/u);
+		assert.match(wifiMember, /simple\.runtime\.components\.WIFI管理器/u);
 
 		const explicitParameter = (await hoverContents([
 			"事件 TextBox1.文本改变(text 为 文本型, 传址 accept 为 逻辑型)",
@@ -5763,7 +5773,7 @@ ${propertySource}`;
 			{
 				command: "es4a.debugApplication",
 				key: "f5",
-				when: "es4a.sdk.hasDebugCapability && (editorLangId == simple || resourceScheme == es4a-unit-content-preview || resourceScheme == es4a-unit-xml-preview || activeCustomEditorId == es4a.simpleDesigner)"
+				when: "debugState == inactive && es4a.sdk.hasDebugCapability && es4a.activeTabIsSimpleUnit"
 			}
 		]);
 		assert.deepEqual(packageJson.contributes?.menus?.["editor/title"], [{
@@ -6261,6 +6271,30 @@ ${propertySource}`;
 			const category = provider.getParent(owner);
 			assert.ok(category?.kind === "category");
 			assert.equal(provider.getParent(category)?.kind, "manifest");
+			for (const name of [
+				"NFC读写器", "WIFI管理器", "光线传感器", "距离传感器",
+				"摄像框", "相机", "蓝牙通信器", "语音处理器"
+			]) {
+				const component: LibraryDefinition | undefined = runtime.categories.flatMap((item) => item.definitions)
+					.find((item) => item.name === name);
+				assert.ok(component);
+				const event: LibraryMember | undefined = component.events?.[0];
+				assert.ok(event);
+				const eventNode = await provider.findSymbol(
+					libraryMemberTarget({ definition: component, manifest: runtime }, "events", event)
+				);
+				assert.ok(eventNode?.kind === "member");
+				const events = provider.getParent(eventNode);
+				assert.ok(events?.kind === "group");
+				const componentNode = provider.getParent(events);
+				assert.ok(componentNode?.kind === "definition");
+				const treeItem = provider.getTreeItem(componentNode);
+				assert.ok(treeItem.iconPath, `${name} 没有图标`);
+				assert.equal(treeItem.label, name);
+				const tooltip = provider.getTreeItem(eventNode).tooltip;
+				assert.ok(tooltip instanceof vscode.MarkdownString);
+				for (const param of event.params ?? []) assert.ok(tooltip.value.includes(param.name));
+			}
 		} finally {
 			provider.dispose();
 		}

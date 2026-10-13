@@ -92,7 +92,7 @@ test("运行库类型和全局函数返回清单说明与完整签名", async ()
 	assert.equal(globalFunction?.kind, "functions");
 	assert.equal(globalFunction?.owner, "数组操作");
 	assert.equal(globalFunction?.declarationSource, "simple.runtime.数组操作");
-	assert.match(globalFunction?.signature ?? "", /str 为 文本型/);
+	assert.match(globalFunction?.signature ?? "", /文本 为 文本型/);
 	assert.match(globalFunction?.signature ?? "", /文本型\(\)/);
 	assert.equal(globalFunction?.librarySymbol?.memberGroup, "functions");
 	assert.deepEqual(globalFunction?.parameters?.map((parameter) => parameter.description), [
@@ -267,7 +267,7 @@ test("源码变量在声明及有效作用域内返回类型悬停", async () =>
 	assert.equal(reference?.signature, "变量 tests 为 集合");
 
 	const member = await hover(source.replace("tests.加入", "tests.加¦入"));
-	assert.equal(member?.signature, "过程 加入(item 为 变体型)");
+	assert.equal(member?.signature, "过程 加入(项目 为 变体型)");
 	assert.match(member?.description ?? "", /添加到集合/);
 
 	const outOfScope = [source, "tes¦ts.加入(空)"].join("\r\n");
@@ -469,8 +469,8 @@ test("同名过程调用按实参数量显示对应重载签名", () => {
 
 test("参数个数错误时仍显示唯一的全局函数签名", async () => {
 	const result = await hover('弹出确¦认框("授权结果")');
-	assert.equal(result?.signature, "过程 弹出确认框(title 为 文本型, message 为 文本型, btnOK 为 文本型)");
-	assert.deepEqual(result?.parameters?.map((parameter) => parameter.name), ["title", "message", "btnOK"]);
+	assert.equal(result?.signature, "过程 弹出确认框(标题 为 文本型, 信息 为 文本型, 确定文本 为 文本型)");
+	assert.deepEqual(result?.parameters?.map((parameter) => parameter.name), ["标题", "信息", "确定文本"]);
 });
 
 test("扩展类库方法调用按实参数量显示对应重载签名", async () => {
@@ -505,13 +505,13 @@ test("扩展类库方法调用按实参数量显示对应重载签名", async ()
 		return findSimpleKeywordHover(userCode, start + 1, sdk, context);
 	};
 
-	assert.match(query(0)?.signature ?? "", /^过程 添加子项\([^)]*title 为 文本型\)$/u);
-	assert.match(query(1)?.signature ?? "", /^过程 添加子项\([^)]*buttontitle 为 文本型\)$/u);
+	assert.match(query(0)?.signature ?? "", /^过程 添加子项\([^)]*标题 为 文本型\)$/u);
+	assert.match(query(1)?.signature ?? "", /^过程 添加子项\([^)]*按钮标题 为 文本型\)$/u);
 	const wrongArity = userCode.lastIndexOf("添加子项");
 	const alternatives = findSimpleKeywordHover(userCode, wrongArity + 1, sdk, context)?.overloads;
 	assert.equal(alternatives?.length, 2);
-	assert.match(alternatives[0]?.signature ?? "", /^过程 添加子项\([^)]*title 为 文本型\)$/u);
-	assert.match(alternatives[1]?.signature ?? "", /^过程 添加子项\([^)]*buttontitle 为 文本型\)$/u);
+	assert.match(alternatives[0]?.signature ?? "", /^过程 添加子项\([^)]*标题 为 文本型\)$/u);
+	assert.match(alternatives[1]?.signature ?? "", /^过程 添加子项\([^)]*按钮标题 为 文本型\)$/u);
 });
 
 test("对象过程和函数提示基础对象重写及接口实现关系", () => {

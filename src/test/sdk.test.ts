@@ -422,7 +422,8 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 	);
 
 	assert.deepEqual(definitionNames("组件"), [
-		"组件", "计时器", "音频播放器", "电话", "消息传递器", "广播接收器", "权限请求"
+		"组件", "计时器", "音频播放器", "电话", "消息传递器", "广播接收器", "权限请求",
+		"NFC读写器", "WIFI管理器", "相机", "蓝牙通信器", "语音处理器"
 	]);
 	assert.deepEqual(definitionNames("组件容器"), [
 		"窗口", "面板", "垂直滚动框", "水平滚动框"
@@ -434,8 +435,57 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 		"图片框", "图片按钮",
 		"水平进度条", "水平滑块条", "垂直滑块条",
 		"列表框", "单选列表框", "多选列表框", "下拉列表框",
-		"进度圈", "画板", "网页浏览框", "视频播放器"
+		"进度圈", "画板", "网页浏览框", "视频播放器", "摄像框"
 	]);
+});
+
+test("新增运行库组件加载中文参数、数组签名及继承成员", async () => {
+	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
+	assert.ok(runtime);
+	const index = buildDefinitionIndex(sdk.manifests);
+	const names = [
+		"NFC读写器", "WIFI管理器", "光线传感器", "距离传感器",
+		"摄像框", "相机", "蓝牙通信器", "语音处理器"
+	];
+	for (const name of names) {
+		const reference = index.get(name);
+		assert.ok(reference, `${name} 未加载`);
+		assert.equal(reference.manifest, runtime);
+		assert.equal(reference.definition.type, `simple.runtime.components.${name}`);
+		assert.equal(isComponentDefinition(reference.definition), true);
+		assert.equal(isVisualComponentDefinition(reference.definition), name === "摄像框");
+		assert.equal(isContainerDefinition(reference.definition), false);
+		assert.ok(getEffectiveMembers(reference, "events", index)
+			.some(({ member }) => member.name === "初始化"));
+		for (const member of [
+			...reference.definition.functions ?? [],
+			...reference.definition.events ?? []
+		]) {
+			assert.equal(member.params?.every((param) => /^[\u4e00-\u9fff]+$/u.test(param.name)) ?? true, true);
+		}
+	}
+	const camera = index.get("摄像框");
+	assert.ok(camera);
+	assert.ok(getEffectiveMembers(camera, "properties", index)
+		.some(({ member }) => member.name === "宽度" && member.type === "变体型"));
+	assert.deepEqual(camera.definition.events?.find((member) => member.name === "拍照完毕2")?.params,
+		[{ name: "数据", type: "字节型()" }]);
+	assert.equal(index.get("WIFI管理器")?.definition.functions
+		?.find((member) => member.name === "取已保存网络列表")?.return, "文本型()");
+	assert.equal(index.get("蓝牙通信器")?.definition.functions
+		?.find((member) => member.name === "取已配对设备")?.return, "集合");
+	const distance = index.get("距离传感器");
+	assert.ok(distance);
+	assert.deepEqual(distance.definition.properties?.map((member) => (
+		[member.name, member.type, member.writable, member.initializer]
+	)), [
+		["距离", "单精度小数型", false, undefined],
+		["可用", "逻辑型", undefined, { label: "真", value: "真" }],
+		["最小距离", "整数型", undefined, { label: "1", value: "1" }],
+		["检测间隔", "整数型", undefined, { label: "3", value: "3" }]
+	]);
+	assert.equal(index.get("光线传感器")?.definition.properties?.[0]?.writable, false);
 });
 
 test("分组列表框作为扩展类库加载并继承运行库成员", async () => {
@@ -672,10 +722,10 @@ test("运行库完整声明 Java 相对布局常量、属性和方法", async ()
 				member.return
 			]),
 		[
-			["添加规则", [["verb", "整数型"]], undefined],
-			["添加规则", [["verb", "整数型"], ["anchor", "整数型"]], undefined],
-			["删除规则", [["verb", "整数型"]], undefined],
-			["取瞄点", [["verb", "整数型"]], "整数型"]
+			["添加规则", [["规则", "整数型"]], undefined],
+			["添加规则", [["规则", "整数型"], ["锚点", "整数型"]], undefined],
+			["删除规则", [["规则", "整数型"]], undefined],
+			["取瞄点", [["规则", "整数型"]], "整数型"]
 		]
 	);
 	assert.equal(relativeLayout.kind, "layout");

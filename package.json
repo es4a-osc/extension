@@ -585,7 +585,7 @@
 			{
 				"command": "es4a.debugApplication",
 				"key": "f5",
-				"when": "es4a.sdk.hasDebugCapability && (editorLangId == simple || resourceScheme == es4a-unit-content-preview || resourceScheme == es4a-unit-xml-preview || activeCustomEditorId == es4a.simpleDesigner)"
+				"when": "debugState == inactive && es4a.sdk.hasDebugCapability && es4a.activeTabIsSimpleUnit"
 			}
 		],
 		"configuration": {

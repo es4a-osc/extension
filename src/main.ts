@@ -97,6 +97,17 @@ export function resolveActiveUnitSourceUri(
 		: undefined;
 }
 
+/** 按当前活动标签解析单元，临时标签及侧边栏焦点不影响项目身份。 */
+export function resolveActiveTabUnitSourceUri(tab: vscode.Tab | undefined): vscode.Uri | undefined {
+	if (tab === undefined) return undefined;
+	const binding = resolveSimpleUnitTab(tab);
+	if (binding !== undefined) return binding.sourceUri;
+	const input = tab.input;
+	if (!(input instanceof vscode.TabInputText)) return undefined;
+	const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString() === input.uri.toString());
+	return resolveActiveUnitSourceUri(document);
+}
+
 /** 将当前活动的设计器标签解析为所属真实 Simple 单元。 */
 export function resolveDesignerTabSourceUri(
 	tab: Pick<vscode.Tab, "input"> | undefined
@@ -693,13 +704,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		context,
 		() => activeSdk,
 		async () => {
-			const sourceUri = resolveDesignerTabSourceUri(vscode.window.tabGroups.activeTabGroup.activeTab)
-				?? resolveActiveUnitSourceUri(vscode.window.activeTextEditor?.document);
+			const sourceUri = resolveActiveTabUnitSourceUri(vscode.window.tabGroups.activeTabGroup.activeTab);
 			return sourceUri === undefined
 				? undefined
 				: findProjectForSource(await programProvider.getProjects(), sourceUri.fsPath);
 		}
 	);
+	const updateActiveTabDebugContext = (): void => {
+		void vscode.commands.executeCommand("setContext", "es4a.activeTabIsSimpleUnit",
+			resolveActiveTabUnitSourceUri(vscode.window.tabGroups.activeTabGroup.activeTab) !== undefined);
+	};
 	const openDesignerCommand = vscode.commands.registerCommand(
 		"es4a.openDesigner",
 		async (node?: ProgramTreeNode) => {
@@ -800,6 +814,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	/* 文档生命周期统一维护输入规范化、XML 会话、预览和项目符号索引。 */
 	const documentListener = vscode.workspace.onDidOpenTextDocument((document) => {
+		updateActiveTabDebugContext();
 		openUnitSemantics.track(document);
 		if (document.languageId === "simple") diagnostics.schedule(false, document.uri);
 		punctuationNormalizer.trackDocument(document);
@@ -965,8 +980,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return refactoring.prepareNativePathEdits(first.project, entries.map(({ file }) => ({ oldFile: file.oldUri.fsPath, newFile: file.newUri.fsPath })), first.kind);
 		})());
 	});
-	/* 编辑器和标签页焦点变化只负责同步项目树选择及窗口单元上下文。 */
+	/* 编辑器和标签变化同步活动单元上下文，不按侧边栏选择推断调试目标。 */
 	const editorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
+		updateActiveTabDebugContext();
 		if (editor !== undefined) {
 			revealProgramUnit(editor.document);
 		} else if (!revealActiveDesignerTab()) {
@@ -974,6 +990,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}
 	});
 	const tabListener = vscode.window.tabGroups.onDidChangeTabs((event) => {
+		updateActiveTabDebugContext();
 		revealActiveDesignerTab();
 		if (
 			restoringWorkbenchUnitTabs
@@ -983,6 +1000,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}
 	});
 	const tabGroupListener = vscode.window.tabGroups.onDidChangeTabGroups(() => {
+		updateActiveTabDebugContext();
 		revealActiveDesignerTab();
 	});
 	const configurationListener = vscode.workspace.onDidChangeConfiguration((event) => {
@@ -1082,6 +1100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}
 	})();
 
+	updateActiveTabDebugContext();
 	if (vscode.window.activeTextEditor !== undefined) {
 		revealProgramUnit(vscode.window.activeTextEditor.document);
 	} else {

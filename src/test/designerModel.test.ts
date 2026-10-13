@@ -340,6 +340,22 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 		"stopwatch.svg"
 	);
 	assert.equal(sensorGroup?.items.some((item) => item.name === "加速度传感器"), true);
+	for (const [name, icon, visual] of [
+		["NFC读写器", "nfc.svg", false],
+		["WIFI管理器", "wifi.svg", false],
+		["相机", "camera.svg", false],
+		["蓝牙通信器", "bluetooth.svg", false],
+		["语音处理器", "microphone.svg", false],
+		["摄像框", "video.svg", true],
+		["光线传感器", "sun.svg", false],
+		["距离传感器", "radar.svg", false]
+	] as const) {
+		const candidate = model.toolbox.flatMap((group) => group.items).find((item) => item.name === name);
+		assert.ok(candidate, `${name} 未进入设计器候选组件`);
+		assert.equal(candidate.runtimeType, `simple.runtime.components.${name}`);
+		assert.equal(candidate.visual, visual);
+		assert.equal(path.basename(candidate.icon ?? ""), icon);
+	}
 	assert.equal(model.toolbox.flatMap((group) => group.items).some((item) => item.name === "窗口"), false);
 
 	const addedButton = addSimpleDesignerComponent(

@@ -85,8 +85,8 @@ export class WorkbenchDriver {
 		})()`), name);
 	}
 
-	async key(key: "F2" | "Enter" | "Escape", control = false): Promise<void> {
-		const code = key === "F2" ? 113 : key === "Enter" ? 13 : 27;
+	async key(key: "F2" | "F5" | "Enter" | "Escape", control = false): Promise<void> {
+		const code = key === "F2" ? 113 : key === "F5" ? 116 : key === "Enter" ? 13 : 27;
 		for (const type of ["keyDown", "keyUp"]) await this.send("Input.dispatchKeyEvent", { type, key, code: key, windowsVirtualKeyCode: code, modifiers: control ? 2 : 0 });
 	}
 
