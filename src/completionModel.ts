@@ -1093,8 +1093,11 @@ function resolveQualifier(
 				const reference = definitions.get(currentUnit.qualifiedName);
 				if (reference !== undefined) {
 					consumed = length;
+					/* 单元类型名访问静态成员；事件声明的拥有者仍按实例事件解析。 */
+					const lineStart = sanitized.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
+					const eventDeclaration = /^[ \t]*事件[ \t]+[^()\r\n]*$/u.test(sanitized.slice(lineStart, offset));
 					resolved = {
-						access: "instance",
+						access: eventDeclaration ? "instance" : "static",
 						directCurrentUnit: length === segments.length,
 						reference
 					};

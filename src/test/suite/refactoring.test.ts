@@ -13,7 +13,7 @@ import { SimpleProjectRefactoring } from "../../projectRefactoring";
 import type { ProgramTreeProvider } from "../../programTree";
 import type { ProjectSymbolIndex } from "../../projectSymbolIndex";
 import { refactoringContext, type RefactoringUnit } from "../../refactoringModel";
-import { simpleTestUnitPath } from "../testProjects";
+import { simpleTestProjectPath, simpleTestUnitPath } from "../testProjects";
 import { inspectSimplePropertyXml } from "../../propertyXml";
 import { splitSimpleUnitSource } from "../../simpleUnitSource";
 import { loadSimpleProject } from "../../programResources";
@@ -293,6 +293,51 @@ suite("项目关联重构", () => {
 			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		}
 	});
+	test("数字、续行与静态字段在真实编辑器中不误报且可跳转", async function () {
+		this.timeout(30000);
+		const sourceRoot = simpleTestProjectPath("SmokeTest", "src");
+		const originalFile = await simpleTestUnitPath("SmokeTest", "ScopesTest");
+		const original = await fs.readFile(originalFile, "utf8");
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-diagnostic-syntax-"));
+		const projectFile = path.join(directory, "project.properties");
+		const unitFile = path.join(directory, "src", path.relative(sourceRoot, originalFile));
+		const originalCode = splitSimpleUnitSource(original);
+		const probe = "\r\n过程 诊断探针()\r\n\t未定义名称 = &H4 _\r\n\t\t+ &HFF\r\n结束 过程\r\n";
+		try {
+			await fs.cp(sourceRoot, path.join(directory, "src"), { recursive: true });
+			await fs.writeFile(projectFile, "source=./src\r\nmain=simple.smoketest.Main\r\n");
+			await fs.writeFile(unitFile, originalCode.userCode + probe + originalCode.propertySource);
+			await vscode.commands.executeCommand("es4a.internal.addProject", projectFile);
+			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(unitFile)));
+			await vscode.window.showTextDocument(document, { preview: false });
+			await vscode.commands.executeCommand("es4a.refreshPrograms");
+			for (let attempt = 0; attempt < 200 && !vscode.languages.getDiagnostics(document.uri).some((issue) => issue.message.includes("未定义名称")); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+			const issues = vscode.languages.getDiagnostics(document.uri).filter((issue) => issue.source === "ES4A 引用分析");
+			assert.deepEqual(issues.map((issue) => [issue.code, document.getText(issue.range)]), [["unknownName", "未定义名称"]]);
+			for (const qualified of ["simple.smoketest.scopes.ScopesTest.var2", "ScopesTest.var3"]) {
+				const name = qualified.slice(qualified.lastIndexOf(".") + 1);
+				const start = document.getText().indexOf(qualified);
+				assert.notEqual(start, -1);
+				const position = document.positionAt(start + qualified.length - name.length);
+				const hovers = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", document.uri, position);
+				assert.ok(hovers && hovers.length > 0);
+				const editor = await vscode.window.showTextDocument(document, { preview: false });
+				editor.selection = new vscode.Selection(position, position);
+				// F12 走 ES4A 自身导航命令，兼容源码位置和类库树目标。
+				await vscode.commands.executeCommand("es4a.goToDefinition");
+				const target = vscode.window.activeTextEditor!;
+				assert.equal(target.document.uri.toString(), document.uri.toString());
+				assert.equal(target.document.getText(target.selection), name);
+				assert.ok(target.selection.start.line < position.line);
+			}
+			assert.equal(await fs.readFile(originalFile, "utf8"), original);
+		} finally {
+			await vscode.commands.executeCommand("es4a.internal.removeProject", projectFile);
+			assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
 	test("窗口加载和初始化在真实代码编辑器中不显示无效成员诊断", async function () {
 		this.timeout(30000);
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-diagnostic-object-events-"));

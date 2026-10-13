@@ -43,8 +43,10 @@ function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, cont
 	}
 	if (sdk !== undefined) {
 		let typeIndex = 0;
-		for (const match of masked.matchAll(/(?<![\p{L}\p{N}_])[\p{L}_][\p{L}\p{N}_]*(?:[ \t]*\.[ \t]*[\p{L}_][\p{L}\p{N}_]*)*/gu)) {
+		/* 先完整消费数字和合法续行符，避免把数字前缀 H 或行尾 _ 当成名称。 */
+		for (const match of masked.matchAll(/(&H[0-9A-Fa-f]+|(?<![\p{L}\p{N}_])_(?=\r?\n))|(?<![\p{L}\p{N}_])[\p{L}_][\p{L}\p{N}_]*(?:[ \t]*\.[ \t]*[\p{L}_][\p{L}\p{N}_]*)*/gu)) {
 			yield;
+			if (match[1] !== undefined) continue;
 			const start = match.index;
 			const end = start + match[0].length;
 			while (types[typeIndex] !== undefined && types[typeIndex]!.end <= start) typeIndex += 1;
