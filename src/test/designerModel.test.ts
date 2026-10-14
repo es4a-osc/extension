@@ -326,8 +326,13 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 	);
 	assert.deepEqual(
 		model.toolbox.find((group) => group.name === "扩展组件")?.items.map((item) => item.name),
-		["跨程序辅助", "通知管理器", "应用更新"]
+		["低功耗蓝牙", "跨程序辅助", "通知管理器", "应用更新"]
 	);
+	const lowEnergyBluetooth = model.toolbox.find((group) => group.name === "扩展组件")
+		?.items.find((item) => item.name === "低功耗蓝牙");
+	assert.equal(lowEnergyBluetooth?.runtimeType, "simple.library.wsd.blebluetooth.低功耗蓝牙");
+	assert.equal(lowEnergyBluetooth?.visual, false);
+	assert.equal(path.basename(lowEnergyBluetooth?.icon ?? ""), "bluetooth.svg");
 	assert.deepEqual(
 		containerGroup?.items.map((item) => item.name),
 		["面板", "垂直滚动框", "水平滚动框"]

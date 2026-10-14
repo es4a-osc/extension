@@ -2490,6 +2490,14 @@ suite("ES4A 扩展", () => {
 		].join("\r\n"))).join("\n");
 		assert.match(wifiMember, /函数 置WIFI状态\(启用 为 逻辑型\) 为 逻辑型/u);
 		assert.match(wifiMember, /simple\.runtime\.components\.WIFI管理器/u);
+		const bleMember = (await hoverContents([
+			"过程 Run()",
+			"\t变量 device 为 低功耗蓝牙",
+			"\tdevice.写入数¦据(\"\", \"\", 空)",
+			"结束 过程"
+		].join("\r\n"))).join("\n");
+		assert.match(bleMember, /过程 写入数据\(服务UUID 为 文本型, 特征UUID 为 文本型, 数据 为 字节型\(\)\)/u);
+		assert.match(bleMember, /simple\.library\.wsd\.blebluetooth\.低功耗蓝牙/u);
 
 		const explicitParameter = (await hoverContents([
 			"事件 TextBox1.文本改变(text 为 文本型, 传址 accept 为 逻辑型)",
@@ -6294,6 +6302,28 @@ ${propertySource}`;
 				const tooltip = provider.getTreeItem(eventNode).tooltip;
 				assert.ok(tooltip instanceof vscode.MarkdownString);
 				for (const param of event.params ?? []) assert.ok(tooltip.value.includes(param.name));
+			}
+			const bleLibrary = sdk.manifests.find((manifest) => manifest.name === "低功耗蓝牙库");
+			assert.ok(bleLibrary);
+			const bleDefinition = bleLibrary.categories.flatMap((item) => item.definitions)
+				.find((item) => item.name === "低功耗蓝牙");
+			assert.ok(bleDefinition);
+			const bleEvent = bleDefinition.events?.find((item) => item.name === "发现设备");
+			assert.ok(bleEvent);
+			const bleEventNode = await provider.findSymbol(
+				libraryMemberTarget({ definition: bleDefinition, manifest: bleLibrary }, "events", bleEvent)
+			);
+			assert.ok(bleEventNode?.kind === "member");
+			const bleEvents = provider.getParent(bleEventNode);
+			assert.ok(bleEvents?.kind === "group");
+			const bleOwner = provider.getParent(bleEvents);
+			assert.ok(bleOwner?.kind === "definition");
+			const bleIcon = provider.getTreeItem(bleOwner).iconPath;
+			assert.ok(bleIcon !== undefined && typeof bleIcon === "object" && "dark" in bleIcon && "light" in bleIcon);
+			for (const icon of [bleIcon.dark, bleIcon.light]) {
+				assert.equal(icon.scheme, "data");
+				const svg = decodeURIComponent(icon.path.slice(icon.path.indexOf(",") + 1));
+				assert.ok(svg.includes("M7 8l10 8l-5 4l0 -16l5 4l-10 8"));
 			}
 		} finally {
 			provider.dispose();

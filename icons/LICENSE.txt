@@ -1,3 +1,7 @@
+Tabler Icons
+Source: https://github.com/tabler/tabler-icons
+Applies to Tabler Icons assets and derivatives in this directory.
+
 MIT License
 
 Copyright (c) 2020-2026 Paweł Kuna

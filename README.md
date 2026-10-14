@@ -22,7 +22,7 @@ Simple 采用类似 BASIC 的中文语法，面向 Android 应用开发。ES4A �
 
 1. [下载扩展](https://dwz.wsd.cx/es4a-vsix)，在 VS Code 中通过“从 VSIX 安装”完成安装。
 2. [下载 SDK](https://dwz.wsd.cx/es4a-sdk)，解压后按其中的 README 准备工具。
-3. 打开 ES4A“类库”视图，选择 SDK 入口文件 `sdk.json`。
+3. 打开 ES4A“类库”视图，选择所用 SDK 入口清单 `sdk.json`；使用本地配置时选择 `sdk.local.json`。
 4. 创建或打开 Simple 项目，按 F5 编译运行。
 
 > 可安装 Logcat 扩展查看 Android 应用日志。
