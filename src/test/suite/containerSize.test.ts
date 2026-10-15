@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-8
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -18,7 +20,7 @@ suite("嵌套空容器尺寸投影", () => {
 		this.timeout(15000);
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension);
-		const sdk = await loadSdk(path.resolve(extension.extensionPath, "..", "sdk", "sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		const sourcePath = await simpleTestUnitPath("SmokeTests", "测试水平滚动框");
 		const source = await fs.readFile(sourcePath, "utf8");
 		const document = parseSimplePropertyXml(source);

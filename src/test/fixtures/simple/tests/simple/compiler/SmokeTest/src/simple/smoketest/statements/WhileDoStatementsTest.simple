@@ -1,0 +1,78 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the While statement
+
+函数 Name() 为 文本型
+	Name = "While-Do Statement Tests"
+结束 函数
+
+过程 Run()
+	' Simple While loop
+	断言真(WhileTest(0, 5) = 5)
+
+	' While loop with constant False expression
+	断言真(WhileFalseTest(0) = 0)
+
+	' While loop with constant True expression
+	断言真(WhileTrueTest() = 5)
+
+	' While loop with Exit
+	断言真(WhileWithExitTest(5))
+结束 过程
+
+函数 WhileTest(start 为 整数型, stop 为 整数型) 为 整数型
+	判断循环 start < stop
+		start = start + 1
+	结束 判断循环
+	WhileTest = start
+结束 函数
+
+函数 WhileFalseTest(start 为 整数型) 为 整数型
+	判断循环 假
+		start = start + 1
+	结束 判断循环
+	WhileFalseTest = start
+结束 函数
+
+函数 WhileTrueTest() 为 整数型
+	变量 i 为 整数型
+	i = 0
+	判断循环 真
+		i = i + 1
+		如果 i = 5 则
+			WhileTrueTest = 5
+			退出 函数
+		结束 如果
+	结束 判断循环
+结束 函数
+
+函数 WhileWithExitTest(v 为 整数型) 为 逻辑型
+	判断循环 真
+		变量 i 为 整数型
+		循环 i = 0 至 v + 10
+			如果 i = v 则
+				WhileWithExitTest = 真
+				退出 判断循环
+			结束 如果
+			WhileWithExitTest = 假
+		下个
+		WhileWithExitTest = 假
+	结束 判断循环
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

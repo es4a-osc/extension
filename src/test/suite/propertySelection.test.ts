@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-8
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -71,7 +73,7 @@ suite("属性输入与画布选择", () => {
 			await codeDocuments.readFile(toSimpleCodeUri(sourceUri));
 			document = await provider.openCustomDocument(toSimpleDesignerUri(sourceUri),
 				{ backupId: undefined, untitledDocumentData: undefined }, cancellation.token);
-			provider.updateSdk(await loadSdk(path.resolve(extension.extensionPath, "..", "sdk", "sdk.json")));
+			provider.updateSdk(await loadSdk(testSdkPath("sdk.json")));
 			provider.resolveCustomEditor(document, panel);
 			const html = panel.webview.html;
 			const nonce = /<script nonce="([^"]+)"/u.exec(html)?.[1];

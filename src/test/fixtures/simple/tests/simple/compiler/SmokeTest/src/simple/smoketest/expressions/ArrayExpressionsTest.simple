@@ -1,0 +1,776 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests array expressions
+
+常量 FIRST_BOOLEAN_ELEMENT 为 逻辑型 = 真
+常量 SECOND_BOOLEAN_ELEMENT 为 逻辑型 = 假
+
+常量 FIRST_BYTE_ELEMENT 为 字节型 = 21
+常量 SECOND_BYTE_ELEMENT 为 字节型 = 12
+
+常量 FIRST_SHORT_ELEMENT 为 短整数型 = 34
+常量 SECOND_SHORT_ELEMENT 为 短整数型 = 43
+
+常量 FIRST_INTEGER_ELEMENT 为 整数型 = 56
+常量 SECOND_INTEGER_ELEMENT 为 整数型 = 65
+
+常量 FIRST_LONG_ELEMENT 为 长整数型 = 78
+常量 SECOND_LONG_ELEMENT 为 长整数型 = 87
+
+常量 FIRST_SINGLE_ELEMENT 为 单精度小数型 = 12.34
+常量 SECOND_SINGLE_ELEMENT 为 单精度小数型 = 43.21
+
+常量 FIRST_DOUBLE_ELEMENT 为 双精度小数型 = 56.78
+常量 SECOND_DOUBLE_ELEMENT 为 双精度小数型 = 87.65
+
+常量 FIRST_STRING_ELEMENT 为 文本型 = "first"
+常量 SECOND_STRING_ELEMENT 为 文本型 = "second"
+
+变量 instanceDataMemberSingleDimensionBooleanArray 为 逻辑型(2)
+变量 instanceDataMemberSingleDimensionByteArray 为 字节型(2)
+变量 instanceDataMemberSingleDimensionShortArray 为 短整数型(2)
+变量 instanceDataMemberSingleDimensionIntegerArray 为 整数型(2)
+变量 instanceDataMemberSingleDimensionLongArray 为 长整数型(2)
+变量 instanceDataMemberSingleDimensionSingleArray 为 单精度小数型(2)
+变量 instanceDataMemberSingleDimensionDoubleArray 为 双精度小数型(2)
+变量 instanceDataMemberSingleDimensionStringArray 为 文本型(2)
+变量 instanceDataMemberMultiDimensionBooleanArray 为 逻辑型(2, 2)
+变量 instanceDataMemberMultiDimensionByteArray 为 字节型(2, 2)
+变量 instanceDataMemberMultiDimensionShortArray 为 短整数型(2, 2)
+变量 instanceDataMemberMultiDimensionIntegerArray 为 整数型(2, 2)
+变量 instanceDataMemberMultiDimensionLongArray 为 长整数型(2, 2)
+变量 instanceDataMemberMultiDimensionSingleArray 为 单精度小数型(2, 2)
+变量 instanceDataMemberMultiDimensionDoubleArray 为 双精度小数型(2, 2)
+变量 instanceDataMemberMultiDimensionStringArray 为 文本型(2, 2)
+
+静态 变量 objectDataMemberSingleDimensionBooleanArray 为 逻辑型(2)
+静态 变量 objectDataMemberSingleDimensionByteArray 为 字节型(2)
+静态 变量 objectDataMemberSingleDimensionShortArray 为 短整数型(2)
+静态 变量 objectDataMemberSingleDimensionIntegerArray 为 整数型(2)
+静态 变量 objectDataMemberSingleDimensionLongArray 为 长整数型(2)
+静态 变量 objectDataMemberSingleDimensionSingleArray 为 单精度小数型(2)
+静态 变量 objectDataMemberSingleDimensionDoubleArray 为 双精度小数型(2)
+静态 变量 objectDataMemberSingleDimensionStringArray 为 文本型(2)
+静态 变量 objectDataMemberMultiDimensionBooleanArray 为 逻辑型(2, 2)
+静态 变量 objectDataMemberMultiDimensionByteArray 为 字节型(2, 2)
+静态 变量 objectDataMemberMultiDimensionShortArray 为 短整数型(2, 2)
+静态 变量 objectDataMemberMultiDimensionIntegerArray 为 整数型(2, 2)
+静态 变量 objectDataMemberMultiDimensionLongArray 为 长整数型(2, 2)
+静态 变量 objectDataMemberMultiDimensionSingleArray 为 单精度小数型(2, 2)
+静态 变量 objectDataMemberMultiDimensionDoubleArray 为 双精度小数型(2, 2)
+静态 变量 objectDataMemberMultiDimensionStringArray 为 文本型(2, 2)
+
+变量 instanceSingleDimensionArray 为 整数型()
+变量 instanceMultiDimensionArray 为 整数型(,)
+
+函数 Name() 为 文本型
+	Name = "Array Expression Tests"
+结束 函数
+
+事件 ArrayExpressionsTest.加载()
+	objectDataMemberSingleDimensionBooleanArray(0) = FIRST_BOOLEAN_ELEMENT
+	objectDataMemberSingleDimensionBooleanArray(1) = SECOND_BOOLEAN_ELEMENT
+
+	objectDataMemberSingleDimensionByteArray(0) = FIRST_BYTE_ELEMENT
+	objectDataMemberSingleDimensionByteArray(1) = SECOND_BYTE_ELEMENT
+
+	objectDataMemberSingleDimensionShortArray(0) = FIRST_SHORT_ELEMENT
+	objectDataMemberSingleDimensionShortArray(1) = SECOND_SHORT_ELEMENT
+
+	objectDataMemberSingleDimensionIntegerArray(0) = FIRST_INTEGER_ELEMENT
+	objectDataMemberSingleDimensionIntegerArray(1) = SECOND_INTEGER_ELEMENT
+
+	objectDataMemberSingleDimensionLongArray(0) = FIRST_LONG_ELEMENT
+	objectDataMemberSingleDimensionLongArray(1) = SECOND_LONG_ELEMENT
+
+	objectDataMemberSingleDimensionSingleArray(0) = FIRST_SINGLE_ELEMENT
+	objectDataMemberSingleDimensionSingleArray(1) = SECOND_SINGLE_ELEMENT
+
+	objectDataMemberSingleDimensionDoubleArray(0) = FIRST_DOUBLE_ELEMENT
+	objectDataMemberSingleDimensionDoubleArray(1) = SECOND_DOUBLE_ELEMENT
+
+	objectDataMemberSingleDimensionStringArray(0) = FIRST_STRING_ELEMENT
+	objectDataMemberSingleDimensionStringArray(1) = SECOND_STRING_ELEMENT
+
+	objectDataMemberMultiDimensionBooleanArray(0, 0) = FIRST_BOOLEAN_ELEMENT
+	objectDataMemberMultiDimensionBooleanArray(1, 1) = SECOND_BOOLEAN_ELEMENT
+
+	objectDataMemberMultiDimensionByteArray(0, 0) = FIRST_BYTE_ELEMENT
+	objectDataMemberMultiDimensionByteArray(1, 1) = SECOND_BYTE_ELEMENT
+
+	objectDataMemberMultiDimensionShortArray(0, 0) = FIRST_SHORT_ELEMENT
+	objectDataMemberMultiDimensionShortArray(1, 1) = SECOND_SHORT_ELEMENT
+
+	objectDataMemberMultiDimensionIntegerArray(0, 0) = FIRST_INTEGER_ELEMENT
+	objectDataMemberMultiDimensionIntegerArray(1, 1) = SECOND_INTEGER_ELEMENT
+
+	objectDataMemberMultiDimensionLongArray(0, 0) = FIRST_LONG_ELEMENT
+	objectDataMemberMultiDimensionLongArray(1, 1) = SECOND_LONG_ELEMENT
+
+	objectDataMemberMultiDimensionSingleArray(0, 0) = FIRST_SINGLE_ELEMENT
+	objectDataMemberMultiDimensionSingleArray(1, 1) = SECOND_SINGLE_ELEMENT
+
+	objectDataMemberMultiDimensionDoubleArray(0, 0) = FIRST_DOUBLE_ELEMENT
+	objectDataMemberMultiDimensionDoubleArray(1, 1) = SECOND_DOUBLE_ELEMENT
+
+	objectDataMemberMultiDimensionStringArray(0, 0) = FIRST_STRING_ELEMENT
+	objectDataMemberMultiDimensionStringArray(1, 1) = SECOND_STRING_ELEMENT
+结束 事件
+
+事件 ArrayExpressionsTest.初始化()
+	instanceDataMemberSingleDimensionBooleanArray(0) = FIRST_BOOLEAN_ELEMENT
+	instanceDataMemberSingleDimensionBooleanArray(1) = SECOND_BOOLEAN_ELEMENT
+
+	instanceDataMemberSingleDimensionByteArray(0) = FIRST_BYTE_ELEMENT
+	instanceDataMemberSingleDimensionByteArray(1) = SECOND_BYTE_ELEMENT
+
+	instanceDataMemberSingleDimensionShortArray(0) = FIRST_SHORT_ELEMENT
+	instanceDataMemberSingleDimensionShortArray(1) = SECOND_SHORT_ELEMENT
+
+	instanceDataMemberSingleDimensionIntegerArray(0) = FIRST_INTEGER_ELEMENT
+	instanceDataMemberSingleDimensionIntegerArray(1) = SECOND_INTEGER_ELEMENT
+
+	instanceDataMemberSingleDimensionLongArray(0) = FIRST_LONG_ELEMENT
+	instanceDataMemberSingleDimensionLongArray(1) = SECOND_LONG_ELEMENT
+
+	instanceDataMemberSingleDimensionSingleArray(0) = FIRST_SINGLE_ELEMENT
+	instanceDataMemberSingleDimensionSingleArray(1) = SECOND_SINGLE_ELEMENT
+
+	instanceDataMemberSingleDimensionDoubleArray(0) = FIRST_DOUBLE_ELEMENT
+	instanceDataMemberSingleDimensionDoubleArray(1) = SECOND_DOUBLE_ELEMENT
+
+	instanceDataMemberSingleDimensionStringArray(0) = FIRST_STRING_ELEMENT
+	instanceDataMemberSingleDimensionStringArray(1) = SECOND_STRING_ELEMENT
+
+	instanceDataMemberMultiDimensionBooleanArray(0, 0) = FIRST_BOOLEAN_ELEMENT
+	instanceDataMemberMultiDimensionBooleanArray(1, 1) = SECOND_BOOLEAN_ELEMENT
+
+	instanceDataMemberMultiDimensionByteArray(0, 0) = FIRST_BYTE_ELEMENT
+	instanceDataMemberMultiDimensionByteArray(1, 1) = SECOND_BYTE_ELEMENT
+
+	instanceDataMemberMultiDimensionShortArray(0, 0) = FIRST_SHORT_ELEMENT
+	instanceDataMemberMultiDimensionShortArray(1, 1) = SECOND_SHORT_ELEMENT
+
+	instanceDataMemberMultiDimensionIntegerArray(0, 0) = FIRST_INTEGER_ELEMENT
+	instanceDataMemberMultiDimensionIntegerArray(1, 1) = SECOND_INTEGER_ELEMENT
+
+	instanceDataMemberMultiDimensionLongArray(0, 0) = FIRST_LONG_ELEMENT
+	instanceDataMemberMultiDimensionLongArray(1, 1) = SECOND_LONG_ELEMENT
+
+	instanceDataMemberMultiDimensionSingleArray(0, 0) = FIRST_SINGLE_ELEMENT
+	instanceDataMemberMultiDimensionSingleArray(1, 1) = SECOND_SINGLE_ELEMENT
+
+	instanceDataMemberMultiDimensionDoubleArray(0, 0) = FIRST_DOUBLE_ELEMENT
+	instanceDataMemberMultiDimensionDoubleArray(1, 1) = SECOND_DOUBLE_ELEMENT
+
+	instanceDataMemberMultiDimensionStringArray(0, 0) = FIRST_STRING_ELEMENT
+	instanceDataMemberMultiDimensionStringArray(1, 1) = SECOND_STRING_ELEMENT
+结束 事件
+
+过程 Run()
+	' Checks array read/write access to a single dimension local static array
+	断言真(LocalSingleDimensionBoolean(0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(LocalSingleDimensionBoolean(1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(LocalSingleDimensionByte(0) = FIRST_BYTE_ELEMENT)
+	断言真(LocalSingleDimensionByte(1) = SECOND_BYTE_ELEMENT)
+
+	断言真(LocalSingleDimensionShort(0) = FIRST_SHORT_ELEMENT)
+	断言真(LocalSingleDimensionShort(1) = SECOND_SHORT_ELEMENT)
+
+	断言真(LocalSingleDimensionInteger(0) = FIRST_INTEGER_ELEMENT)
+	断言真(LocalSingleDimensionInteger(1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(LocalSingleDimensionLong(0) = FIRST_LONG_ELEMENT)
+	断言真(LocalSingleDimensionLong(1) = SECOND_LONG_ELEMENT)
+
+	断言真(LocalSingleDimensionSingle(0) = FIRST_SINGLE_ELEMENT)
+	断言真(LocalSingleDimensionSingle(1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(LocalSingleDimensionDouble(0) = FIRST_DOUBLE_ELEMENT)
+	断言真(LocalSingleDimensionDouble(1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(LocalSingleDimensionString(0) = FIRST_STRING_ELEMENT)
+	断言真(LocalSingleDimensionString(1) = SECOND_STRING_ELEMENT)
+
+	' Checks array read/write access to a multi dimension local static array
+	断言真(LocalMultiDimensionBoolean(0, 0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(LocalMultiDimensionBoolean(1, 1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(LocalMultiDimensionByte(0, 0) = FIRST_BYTE_ELEMENT)
+	断言真(LocalMultiDimensionByte(1, 1) = SECOND_BYTE_ELEMENT)
+
+	断言真(LocalMultiDimensionShort(0, 0) = FIRST_SHORT_ELEMENT)
+	断言真(LocalMultiDimensionShort(1, 1) = SECOND_SHORT_ELEMENT)
+
+	断言真(LocalMultiDimensionInteger(0, 0) = FIRST_INTEGER_ELEMENT)
+	断言真(LocalMultiDimensionInteger(1, 1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(LocalMultiDimensionLong(0, 0) = FIRST_LONG_ELEMENT)
+	断言真(LocalMultiDimensionLong(1, 1) = SECOND_LONG_ELEMENT)
+
+	断言真(LocalMultiDimensionSingle(0, 0) = FIRST_SINGLE_ELEMENT)
+	断言真(LocalMultiDimensionSingle(1, 1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(LocalMultiDimensionDouble(0, 0) = FIRST_DOUBLE_ELEMENT)
+	断言真(LocalMultiDimensionDouble(1, 1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(LocalMultiDimensionString(0, 0) = FIRST_STRING_ELEMENT)
+	断言真(LocalMultiDimensionString(1, 1) = SECOND_STRING_ELEMENT)
+
+	' Checks array read/write access to a single dimension instance data member static array
+	断言真(InstanceDataMemberSingleDimensionBoolean(0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionBoolean(1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionByte(0) = FIRST_BYTE_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionByte(1) = SECOND_BYTE_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionShort(0) = FIRST_SHORT_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionShort(1) = SECOND_SHORT_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionInteger(0) = FIRST_INTEGER_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionInteger(1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionLong(0) = FIRST_LONG_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionLong(1) = SECOND_LONG_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionSingle(0) = FIRST_SINGLE_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionSingle(1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionDouble(0) = FIRST_DOUBLE_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionDouble(1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(InstanceDataMemberSingleDimensionString(0) = FIRST_STRING_ELEMENT)
+	断言真(InstanceDataMemberSingleDimensionString(1) = SECOND_STRING_ELEMENT)
+
+	' Checks array read/write access to a multi dimension instance data member static array
+	断言真(InstanceDataMemberMultiDimensionBoolean(0, 0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionBoolean(1, 1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionByte(0, 0) = FIRST_BYTE_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionByte(1, 1) = SECOND_BYTE_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionShort(0, 0) = FIRST_SHORT_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionShort(1, 1) = SECOND_SHORT_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionInteger(0, 0) = FIRST_INTEGER_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionInteger(1, 1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionLong(0, 0) = FIRST_LONG_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionLong(1, 1) = SECOND_LONG_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionSingle(0, 0) = FIRST_SINGLE_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionSingle(1, 1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionDouble(0, 0) = FIRST_DOUBLE_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionDouble(1, 1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(InstanceDataMemberMultiDimensionString(0, 0) = FIRST_STRING_ELEMENT)
+	断言真(InstanceDataMemberMultiDimensionString(1, 1) = SECOND_STRING_ELEMENT)
+
+	' Checks array read/write access to a single dimension object data member static array
+	断言真(ObjectDataMemberSingleDimensionBoolean(0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionBoolean(1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionByte(0) = FIRST_BYTE_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionByte(1) = SECOND_BYTE_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionShort(0) = FIRST_SHORT_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionShort(1) = SECOND_SHORT_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionInteger(0) = FIRST_INTEGER_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionInteger(1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionLong(0) = FIRST_LONG_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionLong(1) = SECOND_LONG_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionSingle(0) = FIRST_SINGLE_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionSingle(1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionDouble(0) = FIRST_DOUBLE_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionDouble(1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(ObjectDataMemberSingleDimensionString(0) = FIRST_STRING_ELEMENT)
+	断言真(ObjectDataMemberSingleDimensionString(1) = SECOND_STRING_ELEMENT)
+
+	' Checks array read/write access to a multi dimension object data member static array
+	断言真(ObjectDataMemberMultiDimensionBoolean(0, 0) = FIRST_BOOLEAN_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionBoolean(1, 1) = SECOND_BOOLEAN_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionByte(0, 0) = FIRST_BYTE_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionByte(1, 1) = SECOND_BYTE_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionShort(0, 0) = FIRST_SHORT_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionShort(1, 1) = SECOND_SHORT_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionInteger(0, 0) = FIRST_INTEGER_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionInteger(1, 1) = SECOND_INTEGER_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionLong(0, 0) = FIRST_LONG_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionLong(1, 1) = SECOND_LONG_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionSingle(0, 0) = FIRST_SINGLE_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionSingle(1, 1) = SECOND_SINGLE_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionDouble(0, 0) = FIRST_DOUBLE_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionDouble(1, 1) = SECOND_DOUBLE_ELEMENT)
+
+	断言真(ObjectDataMemberMultiDimensionString(0, 0) = FIRST_STRING_ELEMENT)
+	断言真(ObjectDataMemberMultiDimensionString(1, 1) = SECOND_STRING_ELEMENT)
+
+	' Checking dynamically sized array usage
+	变量 singleDimArray2 为 整数型(2)
+	SingleDimensionArray = singleDimArray2
+	断言真(SingleDimensionArray 是 singleDimArray2)
+
+	变量 multiDimArray21 为 整数型(2, 1)
+	MultiDimensionArray = multiDimArray21
+	断言真(MultiDimensionArray 是 multiDimArray21)
+
+	变量 singleDimArray4 为 整数型(4)
+	SingleDimensionArraySetter(singleDimArray4)
+	断言真(SingleDimensionArrayGetter() 是 singleDimArray4)
+
+	变量 multiDimArray42 为 整数型(4, 2)
+	MultiDimensionArraySetter(multiDimArray42)
+	断言真(MultiDimensionArrayGetter() 是 multiDimArray42)
+
+	' Checking single dimension array access via variants
+	变量 singleDimBooleanArray6 为 逻辑型(6)
+	singleDimBooleanArray6(5) = FIRST_BOOLEAN_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimBooleanArray6, 5) = FIRST_BOOLEAN_ELEMENT)
+
+	变量 singleDimBooleanArray3 为 逻辑型(3)
+	SingleDimVariantArrayElementSetter(singleDimBooleanArray3, 2, SECOND_BOOLEAN_ELEMENT)
+	断言真(singleDimBooleanArray3(2) = SECOND_BOOLEAN_ELEMENT)
+
+	变量 singleDimByteArray6 为 字节型(6)
+	singleDimByteArray6(5) = FIRST_BYTE_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimByteArray6, 5) = FIRST_BYTE_ELEMENT)
+
+	变量 singleDimByteArray3 为 字节型(3)
+	SingleDimVariantArrayElementSetter(singleDimByteArray3, 2, SECOND_BYTE_ELEMENT)
+	断言真(singleDimByteArray3(2) = SECOND_BYTE_ELEMENT)
+
+	变量 singleDimShortArray6 为 短整数型(6)
+	singleDimShortArray6(5) = FIRST_SHORT_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimShortArray6, 5) = FIRST_SHORT_ELEMENT)
+
+	变量 singleDimShortArray3 为 短整数型(3)
+	SingleDimVariantArrayElementSetter(singleDimShortArray3, 2, SECOND_SHORT_ELEMENT)
+	断言真(singleDimShortArray3(2) = SECOND_SHORT_ELEMENT)
+
+	变量 singleDimIntegerArray6 为 整数型(6)
+	singleDimIntegerArray6(5) = FIRST_INTEGER_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimIntegerArray6, 5) = FIRST_INTEGER_ELEMENT)
+
+	变量 singleDimIntegerArray3 为 整数型(3)
+	SingleDimVariantArrayElementSetter(singleDimIntegerArray3, 2, SECOND_INTEGER_ELEMENT)
+	断言真(singleDimIntegerArray3(2) = SECOND_INTEGER_ELEMENT)
+
+	变量 singleDimLongArray6 为 长整数型(6)
+	singleDimLongArray6(5) = FIRST_LONG_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimLongArray6, 5) = FIRST_LONG_ELEMENT)
+
+	变量 singleDimLongArray3 为 长整数型(3)
+	SingleDimVariantArrayElementSetter(singleDimLongArray3, 2, SECOND_LONG_ELEMENT)
+	断言真(singleDimLongArray3(2) = SECOND_LONG_ELEMENT)
+
+	变量 singleDimSingleArray6 为 单精度小数型(6)
+	singleDimSingleArray6(5) = FIRST_SINGLE_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimSingleArray6, 5) = FIRST_SINGLE_ELEMENT)
+
+	变量 singleDimSingleArray3 为 单精度小数型(3)
+	SingleDimVariantArrayElementSetter(singleDimSingleArray3, 2, SECOND_SINGLE_ELEMENT)
+	断言真(singleDimSingleArray3(2) = SECOND_SINGLE_ELEMENT)
+
+	变量 singleDimDoubleArray6 为 双精度小数型(6)
+	singleDimDoubleArray6(5) = FIRST_DOUBLE_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimDoubleArray6, 5) = FIRST_DOUBLE_ELEMENT)
+
+	变量 singleDimDoubleArray3 为 双精度小数型(3)
+	SingleDimVariantArrayElementSetter(singleDimDoubleArray3, 2, SECOND_DOUBLE_ELEMENT)
+	断言真(singleDimDoubleArray3(2) = SECOND_DOUBLE_ELEMENT)
+
+	变量 singleDimStringArray6 为 文本型(6)
+	singleDimStringArray6(5) = FIRST_STRING_ELEMENT
+	断言真(SingleDimVariantArrayElementGetter(singleDimStringArray6, 5) = FIRST_STRING_ELEMENT)
+
+	变量 singleDimStringArray3 为 文本型(3)
+	SingleDimVariantArrayElementSetter(singleDimStringArray3, 2, SECOND_STRING_ELEMENT)
+	断言真(singleDimStringArray3(2) = SECOND_STRING_ELEMENT)
+
+	' Checking multi dimension array access via variants
+	变量 multiDimBooleanArray63 为 逻辑型(6, 3)
+	multiDimBooleanArray63(5, 2) = FIRST_BOOLEAN_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimBooleanArray63, 5, 2) = FIRST_BOOLEAN_ELEMENT)
+
+	变量 multiDimBooleanArray36 为 逻辑型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimBooleanArray36, 2, 5, SECOND_BOOLEAN_ELEMENT)
+	断言真(multiDimBooleanArray36(2, 5) = SECOND_BOOLEAN_ELEMENT)
+
+	变量 multiDimByteArray63 为 字节型(6, 3)
+	multiDimByteArray63(5, 2) = FIRST_BYTE_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimByteArray63, 5, 2) = FIRST_BYTE_ELEMENT)
+
+	变量 multiDimByteArray36 为 字节型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimByteArray36, 2, 5, SECOND_BYTE_ELEMENT)
+	断言真(multiDimByteArray36(2, 5) = SECOND_BYTE_ELEMENT)
+
+	变量 multiDimShortArray63 为 短整数型(6, 3)
+	multiDimShortArray63(5, 2) = FIRST_SHORT_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimShortArray63, 5, 2) = FIRST_SHORT_ELEMENT)
+
+	变量 multiDimShortArray36 为 短整数型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimShortArray36, 2, 5, SECOND_SHORT_ELEMENT)
+	断言真(multiDimShortArray36(2, 5) = SECOND_SHORT_ELEMENT)
+
+	变量 multiDimIntegerArray63 为 整数型(6, 3)
+	multiDimIntegerArray63(5, 2) = FIRST_INTEGER_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimIntegerArray63, 5, 2) = FIRST_INTEGER_ELEMENT)
+
+	变量 multiDimIntegerArray36 为 整数型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimIntegerArray36, 2, 5, SECOND_INTEGER_ELEMENT)
+	断言真(multiDimIntegerArray36(2, 5) = SECOND_INTEGER_ELEMENT)
+
+	变量 multiDimLongArray63 为 长整数型(6, 3)
+	multiDimLongArray63(5, 2) = FIRST_LONG_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimLongArray63, 5, 2) = FIRST_LONG_ELEMENT)
+
+	变量 multiDimLongArray36 为 长整数型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimLongArray36, 2, 5, SECOND_LONG_ELEMENT)
+	断言真(multiDimLongArray36(2, 5) = SECOND_LONG_ELEMENT)
+
+	变量 multiDimSingleArray63 为 单精度小数型(6, 3)
+	multiDimSingleArray63(5, 2) = FIRST_SINGLE_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimSingleArray63, 5, 2) = FIRST_SINGLE_ELEMENT)
+
+	变量 multiDimSingleArray36 为 单精度小数型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimSingleArray36, 2, 5, SECOND_SINGLE_ELEMENT)
+	断言真(multiDimSingleArray36(2, 5) = SECOND_SINGLE_ELEMENT)
+
+	变量 multiDimDoubleArray63 为 双精度小数型(6, 3)
+	multiDimDoubleArray63(5, 2) = FIRST_DOUBLE_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimDoubleArray63, 5, 2) = FIRST_DOUBLE_ELEMENT)
+
+	变量 multiDimDoubleArray36 为 双精度小数型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimDoubleArray36, 2, 5, SECOND_DOUBLE_ELEMENT)
+	断言真(multiDimDoubleArray36(2, 5) = SECOND_DOUBLE_ELEMENT)
+
+	变量 multiDimStringArray63 为 文本型(6, 3)
+	multiDimStringArray63(5, 2) = FIRST_STRING_ELEMENT
+	断言真(MultiDimVariantArrayElementGetter(multiDimStringArray63, 5, 2) = FIRST_STRING_ELEMENT)
+
+	变量 multiDimStringArray36 为 文本型(3, 6)
+	MultiDimVariantArrayElementSetter(multiDimStringArray36, 2, 5, SECOND_STRING_ELEMENT)
+	断言真(multiDimStringArray36(2, 5) = SECOND_STRING_ELEMENT)
+结束 过程
+
+函数 LocalSingleDimensionBoolean(index 为 整数型) 为 逻辑型
+	变量 array 为 逻辑型(2)
+	array(0) = FIRST_BOOLEAN_ELEMENT
+	array(1) = SECOND_BOOLEAN_ELEMENT
+	LocalSingleDimensionBoolean = array(index)
+结束 函数
+
+函数 LocalSingleDimensionByte(index 为 整数型) 为 字节型
+	变量 array 为 字节型(2)
+	array(0) = FIRST_BYTE_ELEMENT
+	array(1) = SECOND_BYTE_ELEMENT
+	LocalSingleDimensionByte = array(index)
+结束 函数
+
+函数 LocalSingleDimensionShort(index 为 整数型) 为 短整数型
+	变量 array 为 短整数型(2)
+	array(0) = FIRST_SHORT_ELEMENT
+	array(1) = SECOND_SHORT_ELEMENT
+	LocalSingleDimensionShort = array(index)
+结束 函数
+
+函数 LocalSingleDimensionInteger(index 为 整数型) 为 整数型
+	变量 array 为 整数型(2)
+	array(0) = FIRST_INTEGER_ELEMENT
+	array(1) = SECOND_INTEGER_ELEMENT
+	LocalSingleDimensionInteger = array(index)
+结束 函数
+
+函数 LocalSingleDimensionLong(index 为 整数型) 为 长整数型
+	变量 array 为 长整数型(2)
+	array(0) = FIRST_LONG_ELEMENT
+	array(1) = SECOND_LONG_ELEMENT
+	LocalSingleDimensionLong = array(index)
+结束 函数
+
+函数 LocalSingleDimensionSingle(index 为 整数型) 为 单精度小数型
+	变量 array 为 单精度小数型(2)
+	array(0) = FIRST_SINGLE_ELEMENT
+	array(1) = SECOND_SINGLE_ELEMENT
+	LocalSingleDimensionSingle = array(index)
+结束 函数
+
+函数 LocalSingleDimensionDouble(index 为 整数型) 为 双精度小数型
+	变量 array 为 双精度小数型(2)
+	array(0) = FIRST_DOUBLE_ELEMENT
+	array(1) = SECOND_DOUBLE_ELEMENT
+	LocalSingleDimensionDouble = array(index)
+结束 函数
+
+函数 LocalSingleDimensionString(index 为 整数型) 为 文本型
+	变量 array 为 文本型(2)
+	array(0) = FIRST_STRING_ELEMENT
+	array(1) = SECOND_STRING_ELEMENT
+	LocalSingleDimensionString = array(index)
+结束 函数
+
+函数 LocalMultiDimensionBoolean(index1 为 整数型, index2 为 整数型) 为 逻辑型
+	变量 array 为 逻辑型(2, 2)
+	array(0, 0) = FIRST_BOOLEAN_ELEMENT
+	array(1, 1) = SECOND_BOOLEAN_ELEMENT
+	LocalMultiDimensionBoolean = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionByte(index1 为 整数型, index2 为 整数型) 为 字节型
+	变量 array 为 字节型(2, 2)
+	array(0, 0) = FIRST_BYTE_ELEMENT
+	array(1, 1) = SECOND_BYTE_ELEMENT
+	LocalMultiDimensionByte = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionShort(index1 为 整数型, index2 为 整数型) 为 短整数型
+	变量 array 为 短整数型(2, 2)
+	array(0, 0) = FIRST_SHORT_ELEMENT
+	array(1, 1) = SECOND_SHORT_ELEMENT
+	LocalMultiDimensionShort = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionInteger(index1 为 整数型, index2 为 整数型) 为 整数型
+	变量 array 为 整数型(2, 2)
+	array(0, 0) = FIRST_INTEGER_ELEMENT
+	array(1, 1) = SECOND_INTEGER_ELEMENT
+	LocalMultiDimensionInteger = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionLong(index1 为 整数型, index2 为 整数型) 为 长整数型
+	变量 array 为 长整数型(2, 2)
+	array(0, 0) = FIRST_LONG_ELEMENT
+	array(1, 1) = SECOND_LONG_ELEMENT
+	LocalMultiDimensionLong = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionSingle(index1 为 整数型, index2 为 整数型) 为 单精度小数型
+	变量 array 为 单精度小数型(2, 2)
+	array(0, 0) = FIRST_SINGLE_ELEMENT
+	array(1, 1) = SECOND_SINGLE_ELEMENT
+	LocalMultiDimensionSingle = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionDouble(index1 为 整数型, index2 为 整数型) 为 双精度小数型
+	变量 array 为 双精度小数型(2, 2)
+	array(0, 0) = FIRST_DOUBLE_ELEMENT
+	array(1, 1) = SECOND_DOUBLE_ELEMENT
+	LocalMultiDimensionDouble = array(index1, index2)
+结束 函数
+
+函数 LocalMultiDimensionString(index1 为 整数型, index2 为 整数型) 为 文本型
+	变量 array 为 文本型(2, 2)
+	array(0, 0) = FIRST_STRING_ELEMENT
+	array(1, 1) = SECOND_STRING_ELEMENT
+	LocalMultiDimensionString = array(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionBoolean(index 为 整数型) 为 逻辑型
+	InstanceDataMemberSingleDimensionBoolean = instanceDataMemberSingleDimensionBooleanArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionByte(index 为 整数型) 为 字节型
+	InstanceDataMemberSingleDimensionByte = instanceDataMemberSingleDimensionByteArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionShort(index 为 整数型) 为 短整数型
+	InstanceDataMemberSingleDimensionShort = instanceDataMemberSingleDimensionShortArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionInteger(index 为 整数型) 为 整数型
+	InstanceDataMemberSingleDimensionInteger = instanceDataMemberSingleDimensionIntegerArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionLong(index 为 整数型) 为 长整数型
+	InstanceDataMemberSingleDimensionLong = instanceDataMemberSingleDimensionLongArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionSingle(index 为 整数型) 为 单精度小数型
+	InstanceDataMemberSingleDimensionSingle = instanceDataMemberSingleDimensionSingleArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionDouble(index 为 整数型) 为 双精度小数型
+	InstanceDataMemberSingleDimensionDouble = instanceDataMemberSingleDimensionDoubleArray(index)
+结束 函数
+
+函数 InstanceDataMemberSingleDimensionString(index 为 整数型) 为 文本型
+	InstanceDataMemberSingleDimensionString = instanceDataMemberSingleDimensionStringArray(index)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionBoolean(index1 为 整数型, index2 为 整数型) 为 逻辑型
+	InstanceDataMemberMultiDimensionBoolean = instanceDataMemberMultiDimensionBooleanArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionByte(index1 为 整数型, index2 为 整数型) 为 字节型
+	InstanceDataMemberMultiDimensionByte = instanceDataMemberMultiDimensionByteArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionShort(index1 为 整数型, index2 为 整数型) 为 短整数型
+	InstanceDataMemberMultiDimensionShort = instanceDataMemberMultiDimensionShortArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionInteger(index1 为 整数型, index2 为 整数型) 为 整数型
+	InstanceDataMemberMultiDimensionInteger = instanceDataMemberMultiDimensionIntegerArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionLong(index1 为 整数型, index2 为 整数型) 为 长整数型
+	InstanceDataMemberMultiDimensionLong = instanceDataMemberMultiDimensionLongArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionSingle(index1 为 整数型, index2 为 整数型) 为 单精度小数型
+	InstanceDataMemberMultiDimensionSingle = instanceDataMemberMultiDimensionSingleArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionDouble(index1 为 整数型, index2 为 整数型) 为 双精度小数型
+	InstanceDataMemberMultiDimensionDouble = instanceDataMemberMultiDimensionDoubleArray(index1, index2)
+结束 函数
+
+函数 InstanceDataMemberMultiDimensionString(index1 为 整数型, index2 为 整数型) 为 文本型
+	InstanceDataMemberMultiDimensionString = instanceDataMemberMultiDimensionStringArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionBoolean(index 为 整数型) 为 逻辑型
+	ObjectDataMemberSingleDimensionBoolean = objectDataMemberSingleDimensionBooleanArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionByte(index 为 整数型) 为 字节型
+	ObjectDataMemberSingleDimensionByte = objectDataMemberSingleDimensionByteArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionShort(index 为 整数型) 为 短整数型
+	ObjectDataMemberSingleDimensionShort = objectDataMemberSingleDimensionShortArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionInteger(index 为 整数型) 为 整数型
+	ObjectDataMemberSingleDimensionInteger = objectDataMemberSingleDimensionIntegerArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionLong(index 为 整数型) 为 长整数型
+	ObjectDataMemberSingleDimensionLong = objectDataMemberSingleDimensionLongArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionSingle(index 为 整数型) 为 单精度小数型
+	ObjectDataMemberSingleDimensionSingle = objectDataMemberSingleDimensionSingleArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionDouble(index 为 整数型) 为 双精度小数型
+	ObjectDataMemberSingleDimensionDouble = objectDataMemberSingleDimensionDoubleArray(index)
+结束 函数
+
+函数 ObjectDataMemberSingleDimensionString(index 为 整数型) 为 文本型
+	ObjectDataMemberSingleDimensionString = objectDataMemberSingleDimensionStringArray(index)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionBoolean(index1 为 整数型, index2 为 整数型) 为 逻辑型
+	ObjectDataMemberMultiDimensionBoolean = objectDataMemberMultiDimensionBooleanArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionByte(index1 为 整数型, index2 为 整数型) 为 字节型
+	ObjectDataMemberMultiDimensionByte = objectDataMemberMultiDimensionByteArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionShort(index1 为 整数型, index2 为 整数型) 为 短整数型
+	ObjectDataMemberMultiDimensionShort = objectDataMemberMultiDimensionShortArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionInteger(index1 为 整数型, index2 为 整数型) 为 整数型
+	ObjectDataMemberMultiDimensionInteger = objectDataMemberMultiDimensionIntegerArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionLong(index1 为 整数型, index2 为 整数型) 为 长整数型
+	ObjectDataMemberMultiDimensionLong = objectDataMemberMultiDimensionLongArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionSingle(index1 为 整数型, index2 为 整数型) 为 单精度小数型
+	ObjectDataMemberMultiDimensionSingle = objectDataMemberMultiDimensionSingleArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionDouble(index1 为 整数型, index2 为 整数型) 为 双精度小数型
+	ObjectDataMemberMultiDimensionDouble = objectDataMemberMultiDimensionDoubleArray(index1, index2)
+结束 函数
+
+函数 ObjectDataMemberMultiDimensionString(index1 为 整数型, index2 为 整数型) 为 文本型
+	ObjectDataMemberMultiDimensionString = objectDataMemberMultiDimensionStringArray(index1, index2)
+结束 函数
+
+属性 SingleDimensionArray 为 整数型()
+	获取
+		SingleDimensionArray = instanceSingleDimensionArray
+	结束 获取
+
+	设置
+		instanceSingleDimensionArray = SingleDimensionArray
+	结束 设置
+结束 属性
+
+函数 SingleDimensionArrayGetter() 为 整数型()
+	SingleDimensionArrayGetter = instanceSingleDimensionArray
+结束 函数
+
+过程 SingleDimensionArraySetter(SingleDimensionArray 为 整数型())
+	instanceSingleDimensionArray = SingleDimensionArray
+结束 过程
+
+属性 MultiDimensionArray 为 整数型(,)
+	获取
+		MultiDimensionArray = instanceMultiDimensionArray
+	结束 获取
+
+	设置
+		instanceMultiDimensionArray = MultiDimensionArray
+	结束 设置
+结束 属性
+
+函数 MultiDimensionArrayGetter() 为 整数型(,)
+	MultiDimensionArrayGetter = instanceMultiDimensionArray
+结束 函数
+
+过程 MultiDimensionArraySetter(MultiDimensionArray 为 整数型(,))
+	instanceMultiDimensionArray = MultiDimensionArray
+结束 过程
+
+函数 SingleDimVariantArrayElementGetter(array 为 变体型, index 为 变体型) 为 变体型
+	SingleDimVariantArrayElementGetter = array(index)
+结束 函数
+
+过程 SingleDimVariantArrayElementSetter(array 为 变体型, index 为 变体型, value 为 变体型)
+	array(index) = value
+结束 过程
+
+函数 MultiDimVariantArrayElementGetter(array 为 变体型, index1 为 变体型, index2 为 变体型) 为 变体型
+	MultiDimVariantArrayElementGetter = array(index1, index2)
+结束 函数
+
+过程 MultiDimVariantArrayElementSetter(array 为 变体型, index1 为 变体型, index2 为 变体型, value 为 变体型)
+	array(index1, index2) = value
+结束 过程
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

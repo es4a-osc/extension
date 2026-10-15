@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-9
 */
 
+import { testFixturePath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -119,7 +121,7 @@ suite("主窗口包目录改名", () => {
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-unit-events-"));
 		const projectFile = path.join(directory, "project.properties");
-		const objectSource = await fs.readFile(path.resolve(__dirname, "../../../../simple/samples/Tetris/src/simple/samples/tetris/Bar.simple"), "utf8");
+		const objectSource = await fs.readFile(testFixturePath("simple", "samples/Tetris/src/simple/samples/tetris/Bar.simple"), "utf8");
 		const properties = "main=demo.主窗口\r\nsource=./src\r\n未知字段=保留\r\n";
 		const serviceSource = "' 旧服务 保留注释\r\n事件 旧服务.加载()\r\n结束 事件\r\n事件 旧服务.初始化()\r\n结束 事件\r\n事件 成员1.初始化()\r\n结束 事件\r\n过程 服务创建()\r\n\t显示提示(\"旧服务\")\r\n结束 过程\r\n\r\n$属性\r\n  $资源 $服务\r\n  未知字段 = \"旧服务\"\r\n$结束 $属性\r\n";
 		try {

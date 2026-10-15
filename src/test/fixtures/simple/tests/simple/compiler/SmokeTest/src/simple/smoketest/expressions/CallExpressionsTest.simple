@@ -1,0 +1,187 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests call expressions
+
+别名 BaseObject = simple.smoketest.utils.BaseObject
+别名 DerivedObject = simple.smoketest.utils.DerivedObject
+别名 ObjectNameInterface = simple.smoketest.utils.ObjectNameInterface
+
+变量 fieldBoolean 为 逻辑型
+变量 fieldByte 为 字节型
+变量 fieldShort 为 短整数型
+变量 fieldInteger 为 整数型
+变量 fieldLong 为 长整数型
+变量 fieldSingle 为 单精度小数型
+变量 fieldDouble 为 双精度小数型
+变量 fieldString 为 文本型
+变量 fieldVariant 为 变体型
+
+静态 变量 staticBoolean 为 逻辑型
+静态 变量 staticByte 为 字节型
+静态 变量 staticShort 为 短整数型
+静态 变量 staticInteger 为 整数型
+静态 变量 staticLong 为 长整数型
+静态 变量 staticSingle 为 单精度小数型
+静态 变量 staticDouble 为 双精度小数型
+静态 变量 staticString 为 文本型
+静态 变量 staticVariant 为 变体型
+
+函数 Name() 为 文本型
+	Name = "Call Expression Tests"
+结束 函数
+
+过程 Run()
+	' Since call expressions are already exercised by the test framework quite extensively
+	' we limit ourselves here to testing reference parameters
+	变量 localBoolean 为 逻辑型 : BooleanSwap(localBoolean, 真) : 断言真(localBoolean)
+	BooleanSwap(fieldBoolean, 真) : 断言真(fieldBoolean)
+	BooleanSwap(staticBoolean, 真) : 断言真(staticBoolean)
+	变量 ArrayBoolean 为 逻辑型(1) : BooleanSwap(ArrayBoolean(0), 6) : 断言真(ArrayBoolean(0))
+
+	变量 localByte 为 字节型 : ByteSwap(localByte, 3) : 断言真(3 = localByte)
+	ByteSwap(fieldByte, 4) : 断言真(4 = fieldByte)
+	ByteSwap(staticByte, 5) : 断言真(5 = staticByte)
+	变量 ArrayByte 为 字节型(1) : ByteSwap(ArrayByte(0), 6) : 断言真(6 = ArrayByte(0))
+
+	变量 localShort 为 短整数型 : ShortSwap(localShort, 13) : 断言真(13 = localShort)
+	ShortSwap(fieldShort, 14) : 断言真(14 = fieldShort)
+	ShortSwap(staticShort, 15) : 断言真(15 = staticShort)
+	变量 ArrayShort 为 短整数型(1) : ShortSwap(ArrayShort(0), 16) : 断言真(16 = ArrayShort(0))
+
+	变量 localInteger 为 整数型 : IntegerSwap(localInteger, 23) : 断言真(23 = localInteger)
+	IntegerSwap(fieldInteger, 24) : 断言真(24 = fieldInteger)
+	IntegerSwap(staticInteger, 25) : 断言真(25 = staticInteger)
+	变量 ArrayInteger 为 整数型(1) : IntegerSwap(ArrayInteger(0), 26) : 断言真(26 = ArrayInteger(0))
+
+	变量 localLong 为 长整数型 : LongSwap(localLong, 33) : 断言真(33 = localLong)
+	LongSwap(fieldLong, 34) : 断言真(34 = fieldLong)
+	LongSwap(staticLong, 35) : 断言真(35 = staticLong)
+	变量 ArrayLong 为 长整数型(1) : LongSwap(ArrayLong(0), 36) : 断言真(36 = ArrayLong(0))
+
+	变量 localSingle 为 单精度小数型 : SingleSwap(localSingle, 43) : 断言真(43 = localSingle)
+	SingleSwap(fieldSingle, 44) : 断言真(44 = fieldSingle)
+	SingleSwap(staticSingle, 45) : 断言真(45 = staticSingle)
+	变量 ArraySingle 为 单精度小数型(1) : SingleSwap(ArraySingle(0), 46) : 断言真(46 = ArraySingle(0))
+
+	变量 localDouble 为 双精度小数型 : DoubleSwap(localDouble, 53) : 断言真(53 = localDouble)
+	DoubleSwap(fieldDouble, 54) : 断言真(54 = fieldDouble)
+	DoubleSwap(staticDouble, 55) : 断言真(55 = staticDouble)
+	变量 ArrayDouble 为 双精度小数型(1) : DoubleSwap(ArrayDouble(0), 56) : 断言真(56 = ArrayDouble(0))
+
+	变量 localString 为 文本型 : StringSwap(localString, "63") : 断言真("63" = localString)
+	StringSwap(fieldString, "64") : 断言真("64" = fieldString)
+	StringSwap(staticString, "65") : 断言真("65" = staticString)
+	变量 ArrayString 为 文本型(1) : StringSwap(ArrayString(0), "66") : 断言真("66" = ArrayString(0))
+
+	变量 localVar1 为 变体型 : localVar1 = 73
+	变量 localVar2 为 变体型 : localVar2 = "74"
+	VariantSwap(localVar1, localVar2) : 断言真(localVar1 = "74" 且 localVar2 = 73)
+
+	VariantSwap(fieldVariant, 75) : 断言真(75 = fieldVariant)
+	VariantSwap(staticVariant, 76) : 断言真(76 = staticVariant)
+	变量 ArrayVariant 为 变体型(1) : VariantSwap(ArrayVariant(0), 77) : 断言真(77 = ArrayVariant(0))
+
+	' Test virtual and interface calls
+	变量 base 为 BaseObject, derived 为 DerivedObject
+	base = 创建 BaseObject
+	derived = 创建 DerivedObject
+	断言真(CallInterface(base) = BaseObject.NAME)
+	断言真(CallInterface(derived) = DerivedObject.NAME)
+	断言真(CallBaseObject(base) = BaseObject.NAME)
+	断言真(CallBaseObject(derived) = DerivedObject.NAME)
+	断言真(derived.GetObjectName("Base:") = "Base:" & BaseObject.NAME)
+
+	' 同名函数和过程按参数个数选择重载。
+	断言真(OverloadedValue() = 10)
+	断言真(OverloadedValue(20) = 21)
+	OverloadedProcedure()
+	断言真(fieldInteger = 30)
+	OverloadedProcedure(40)
+	断言真(fieldInteger = 40)
+结束 过程
+
+函数 OverloadedValue() 为 整数型
+	OverloadedValue = 10
+结束 函数
+
+函数 OverloadedValue(value 为 整数型) 为 整数型
+	OverloadedValue = value + 1
+结束 函数
+
+过程 OverloadedProcedure()
+	fieldInteger = 30
+结束 过程
+
+过程 OverloadedProcedure(value 为 整数型)
+	fieldInteger = value
+结束 过程
+
+过程 BooleanSwap(传址 a 为 逻辑型, 传址 b 为 逻辑型)
+	变量 c 为 逻辑型
+	c = a : a = b : b = c
+结束 过程
+
+过程 ByteSwap(传址 a 为 字节型, 传址 b 为 字节型)
+	变量 c 为 字节型
+	c = a : a = b : b = c
+结束 过程
+
+过程 ShortSwap(传址 a 为 短整数型, 传址 b 为 短整数型)
+	变量 c 为 短整数型
+	c = a : a = b : b = c
+结束 过程
+
+过程 IntegerSwap(传址 a 为 整数型, 传址 b 为 整数型)
+	变量 c 为 整数型
+	c = a : a = b : b = c
+结束 过程
+
+过程 LongSwap(传址 a 为 长整数型, 传址 b 为 长整数型)
+	变量 c 为 长整数型
+	c = a : a = b : b = c
+结束 过程
+
+过程 SingleSwap(传址 a 为 单精度小数型, 传址 b 为 单精度小数型)
+	变量 c 为 单精度小数型
+	c = a : a = b : b = c
+结束 过程
+
+过程 DoubleSwap(传址 a 为 双精度小数型, 传址 b 为 双精度小数型)
+	变量 c 为 双精度小数型
+	c = a : a = b : b = c
+结束 过程
+
+过程 StringSwap(传址 a 为 文本型, 传址 b 为 文本型)
+	变量 c 为 文本型
+	c = a : a = b : b = c
+结束 过程
+
+过程 VariantSwap(传址 a 为 变体型, 传址 b 为 变体型)
+	变量 c 为 变体型
+	c = a : a = b : b = c
+结束 过程
+
+函数 CallInterface(obj 为 ObjectNameInterface) 为 文本型
+	CallInterface = obj.GetObjectName()
+结束 函数
+
+函数 CallBaseObject(obj 为 BaseObject) 为 文本型
+	CallBaseObject = obj.GetObjectName()
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

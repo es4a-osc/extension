@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -34,7 +36,7 @@ test("声明名称连续删除和中文输入保留最初名称及身份", () =>
 });
 
 test("声明直接改名遇到 SDK 函数捕获时拒绝引用计划，保留手动输入及原调用", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const code = '过程 P()\r\n\t变量 旧值 为 整数型\r\n\t旧值 = 1\r\n\t显示提示框("原调用")\r\n结束 过程\r\n';
 	const before = unit("对象1", code);
 	const start = code.indexOf("旧值");
@@ -98,7 +100,7 @@ test("分隔空白可以结束名称输入，不能把其它声明或删除视�
 });
 
 test("无效名称和同一作用域冲突拒绝写入，改回原名不生成编辑", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const start = source.indexOf("旧值");
 	for (const newName of ["", "123", "如果", "参数"]) {
 		const current = unit("对象", source.slice(0, start) + newName + source.slice(start + 2));
@@ -109,7 +111,7 @@ test("无效名称和同一作用域冲突拒绝写入，改回原名不生成�
 });
 
 test("真实 SmokeTests 服务窗口的局部变量改名不影响另一事件及属性模型", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const file = await simpleTestUnitPath("SmokeTests", "测试服务");
 	const original = await fs.readFile(file, "utf8");
 	const userCode = splitSimpleUnitSource(original).userCode;

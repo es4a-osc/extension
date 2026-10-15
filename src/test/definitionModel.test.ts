@@ -3,8 +3,9 @@
 xhwsd@qq.com 2026-9-1
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
-import * as path from "node:path";
 import { test } from "node:test";
 import { findSimpleDefinition } from "../definitionModel";
 import { loadSdk, type LibraryManifest } from "../sdk";
@@ -300,7 +301,7 @@ test("SDK 对象、方法和常量返回所属类库树导航目标", async () =
 	].join("\r\n");
 	const current = parseSimpleUnitSymbols(fullSource, `${SOURCE_ROOT}\\Current.simple`, SOURCE_ROOT);
 	const source = splitSimpleUnitSource(fullSource).userCode;
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const find = (name: string) => findSimpleDefinition(
 		source,
 		source.indexOf(name) + 1,
@@ -332,6 +333,6 @@ test("SDK 对象、方法和常量返回所属类库树导航目标", async () =
 	assert.equal(shortOverload?.librarySymbol?.definitionName, "分组列表框");
 	assert.equal(longOverload?.librarySymbol?.definitionName, "分组列表框");
 	assert.equal(shortOverload?.librarySymbol?.manifestFilePath,
-		path.resolve("..", "sdk", "libraries", "simple.library.wsd.grouplist", "library.json"));
+		testSdkPath("libraries", "simple.library.wsd.grouplist", "library.json"));
 	assert.notEqual(shortOverload?.librarySymbol?.memberKey, longOverload?.librarySymbol?.memberKey);
 });

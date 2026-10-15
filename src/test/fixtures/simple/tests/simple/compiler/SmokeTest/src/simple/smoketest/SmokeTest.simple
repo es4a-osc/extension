@@ -1,0 +1,71 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' The purpose of this object is to allow us to execute the smoke tests from
+' a Java class.
+
+静态 过程 RunSmokeTests()
+	变量 tests 为 集合
+	tests = 创建 集合
+
+	' Conversion tests
+	tests.加入(创建 simple.smoketest.conversions.BooleanConversionsTest)
+	tests.加入(创建 simple.smoketest.conversions.ByteConversionsTest)
+	tests.加入(创建 simple.smoketest.conversions.ShortConversionsTest)
+	tests.加入(创建 simple.smoketest.conversions.IntegerConversionsTest)
+	tests.加入(创建 simple.smoketest.conversions.LongConversionsTest)
+
+	' Expression tests
+	tests.加入(创建 simple.smoketest.expressions.AdditionExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.AndExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.ArrayExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.CallExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.ConcatenationExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.IdentityExpressionsTest)
+	' 验证未初始化变体值的相等和不等比较 xhwsd@qq.com 2026-9-4
+	tests.加入(创建 simple.smoketest.expressions.VariantEqualityExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.IntegerDivisionExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.LikeExpressionsTest)
+	' 验证百分号求模运算符 xhwsd@qq.com 2026-9-4
+	tests.加入(创建 simple.smoketest.expressions.ModuloExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.NewExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.OrExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.TypeOfExpressionsTest)
+	tests.加入(创建 simple.smoketest.expressions.XorExpressionsTest)
+
+	' Scopes tests
+	tests.加入(创建 simple.smoketest.scopes.ScopesTest)
+
+	' Statement tests
+	tests.加入(创建 simple.smoketest.statements.DoUntilStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.DoWhileStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.ExitStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.IfThenElseIfElseStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.ForNextStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.ForEachStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.OnErrorStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.RaiseEventStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.SelectStatementsTest)
+	tests.加入(创建 simple.smoketest.statements.WhileDoStatementsTest)
+
+	' Run all tests
+	变量 t 为 Test
+	循环 每个 t 从 tests
+		t.Run()
+	下个 t
+结束 过程
+
+$属性
+	$资源 $对象
+$结束 $属性

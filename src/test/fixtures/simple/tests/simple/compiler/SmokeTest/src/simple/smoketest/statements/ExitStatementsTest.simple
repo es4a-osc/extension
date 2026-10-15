@@ -1,0 +1,458 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the Exit statement
+
+' The following constants are used as return values for the actual test functions. They indicate
+' how the test function exited.
+常量 NONE 为 文本型 = ""
+常量 WITHOUT 为 文本型 = "Without"
+常量 DO 为 文本型 = "DO"
+常量 EVENT 为 文本型 = "Event"
+常量 FOR 为 文本型 = "For"
+常量 FUNCTION 为 文本型 = "Function"
+常量 PROPERTY 为 文本型 = "Property"
+常量 SUB 为 文本型 = "Sub"
+常量 WHILE 为 文本型 = "While"
+
+' Loop condition for the loops in the actual test functions (initialized to True)
+变量 loopCondition 为 逻辑型
+
+' Collection to iterate over for test using a For-Each statement (must be non-empty)
+变量 testCollection 为 集合
+
+' In order to test procedures and properties we require the help of a global result
+变量 result 为 文本型
+变量 condition 为 逻辑型
+
+函数 Name() 为 文本型
+	Name = "Exit Statement Tests"
+结束 函数
+
+过程 Run()
+	' TODO: move these initializations into an initialization event handler
+	loopCondition = 真
+
+	testCollection = 创建 集合
+	testCollection.加入("non-empty")
+
+	' Event level Exit
+	' TODO: add tests
+
+	' Function level Exit
+	断言真(FunctionExit(假) = WITHOUT)
+	断言真(FunctionExit(真) = FUNCTION)
+
+	断言真(FunctionExitFromDoUntil(假) = DO)
+	断言真(FunctionExitFromDoUntil(真) = FUNCTION)
+
+	断言真(FunctionExitFromDoWhile(假) = DO)
+	断言真(FunctionExitFromDoWhile(真) = FUNCTION)
+
+	断言真(FunctionExitFromForEach(假) = FOR)
+	断言真(FunctionExitFromForEach(真) = FUNCTION)
+
+	断言真(FunctionExitFromForNext(假) = FOR)
+	断言真(FunctionExitFromForNext(真) = FUNCTION)
+
+	断言真(FunctionExitFromWhile(假) = WHILE)
+	断言真(FunctionExitFromWhile(真) = FUNCTION)
+
+	' Procedure level Exit (requires help of a global variable)
+	SubExit(假) : 断言真(result = WITHOUT)
+	SubExit(真) : 断言真(result = SUB)
+
+	SubExitFromDoUntil(假) : 断言真(result = DO)
+	SubExitFromDoUntil(真) : 断言真(result = SUB)
+
+	SubExitFromDoWhile(假) : 断言真(result = DO)
+	SubExitFromDoWhile(真) : 断言真(result = SUB)
+
+	SubExitFromForEach(假) : 断言真(result = FOR)
+	SubExitFromForEach(真) : 断言真(result = SUB)
+
+	SubExitFromForNext(假) : 断言真(result = FOR)
+	SubExitFromForNext(真) : 断言真(result = SUB)
+
+	SubExitFromWhile(假) : 断言真(result = WHILE)
+	SubExitFromWhile(真) : 断言真(result = SUB)
+
+	' Property level Exit for setters (requires help of a global variable)
+	PropertyExit = 假 : 断言真(result = WITHOUT)
+	PropertyExit = 真 : 断言真(result = PROPERTY)
+
+	PropertyExitFromDoUntil = 假 : 断言真(result = DO)
+	PropertyExitFromDoUntil = 真 : 断言真(result = PROPERTY)
+
+	PropertyExitFromDoWhile = 假 : 断言真(result = DO)
+	PropertyExitFromDoWhile = 真 : 断言真(result = PROPERTY)
+
+	PropertyExitFromForEach = 假 : 断言真(result = FOR)
+	PropertyExitFromForEach = 真 : 断言真(result = PROPERTY)
+
+	PropertyExitFromForNext = 假 : 断言真(result = FOR)
+	PropertyExitFromForNext = 真 : 断言真(result = PROPERTY)
+
+	PropertyExitFromWhile = 假 : 断言真(result = WHILE)
+	PropertyExitFromWhile = 真 : 断言真(result = PROPERTY)
+
+	' Property level Exit for getters (requires help of a global variable)
+	变量 dummy 为 逻辑型
+	condition = 假 : dummy = PropertyExit : 断言真(result = WITHOUT)
+	condition = 真 : dummy = PropertyExit : 断言真(result = PROPERTY)
+
+	condition = 假 : dummy = PropertyExitFromDoUntil : 断言真(result = DO)
+	condition = 真 : dummy = PropertyExitFromDoUntil : 断言真(result = PROPERTY)
+
+	condition = 假 : dummy = PropertyExitFromDoWhile : 断言真(result = DO)
+	condition = 真 : dummy = PropertyExitFromDoWhile : 断言真(result = PROPERTY)
+
+	condition = 假 : dummy = PropertyExitFromForEach : 断言真(result = FOR)
+	condition = 真 : dummy = PropertyExitFromForEach : 断言真(result = PROPERTY)
+
+	condition = 假 : dummy = PropertyExitFromForNext : 断言真(result = FOR)
+	condition = 真 : dummy = PropertyExitFromForNext : 断言真(result = PROPERTY)
+
+	condition = 假 : dummy = PropertyExitFromWhile : 断言真(result = WHILE)
+	condition = 真 : dummy = PropertyExitFromWhile : 断言真(result = PROPERTY)
+结束 过程
+
+函数 FunctionExit(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExit = NONE
+	如果 exitFromFunction 则
+		FunctionExit = FUNCTION
+		退出 函数
+	否则
+		FunctionExit = WITHOUT
+		退出
+	结束 如果
+结束 函数
+
+函数 FunctionExitFromDoUntil(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExitFromDoUntil = NONE
+	执行
+		如果 exitFromFunction 则
+			FunctionExitFromDoUntil = FUNCTION
+			退出 函数
+		否则
+			FunctionExitFromDoUntil = DO
+			退出
+		结束 如果
+	直到 loopCondition
+结束 函数
+
+函数 FunctionExitFromDoWhile(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExitFromDoWhile = NONE
+	执行
+		如果 exitFromFunction 则
+			FunctionExitFromDoWhile = FUNCTION
+			退出 函数
+		否则
+			FunctionExitFromDoWhile = DO
+			退出
+		结束 如果
+	判断循环 取反 loopCondition
+结束 函数
+
+函数 FunctionExitFromForEach(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExitFromForEach = NONE
+	变量 v 为 变体型
+	循环 每个 v 从 testCollection
+		如果 exitFromFunction 则
+			FunctionExitFromForEach = FUNCTION
+			退出 函数
+		否则
+			FunctionExitFromForEach = FOR
+			退出
+		结束 如果
+	下个
+结束 函数
+
+函数 FunctionExitFromForNext(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExitFromForNext = NONE
+	变量 i 为 整数型
+	循环 i = 0 至 1
+		如果 exitFromFunction 则
+			FunctionExitFromForNext = FUNCTION
+			退出 函数
+		否则
+			FunctionExitFromForNext = FOR
+			退出
+		结束 如果
+	下个
+结束 函数
+
+函数 FunctionExitFromWhile(exitFromFunction 为 逻辑型) 为 文本型
+	FunctionExitFromWhile = NONE
+	判断循环 loopCondition
+		如果 exitFromFunction 则
+			FunctionExitFromWhile = FUNCTION
+			退出 函数
+		否则
+			FunctionExitFromWhile = WHILE
+			退出
+		结束 如果
+	结束 判断循环
+结束 函数
+
+过程 SubExit(exitFromSub 为 逻辑型)
+	result = NONE
+	如果 exitFromSub 则
+		result = SUB
+		退出 过程
+	否则
+		result = WITHOUT
+		退出
+	结束 如果
+结束 过程
+
+过程 SubExitFromDoUntil(exitFromSub 为 逻辑型)
+	result = NONE
+	执行
+		如果 exitFromSub 则
+			result = SUB
+			退出 过程
+		否则
+			result = DO
+			退出
+		结束 如果
+	直到 loopCondition
+结束 过程
+
+过程 SubExitFromDoWhile(exitFromSub 为 逻辑型)
+	result = NONE
+	执行
+		如果 exitFromSub 则
+			result = SUB
+			退出 过程
+		否则
+			result = DO
+			退出
+		结束 如果
+	判断循环 取反 loopCondition
+结束 过程
+
+过程 SubExitFromForEach(exitFromSub 为 逻辑型)
+	result = NONE
+	变量 v 为 变体型
+	循环 每个 v 从 testCollection
+		如果 exitFromSub 则
+			result = SUB
+			退出 过程
+		否则
+			result = FOR
+			退出
+		结束 如果
+	下个
+结束 过程
+
+过程 SubExitFromForNext(exitFromSub 为 逻辑型)
+	result = NONE
+	变量 i 为 整数型
+	循环 i = 0 至 1
+		如果 exitFromSub 则
+			result = SUB
+			退出 过程
+		否则
+			result = FOR
+			退出
+		结束 如果
+	下个
+结束 过程
+
+过程 SubExitFromWhile(exitFromSub 为 逻辑型)
+	result = NONE
+	判断循环 loopCondition
+		如果 exitFromSub 则
+			result = SUB
+			退出 过程
+		否则
+			result = WHILE
+			退出
+		结束 如果
+	结束 判断循环
+结束 过程
+
+属性 PropertyExit 为 逻辑型
+	获取
+		result = NONE
+		如果 condition 则
+			result = PROPERTY
+			退出 属性
+		否则
+			result = WITHOUT
+			退出
+		结束 如果
+	结束 获取
+
+	设置
+		result = NONE
+		如果 PropertyExit 则
+			result = PROPERTY
+			退出 属性
+		否则
+			result = WITHOUT
+			退出
+		结束 如果
+	结束 设置
+结束 属性
+
+属性 PropertyExitFromDoUntil 为 逻辑型
+	获取
+		result = NONE
+		执行
+			如果 condition 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = DO
+				退出
+			结束 如果
+		直到 loopCondition
+	结束 获取
+
+	设置
+		result = NONE
+		执行
+			如果 PropertyExitFromDoUntil 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = DO
+				退出
+			结束 如果
+		直到 loopCondition
+	结束 设置
+结束 属性
+
+属性 PropertyExitFromDoWhile 为 逻辑型
+	获取
+		result = NONE
+		执行
+			如果 condition 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = DO
+				退出
+			结束 如果
+		判断循环 取反 loopCondition
+	结束 获取
+
+	设置
+		result = NONE
+		执行
+			如果 PropertyExitFromDoWhile 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = DO
+				退出
+			结束 如果
+		判断循环 取反 loopCondition
+	结束 设置
+结束 属性
+
+属性 PropertyExitFromForEach 为 逻辑型
+	获取
+		result = NONE
+		变量 v 为 变体型
+		循环 每个 v 从 testCollection
+			如果 condition 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = FOR
+				退出
+			结束 如果
+		下个
+	结束 获取
+
+	设置
+		result = NONE
+		变量 v 为 变体型
+		循环 每个 v 从 testCollection
+			如果 PropertyExitFromForEach 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = FOR
+				退出
+			结束 如果
+		下个
+	结束 设置
+结束 属性
+
+属性 PropertyExitFromForNext 为 逻辑型
+	获取
+		result = NONE
+		变量 i 为 整数型
+		循环 i = 0 至 1
+			如果 condition 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = FOR
+				退出
+			结束 如果
+		下个
+	结束 获取
+
+	设置
+		result = NONE
+		变量 i 为 整数型
+		循环 i = 0 至 1
+			如果 PropertyExitFromForNext 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = FOR
+				退出
+			结束 如果
+		下个
+	结束 设置
+结束 属性
+
+属性 PropertyExitFromWhile 为 逻辑型
+	获取
+		result = NONE
+		判断循环 loopCondition
+			如果 condition 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = WHILE
+				退出
+			结束 如果
+		结束 判断循环
+	结束 获取
+
+	设置
+		result = NONE
+		判断循环 loopCondition
+			如果 PropertyExitFromWhile 则
+				result = PROPERTY
+				退出 属性
+			否则
+				result = WHILE
+				退出
+			结束 如果
+		结束 判断循环
+	结束 设置
+结束 属性
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

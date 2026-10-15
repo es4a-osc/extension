@@ -3,9 +3,10 @@
 xhwsd@qq.com 2026-10-8
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { test } from "node:test";
 import {
 	addSimpleDesignerComponent,
@@ -82,7 +83,7 @@ function find(node: DesignerComponentNode | undefined, name: string): DesignerCo
 }
 
 test("无布局属性的扩展容器缺省单帧且不把投影配置写入 XML", async () => {
-	const sdk = withContainer(await loadSdk(path.resolve("..", "sdk", "sdk.json")));
+	const sdk = withContainer(await loadSdk(testSdkPath("sdk.json")));
 	const document = containerDocument();
 	const before = serializePropertyXml(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -104,7 +105,7 @@ test("无布局属性的扩展容器缺省单帧且不把投影配置写入 XML"
 });
 
 test("固定布局复用现有投影且真实布局属性优先，包括自定义属性名", async () => {
-	const base = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const base = await loadSdk(testSdkPath("sdk.json"));
 	const document = containerDocument();
 	for (const layout of ["absolute", "frame", "grid", "linear-horizontal", "linear-vertical", "relative"] as const) {
 		const model = createSimpleDesignerModel(document, withContainer(base, { layout }));
@@ -140,7 +141,7 @@ test("固定布局复用现有投影且真实布局属性优先，包括自定�
 });
 
 test("滚动方向独立于布局，启用滚动条属性及滚动开关仍控制显示", async () => {
-	const base = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const base = await loadSdk(testSdkPath("sdk.json"));
 	const properties: readonly LibraryMember[] = [{
 		name: "显示滚动条", type: "逻辑型", projection: "scrollbarEnabled"
 	}, {
@@ -167,7 +168,7 @@ test("滚动方向独立于布局，启用滚动条属性及滚动开关仍控�
 });
 
 test("通用 limit 对新增、粘贴、移动和剪贴板子树一致，非可视组件不计数", async () => {
-	const sdk = withContainer(await loadSdk(path.resolve("..", "sdk", "sdk.json")), { limit: 2 });
+	const sdk = withContainer(await loadSdk(testSdkPath("sdk.json")), { limit: 2 });
 	const document = containerDocument();
 	const before = serializePropertyXml(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -190,13 +191,13 @@ test("通用 limit 对新增、粘贴、移动和剪贴板子树一致，非可�
 	const narrowed = { ...narrowerSdk, manifests: narrowerSdk.manifests.filter((manifest) => manifest !== sdk.manifests.at(-1)) };
 	assert.throws(() => pasteSimpleDesignerComponent(document, narrowed, rootPath, copiedBox), /剪贴板中的容器最多只能直接包含 1/u);
 	assert.equal(serializePropertyXml(document), before);
-	const zero = withContainer(await loadSdk(path.resolve("..", "sdk", "sdk.json")), { limit: 0 });
+	const zero = withContainer(await loadSdk(testSdkPath("sdk.json")), { limit: 0 });
 	assert.equal(find(createSimpleDesignerModel(document, zero).root, "Box")?.acceptsVisualChild, false);
 });
 
 test("真实滑动页面框样例及滚动框清单加载为单帧容器投影", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
-	const file = path.resolve("..", "sdk", "libraries", "simple.library.wsd.viewpager",
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const file = testSdkPath("libraries", "simple.library.wsd.viewpager",
 		"sample", "src", "simple", "library", "wsd", "viewpager", "sample", "主窗口.simple");
 	const source = await fs.readFile(file, "utf8");
 	const document = parseSimplePropertyXml(source);

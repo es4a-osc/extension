@@ -1,0 +1,102 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests TypeOf...Is... expressions
+
+别名 BaseObject = simple.smoketest.utils.BaseObject
+别名 DerivedObject = simple.smoketest.utils.DerivedObject
+别名 ObjectWithEvent = simple.smoketest.utils.ObjectWithEvent
+
+函数 Name() 为 文本型
+	Name = "TypeOf Expression Tests"
+结束 函数
+
+过程 Run()
+	' Checking TypeOf for objects
+	变量 do 为 DerivedObject
+	断言假(类型检验 do 是 BaseObject)
+	断言假(类型检验 do 是 DerivedObject)
+	断言假(类型检验 do 是 ObjectWithEvent)
+	断言假(类型检验 do 是 变体型)
+	do = 创建 DerivedObject
+	断言真(类型检验 do 是 BaseObject)
+	断言真(类型检验 do 是 DerivedObject)
+	断言假(类型检验 do 是 ObjectWithEvent)
+	断言假(类型检验 do 是 变体型)
+
+	' Checking TypeOf for arrays
+	变量 sa 为 整数型(2)
+	断言真(类型检验 sa 是 对象)
+	断言真(类型检验 sa 是 整数型())
+	断言假(类型检验 sa 是 整数型)
+	断言假(类型检验 sa 是 整数型(,))
+	断言假(类型检验 sa 是 变体型)
+
+	变量 da 为 整数型()
+	断言假(类型检验 da 是 对象)
+	断言假(类型检验 da 是 整数型())
+	断言假(类型检验 da 是 整数型)
+	断言假(类型检验 da 是 整数型(,))
+	断言假(类型检验 da 是 变体型)
+	da = 创建 整数型(2)
+	断言真(类型检验 da 是 对象)
+	断言真(类型检验 da 是 整数型())
+	断言假(类型检验 da 是 整数型)
+	断言假(类型检验 da 是 整数型(,))
+	断言假(类型检验 da 是 变体型)
+
+	' Checking TypeOf for strings
+	变量 s 为 文本型
+	断言真(类型检验 s 是 文本型)
+	断言假(类型检验 s 是 文本型())
+	断言假(类型检验 s 是 对象)
+	断言假(类型检验 s 是 整数型)
+	断言假(类型检验 s 是 变体型)
+	s = "0"
+	断言真(类型检验 s 是 逻辑型)
+	断言真(类型检验 s 是 字节型)
+	断言真(类型检验 s 是 短整数型)
+	断言真(类型检验 s 是 整数型)
+	断言真(类型检验 s 是 单精度小数型)
+	断言真(类型检验 s 是 双精度小数型)
+	断言假(类型检验 s 是 日期时间型)
+
+	' Checking TypeOf for dates
+	变量 d 为 日期时间型
+	断言真(类型检验 d 是 日期时间型)
+	断言假(类型检验 d 是 日期时间型())
+	断言假(类型检验 d 是 对象)
+	断言假(类型检验 d 是 整数型)
+	断言假(类型检验 d 是 变体型)
+
+	' Checking TypeOf for numerical types
+	变量 i 为 整数型
+	断言真(类型检验 i 是 整数型)
+	断言假(类型检验 i 是 整数型())
+	断言假(类型检验 i 是 对象)
+	断言假(类型检验 i 是 变体型)
+
+	' Checking TypeOf for uninitialized variants
+	变量 v 为 变体型
+	断言假(类型检验 v 是 变体型)
+	断言假(类型检验 v 是 整数型)
+	断言假(类型检验 v 是 文本型)
+	断言假(类型检验 v 是 整数型())
+	断言假(类型检验 v 是 对象)
+结束 过程
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

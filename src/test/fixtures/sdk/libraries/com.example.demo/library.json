@@ -1,0 +1,84 @@
+{
+	"name": "演示扩展库",
+	"description": "入门演示：编写可视组件与普通对象，并在 Simple 项目中调用。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展可视组件",
+			"description": "演示属性和事件的可视组件。",
+			"definitions": [
+				{
+					"name": "演示按钮",
+					"description": "演示标题属性和单击事件的按钮组件。",
+					"icon": "icons/square-rounded-check.svg",
+					"kind": "component",
+					"type": "com.example.demo.演示按钮",
+					"inherits": [
+						"simple.runtime.components.可视组件"
+					],
+					"properties": [
+						{
+							"name": "标题",
+							"type": "文本型",
+							"description": "按钮显示的文本。",
+							"initializer": "\"\"",
+							"projection": "text"
+						}
+					],
+					"events": [
+						{
+							"name": "被单击",
+							"description": "用户单击按钮时触发。"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "扩展对象",
+			"description": "演示实例函数和静态函数的普通对象。",
+			"definitions": [
+				{
+					"name": "演示对象",
+					"description": "演示实例函数和静态函数的普通对象。",
+					"kind": "object",
+					"type": "com.example.demo.演示对象",
+					"functions": [
+						{
+							"name": "加前缀",
+							"description": "实例函数：创建对象后调用，为文本添加 [Simple] 前缀。",
+							"return": "文本型",
+							"params": [
+								{
+									"name": "文本",
+									"type": "文本型",
+									"description": "要添加前缀的文本。"
+								}
+							]
+						},
+						{
+							"name": "取长度",
+							"description": "静态函数：通过演示对象类型调用，返回文本的 UTF-16 代码单元数。",
+							"return": "整数型",
+							"params": [
+								{
+									"name": "文本",
+									"type": "文本型",
+									"description": "要计算长度的文本。"
+								}
+							],
+							"static": true
+						}
+					]
+				}
+			]
+		}
+	]
+}

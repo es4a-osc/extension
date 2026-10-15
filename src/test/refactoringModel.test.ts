@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testFixturePath, testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -116,7 +118,7 @@ test("字段改名更新跨单元访问，局部同名变量和字符串不变",
 });
 
 test("局部变量改名不能抢占已有 SDK 函数调用，其它过程与字符串不误判", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const current = unit("对象", '过程 P()\r\n\t变量 旧值 为 整数型\r\n\t旧值 = 1\r\n\t显示提示框("原调用")\r\n结束 过程\r\n');
 	assert.throws(() => planSimpleSymbolRename([current], current, current.userCode.indexOf("旧值"), "显示提示框", sdk), /改变已有引用的目标/u);
 	const safe = unit("对象", '过程 P()\r\n\t变量 旧值 为 整数型\r\n\t旧值 = 1\r\n\t显示提示框("普通文本")\r\n结束 过程\r\n过程 Q()\r\n\t显示提示框("另一个过程")\r\n结束 过程\r\n');
@@ -155,7 +157,7 @@ test("资源改名不匹配中文标识符后缀或对象的 R 成员，代码�
 });
 
 test("资产属性的点号空白写法与普通写法同样重构，字符串和未知 XML 保持", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const code = "过程 P()\r\n\t图片框1 . 图片 = \"@drawable/old\"\r\n\t显示提示框(\"@drawable/old\")\r\n结束 过程\r\n";
 	const current = unit("app/窗口", code, "\t$定义 窗口 $为 窗口\r\n\t\t$定义 图片框1 $为 图片框\r\n\t\t\t图片 = \"@drawable/old\"\r\n\t\t\t未知字段 = \"@drawable/old\"\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n", "窗口");
 	const changed = planSimpleResourceReferences([current], new Map(), sdk, new Map([["@drawable/old", "@drawable/new"]]))[0]!;
@@ -176,9 +178,9 @@ test("接口方法改名同步实现与调用，普通同名方法保持", () =>
 });
 
 test("真实 Tetris 对象移动后保留完整属性区及自身短事件拥有者", async () => {
-	const file = path.resolve(__dirname, "../../../simple/samples/Tetris/src/simple/samples/tetris/Bar.simple");
+	const file = testFixturePath("simple", "samples/Tetris/src/simple/samples/tetris/Bar.simple");
 	const source = await fs.readFile(file, "utf8");
-	const current = { filePath: file, sourceRoot: path.resolve(__dirname, "../../../simple/samples/Tetris/src"), userCode: splitSimpleUnitSource(source).userCode, property: inspectSimplePropertyXml(source) };
+	const current = { filePath: file, sourceRoot: testFixturePath("simple", "samples/Tetris/src"), userCode: splitSimpleUnitSource(source).userCode, property: inspectSimplePropertyXml(source) };
 	const result = planSimpleUnitPaths([current], [{ oldFile: file, newFile: path.join(current.sourceRoot, "moved/Bar.simple"), sourceRoot: current.sourceRoot }]);
 	assert.equal(result.length, 0);
 });
@@ -224,7 +226,7 @@ test("组件改名使用项目身份更新自身限定类型的成员访问", ()
 });
 
 test("点号两侧空白的多段组件成员链保持定义与重构身份一致", async () => {
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const owner = unit("app/窗口1", "", "\t$定义 窗口1 $为 窗口\r\n\t\t$定义 按钮1 $为 按钮\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n", "窗口");
 	const caller = unit("app/调用者", '过程 P(a 为 app.窗口1)\r\n\ta . 按钮1 . 文本 = "演示"\r\n结束 过程\r\n');
 	const context = refactoringContext(caller, [owner, caller]);
@@ -252,7 +254,7 @@ test("名称末尾与内部解析同一变量，分隔符及文件末尾均可�
 });
 
 test("真实 SmokeTests 选中完整局部变量后，从名称末尾重构全部引用", async () => {
-	const sourceRoot = path.resolve(__dirname, "../../../simple/tests/simple/runtime/DeviceTests/SmokeTests/src");
+	const sourceRoot = testFixturePath("simple", "tests/simple/runtime/DeviceTests/SmokeTests/src");
 	const filePath = path.join(sourceRoot, "simple/runtime/smoketests/主窗口.simple");
 	const source = await fs.readFile(filePath, "utf8");
 	const current: RefactoringUnit = { filePath, sourceRoot, userCode: getVisibleSimpleUnitUserCode(source), property: inspectSimplePropertyXml(source) };
@@ -274,8 +276,8 @@ test("真实 SmokeTests 选中完整局部变量后，从名称末尾重构全�
 });
 
 test("真实 SmokeTests 组件引用批量分析与即时查询一致，改名只修改实际引用", async () => {
-	const sourceRoot = path.resolve(__dirname, "../../../simple/tests/simple/runtime/DeviceTests/SmokeTests/src");
-	const sdk = await loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+	const sourceRoot = testFixturePath("simple", "tests/simple/runtime/DeviceTests/SmokeTests/src");
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const units = await Promise.all((await listSimpleFiles(sourceRoot)).map(async (filePath): Promise<RefactoringUnit> => {
 		const source = await fs.readFile(filePath, "utf8");
 		return { filePath, sourceRoot, userCode: getVisibleSimpleUnitUserCode(source), property: inspectSimplePropertyXml(source) };

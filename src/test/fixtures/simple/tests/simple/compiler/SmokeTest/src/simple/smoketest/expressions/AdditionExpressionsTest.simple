@@ -1,0 +1,99 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests addition expressions
+
+函数 Name() 为 文本型
+	Name = "Addition Expression Tests"
+结束 函数
+
+过程 Run()
+	' Addition of constants
+	' While these don't check that constant folding is done, they do ensure that it is done
+	' correctly if it is done at all!
+	断言真(FourInteger() = 4)
+	断言真(FourDouble() = 4.0)
+
+	' Simple additions
+	断言真(SimpleAddInteger(1, 3) = 4)
+	断言真(SimpleAddLong(1, 3) = 4)
+	断言真(SimpleAddSingle(1.0, 3.0) = 4.0)
+	断言真(SimpleAddDouble(1.0, 3.0) = 4.0)
+	断言真(SimpleAddVariant(1.5, 2.5) = 4.0)
+	断言真(SimpleAddString("1.5", "2.5") = 4.0)
+
+	' Complex additions
+	断言真(ComplexAddInteger(1, 3) = 25)
+	断言真(ComplexAddLong(1, 3) = 25)
+	断言真(ComplexAddSingle(1.0, 3.0) = 25.0)
+	断言真(ComplexAddDouble(1.0, 3.0) = 25.0)
+	断言真(ComplexAddVariant(1.5, 2.5) = 23.5)
+结束 过程
+
+函数 FourInteger() 为 整数型
+	FourInteger = 2 + 2
+结束 函数
+
+函数 FourDouble() 为 双精度小数型
+	FourDouble = 1.9 + 2.1
+结束 函数
+
+函数 SimpleAddInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	SimpleAddInteger = e1 + e2
+结束 函数
+
+函数 SimpleAddLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	SimpleAddLong = e1 + e2
+结束 函数
+
+函数 SimpleAddSingle(e1 为 单精度小数型, e2 为 单精度小数型) 为 单精度小数型
+	SimpleAddSingle = e1 + e2
+结束 函数
+
+函数 SimpleAddDouble(e1 为 双精度小数型, e2 为 双精度小数型) 为 双精度小数型
+	SimpleAddDouble = e1 + e2
+结束 函数
+
+函数 SimpleAddString(e1 为 文本型, e2 为 文本型) 为 文本型
+	SimpleAddString = e1 + e2
+结束 函数
+
+函数 SimpleAddVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	SimpleAddVariant = e1 + e2
+结束 函数
+
+函数 ComplexAddInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	ComplexAddInteger = (e1 + e2) * e2 + ("1" & "2" + e1)
+结束 函数
+
+函数 ComplexAddLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	ComplexAddLong = (e1 + e2) * e2 + ("1" & "2" + e1)
+结束 函数
+
+函数 ComplexAddSingle(e1 为 单精度小数型, e2 为 单精度小数型) 为 单精度小数型
+	ComplexAddSingle = (e1 + e2) * e2 + ("1" & "2" + e1)
+结束 函数
+
+函数 ComplexAddDouble(e1 为 双精度小数型, e2 为 双精度小数型) 为 双精度小数型
+	ComplexAddDouble = (e1 + e2) * e2 + ("1" & "2" + e1)
+结束 函数
+
+函数 ComplexAddVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	ComplexAddVariant = (e1 + e2) * e2 + ("1" & "2" + e1)
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

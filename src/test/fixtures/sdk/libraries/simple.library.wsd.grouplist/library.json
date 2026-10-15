@@ -1,0 +1,601 @@
+{
+	"name": "分组列表框库",
+	"description": "提供可展开和收起分组、展示子项并响应列表事件的可视组件。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展可视组件",
+			"definitions": [
+				{
+					"name": "分组列表框",
+					"icon": "icons/filter-2-share.svg",
+					"kind": "component",
+					"type": "simple.library.wsd.grouplist.分组列表框",
+					"inherits": [
+						"simple.runtime.components.列表组件"
+					],
+					"properties": [
+						{
+							"name": "分组标题字体大小",
+							"type": "整数型",
+							"initializer": "14"
+						},
+						{
+							"name": "分组标题字体颜色",
+							"type": "整数型",
+							"initializer": "-16777216",
+							"editor": "simple.color"
+						},
+						{
+							"name": "分组信息字体大小",
+							"type": "整数型",
+							"initializer": "12"
+						},
+						{
+							"name": "分组信息字体颜色",
+							"type": "整数型",
+							"initializer": "-7829368",
+							"editor": "simple.color"
+						},
+						{
+							"name": "子项标题字体大小",
+							"type": "整数型",
+							"initializer": "14"
+						},
+						{
+							"name": "子项标题字体颜色",
+							"type": "整数型",
+							"initializer": "-16777216",
+							"editor": "simple.color"
+						},
+						{
+							"name": "子项信息字体大小",
+							"type": "整数型",
+							"initializer": "12"
+						},
+						{
+							"name": "子项信息字体颜色",
+							"type": "整数型",
+							"initializer": "-7829368",
+							"editor": "simple.color"
+						},
+						{
+							"name": "子项按钮字体大小",
+							"type": "整数型",
+							"initializer": "12"
+						},
+						{
+							"name": "子项按钮字体颜色",
+							"type": "整数型",
+							"initializer": "-16777216",
+							"editor": "simple.color"
+						},
+						{
+							"name": "背景图片",
+							"type": "文本型",
+							"initializer": "\"\"",
+							"editor": "simple.asset",
+							"projection": "backgroundImage"
+						},
+						{
+							"name": "背景图片2",
+							"type": "整数型"
+						},
+						{
+							"name": "显示子项按钮",
+							"type": "逻辑型",
+							"initializer": "真"
+						}
+					],
+					"functions": [
+						{
+							"name": "获取焦点",
+							"return": "逻辑型"
+						},
+						{
+							"name": "清除焦点"
+						},
+						{
+							"name": "添加分组",
+							"params": [
+								{
+									"name": "标题",
+									"type": "文本型"
+								},
+								{
+									"name": "信息",
+									"type": "文本型"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "添加分组",
+							"params": [
+								{
+									"name": "标题",
+									"type": "文本型"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取分组标记",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置分组标记",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "标记",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取分组标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置分组标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "标题",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取分组信息",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置分组信息",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "信息",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取分组总数",
+							"return": "整数型"
+						},
+						{
+							"name": "展开分组",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "收起分组",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "取分组状态",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "选中分组",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "删除分组",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "清空所有数据"
+						},
+						{
+							"name": "添加子项",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "图片",
+									"type": "文本型"
+								},
+								{
+									"name": "标题",
+									"type": "文本型"
+								},
+								{
+									"name": "信息",
+									"type": "文本型"
+								},
+								{
+									"name": "按钮图片",
+									"type": "文本型"
+								},
+								{
+									"name": "按钮标题",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "添加子项",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "标题",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项标记",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项标记",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "标记",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项图片",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项图片",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "图片",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "标题",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项信息",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项信息",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "信息",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项按钮图片",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项按钮图片",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "按钮图片",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项按钮标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "置子项按钮标题",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "按钮标题",
+									"type": "文本型"
+								}
+							]
+						},
+						{
+							"name": "取子项总数",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "删除子项",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "清空子项",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "选中子项",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								},
+								{
+									"name": "展开分组",
+									"type": "逻辑型"
+								}
+							]
+						}
+					],
+					"events": [
+						{
+							"name": "子项被单击",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "子项被长按",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "子项按钮被单击",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								},
+								{
+									"name": "子项索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "分组被展开",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "分组被收起",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						},
+						{
+							"name": "分组被单击",
+							"params": [
+								{
+									"name": "分组索引",
+									"type": "整数型"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

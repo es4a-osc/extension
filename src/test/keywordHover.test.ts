@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-8-27
 */
 
+import { testFixturePath, testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -13,7 +15,7 @@ import { parseSimpleUnitSymbols, type SimpleProjectSemanticContext } from "../si
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const CURSOR = "¦";
-const sdkPromise = loadSdk(path.resolve("..", "sdk", "sdk.json"));
+const sdkPromise = loadSdk(testSdkPath("sdk.json"));
 
 /** 在标记位置查询关键字悬停。 */
 async function hover(markedSource: string): Promise<SimpleKeywordHoverInfo | undefined> {
@@ -160,7 +162,7 @@ test("组件事件处理过程保留当前单元归属并显示事件说明和�
 });
 
 test("当前窗口单元的加载和初始化事件使用编译器对象事件说明", async () => {
-	const sourceRoot = path.resolve("..", "simple", "tests", "simple", "runtime", "DeviceTests", "SmokeTests", "src");
+	const sourceRoot = testFixturePath("simple", "tests", "simple", "runtime", "DeviceTests", "SmokeTests", "src");
 	const sourceFile = path.join(sourceRoot, "simple", "runtime", "smoketests", "layouts", "局部布局.simple");
 	const fullSource = await fs.readFile(sourceFile, "utf8");
 	const unit = parseSimpleUnitSymbols(fullSource, sourceFile, sourceRoot);

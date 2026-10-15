@@ -3,9 +3,10 @@
 xhwsd@qq.com 2026-8-27
 */
 
+import { testFixturePath, testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { test } from "node:test";
 import { pinyinInitials, provideSimpleCompletions } from "../completionModel";
 import { loadSdk, type Sdk } from "../sdk";
@@ -13,7 +14,7 @@ import { parseSimpleUnitSymbols, type SimpleProjectSemanticContext } from "../si
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const CURSOR = "¦";
-const sdkPromise = loadSdk(path.resolve("..", "sdk", "sdk.json"));
+const sdkPromise = loadSdk(testSdkPath("sdk.json"));
 
 /** 在标记位置执行补全，并返回候选。 */
 async function completionCandidates(markedSource: string) {
@@ -215,7 +216,7 @@ test("变量声明抑制补全不影响类型、数组维度及正文引用", as
 });
 
 test("真实冒烟测试单元的变量声明名称不补全且正文引用仍补全", async () => {
-	const source = await fs.readFile(path.resolve("..", "simple", "tests", "simple", "runtime", "DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "others", "测试其它.simple"), "utf8");
+	const source = await fs.readFile(testFixturePath("simple", "tests", "simple", "runtime", "DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "others", "测试其它.simple"), "utf8");
 	const declaration = "变量 局_测试对象 为 对象";
 	assert.ok(source.includes(declaration));
 	assert.deepEqual(await complete(source.replace(declaration, "变量 局_测试对象1¦ 为 对象")), []);

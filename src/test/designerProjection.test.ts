@@ -3,9 +3,10 @@
 xhwsd@qq.com 2026-8-31
 */
 
+import { testFixturePath, testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { test } from "node:test";
 import {
 	createSimpleDesignerModel,
@@ -874,9 +875,9 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 });
 
 test("真实滚动框窗口内的空面板不会让适应内容高度塌缩，且不改写 XML", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	for (const direction of ["水平", "垂直"]) {
-		const source = await fs.readFile(path.resolve("..", "simple", "tests", "simple", "runtime",
+		const source = await fs.readFile(testFixturePath("simple", "tests", "simple", "runtime",
 			"DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "containers",
 			`测试${direction}滚动框.simple`), "utf8");
 		const document = parseSimplePropertyXml(source);
@@ -947,7 +948,7 @@ test("匹配父级组件区分已解析的外边距与内填充", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const scroll = findComponent(model.root, "Scroll1");
 	assert.ok(scroll);
@@ -988,7 +989,7 @@ test("单帧布局子组件未设置宽高时匹配父级", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const defaultButton = findComponent(model.root, "DefaultButton");
 	const contentButton = findComponent(model.root, "ContentButton");
@@ -1036,7 +1037,7 @@ test("绝对布局按左边和顶边投影子组件且缺省宽高适应内容",
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const button = findComponent(model.root, "Button1");
 	const secondButton = findComponent(model.root, "Button2");
@@ -1090,7 +1091,7 @@ test("文本组件使用 SDK 继承缺省值并保留完整二维对齐", async 
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const label = findComponent(model.root, "Label1");
 	const edit = findComponent(model.root, "Edit1");
@@ -1140,7 +1141,7 @@ test("颜色投影兼容十六进制常量与十进制 32 位 ARGB 整数", asyn
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const label = findComponent(model.root, "Label1");
 
@@ -1183,7 +1184,7 @@ test("表格布局投影单元格并区分缺失、越界和重复位置", async
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const model = createSimpleDesignerModel(document, sdk);
 	const positioned = findComponent(model.root, "Positioned");
 	const missing = findComponent(model.root, "MissingPosition");

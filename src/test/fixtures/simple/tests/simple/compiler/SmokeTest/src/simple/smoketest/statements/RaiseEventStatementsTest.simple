@@ -1,0 +1,66 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the RaiseEvent statement
+
+别名 ObjectWithEvent = simple.smoketest.utils.ObjectWithEvent
+
+常量 TestValue 为 整数型 = 42
+
+变量 dataMember1 为 ObjectWithEvent
+变量 dataMember2 为 ObjectWithEvent
+
+变量 testEvent1Value 为 整数型
+变量 testEvent2Value 为 整数型
+
+函数 Name() 为 文本型
+	Name = "RaiseEvent Statement Tests"
+结束 函数
+
+过程 Run()
+	变量 owe 为 ObjectWithEvent
+	owe = 创建 ObjectWithEvent
+
+	' TriggerTestEvent contains the RaiseEvent statement that we testing here
+	ResetTestEventValues()
+	dataMember1 = owe : dataMember2 = 空 : owe.TriggerTestEvent(TestValue)
+	断言真(testEvent1Value = TestValue 且 testEvent2Value = 0)
+
+	ResetTestEventValues()
+	dataMember1 = 空 : dataMember2 = owe : owe.TriggerTestEvent(TestValue)
+	断言真(testEvent1Value = 0 且 testEvent2Value = TestValue)
+
+	ResetTestEventValues()
+	dataMember1 = owe : dataMember2 = owe : owe.TriggerTestEvent(TestValue)
+	断言真(testEvent1Value = TestValue 且 testEvent2Value = TestValue)
+
+结束 过程
+
+过程 ResetTestEventValues()
+	testEvent1Value = 0
+	testEvent2Value = 0
+结束 过程
+
+事件 dataMember1.TestEvent(X 为 整数型)
+	testEvent1Value = X
+结束 事件
+
+事件 dataMember2.TestEvent(X 为 整数型)
+	testEvent2Value = X
+结束 事件
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

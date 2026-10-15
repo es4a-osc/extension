@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-12
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -76,7 +78,7 @@ suite("原生重构操作", () => {
 	suiteSetup(async () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		previousSdk = configuration.inspect<string>("sdk.path")?.globalValue;
-		await configuration.update("sdk.path", path.resolve(__dirname, "../../../../sdk/sdk.json"), vscode.ConfigurationTarget.Global);
+		await configuration.update("sdk.path", testSdkPath("sdk.json"), vscode.ConfigurationTarget.Global);
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 		const files = vscode.workspace.getConfiguration("files");

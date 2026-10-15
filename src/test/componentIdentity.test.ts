@@ -3,8 +3,9 @@
 xhwsd@qq.com 2026-9-17
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
-import * as path from "node:path";
 import { test } from "node:test";
 import {
 	componentNameValidationError,
@@ -58,7 +59,7 @@ test("组件身份在兄弟路径变化后按唯一名称重新定位", () => {
 });
 
 test("组件名称拒绝当前编译器清单中的关键字", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	assert.match(componentNameValidationError("如果", sdk) ?? "", /关键字或保留字/u);
 	assert.equal(componentNameValidationError("按钮1", sdk), undefined);
 });

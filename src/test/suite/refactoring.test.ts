@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -32,7 +34,7 @@ suite("项目关联重构", () => {
 	suiteSetup(async () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
-		await configuration.update("sdk.path", path.resolve(__dirname, "../../../../sdk/sdk.json"), vscode.ConfigurationTarget.Global);
+		await configuration.update("sdk.path", testSdkPath("sdk.json"), vscode.ConfigurationTarget.Global);
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
@@ -987,7 +989,7 @@ suite("项目关联重构", () => {
 			postMessage: (message: DesignerWebviewRenderMessage) => { render = message; return Promise.resolve(true); }
 		} as unknown as vscode.Webview;
 		const panel = { active: true, visible: true, viewColumn: vscode.ViewColumn.One, webview, onDidChangeViewState: viewStates.event, onDidDispose: disposed.event } as unknown as vscode.WebviewPanel;
-		const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		let planCalls = 0;
 		const provider = new SimpleDesignerProvider(codeDocuments, vscode.extensions.getExtension("es4a.es4a")!.extensionUri, {
 			getDocument: () => ({}), updateColumnOrder: async () => undefined, updateDisplayOption: async () => undefined, moveDocument: async () => undefined, deleteDocument: async () => undefined
@@ -1111,7 +1113,7 @@ suite("项目关联重构", () => {
 		const sourceRoot = path.join(directory, "src");
 		const first = path.join(sourceRoot, "大单元.simple");
 		const second = path.join(sourceRoot, "其它单元.simple");
-		const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		const original = await fs.readFile(await simpleTestUnitPath("SmokeTest", "ArrayExpressionsTest"), "utf8");
 		const code = '显示提示框("演示")\r\n' + splitSimpleUnitSource(original).userCode;
 		const property = inspectSimplePropertyXml("$属性\r\n$资源 $对象\r\n$结束 $属性\r\n");

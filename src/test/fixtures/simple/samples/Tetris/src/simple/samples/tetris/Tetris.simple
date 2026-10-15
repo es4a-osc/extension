@@ -1,0 +1,764 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' -----------------------------------------------------------------------------
+' Constant definitions
+' -----------------------------------------------------------------------------
+
+' Background color constants for the board cells
+常量 BOARD_COLOR1 为 整数型 = 组件.颜色_黑
+常量 BOARD_COLOR2 为 整数型 = 组件.颜色_黑 ' To make the game easier: 组件.颜色_深灰
+
+' Background color constant for the preview cells
+常量 PREVIEW_COLOR 为 整数型 = 组件.颜色_深灰
+
+' Color constant for the brick shape definitions (use this color for the cells that are not part of the brick shape)
+常量 NO_COLOR 为 整数型 = 组件.颜色_黑
+
+' Number of columns and rows of the game board
+常量 ROWS 为 整数型 = 20
+常量 COLUMNS 为 整数型 = 10
+
+' Number of column and rows of the preview of the next brick (must fit largest brick shape)
+常量 PREVIEW_ROWS 为 整数型 = 4
+常量 PREVIEW_COLUMNS 为 整数型 = 4
+
+' Highest game level
+常量 MAX_LEVEL 为 整数型 = 10
+
+' Key for persisting game high score
+常量 PREFERENCE_HISCORE 为 文本型 = "HiScore"
+
+' Menu identifiers
+常量 MENU_NEWGAME 为 文本型 = "New Game"
+常量 MENU_QUIT 为 文本型 = "Quit"
+
+' -----------------------------------------------------------------------------
+' Variable definitions
+' -----------------------------------------------------------------------------
+
+' Board and preview definitions
+' The way this works is that the components on the form are mirrored in these arrays.
+' Therefore the colors of the cells serve as state holders for the game.
+变量 BoardCells 为 组件(COLUMNS, ROWS)
+变量 PreviewCells 为 组件(PREVIEW_COLUMNS, PREVIEW_ROWS)
+
+' Queue for orientation constants
+变量 Orientation 为 整数型(4)
+
+' Counters for score, high score and current level
+变量 ScoreCounter 为 整数型
+变量 HiScoreCounter 为 整数型
+变量 LevelCounter 为 整数型
+
+' Next brick and its orientation
+变量 NextFallingBrick 为 Brick
+变量 NextFallingBrickOrientation 为 整数型
+
+' Current brick, its orientation and position
+变量 FallingBrick 为 Brick
+变量 FallingBrickOrientation 为 整数型
+变量 FallingBrickRow 为 整数型
+变量 FallingBrickColumn 为 整数型
+
+' -----------------------------------------------------------------------------
+' Initialization event used to dynamically construct the game board and preview
+' -----------------------------------------------------------------------------
+事件 Tetris.初始化()
+	' Create cells for each column in each row on the board
+	变量 row 为 整数型, col 为 整数型
+	循环 row = 0 至 ROWS - 1
+		循环 col = 0 至 COLUMNS - 1
+			变量 cell 为 图片框
+			' Creates the cell and adds it to the board (which has a table layout
+			' which automatically adds the cells into their correct positions)
+			cell = 创建 图片框 位于 Board
+			cell.行 = row
+			cell.列 = col
+			cell.背景颜色 = GetBoardColor(col, row)
+			cell.图片 = "empty.png"
+			BoardCells(col, row) = cell
+		下个 col
+	下个 row
+
+	' Create cells for each column in each row on the preview
+	循环 row = 0 至 PREVIEW_ROWS - 1
+		循环 col = 0 至 PREVIEW_COLUMNS - 1
+			变量 cell 为 图片框
+			cell = 创建 图片框 位于 PreviewBoard
+			cell.行 = row
+			cell.列 = col
+			cell.背景颜色 = PREVIEW_COLOR
+			cell.图片 = "empty.png"
+			PreviewCells(col, row) = cell
+		下个 col
+	下个 row
+
+	' Initialize orientation queue
+	Orientation(0) = Brick.ORIENTATION_0
+	Orientation(1) = Brick.ORIENTATION_90
+	Orientation(2) = Brick.ORIENTATION_180
+	Orientation(3) = Brick.ORIENTATION_270
+
+	' Adds menu items for the application
+	AddMenuItem(MENU_NEWGAME)
+	AddMenuItem(MENU_QUIT)
+
+	' Loads the current high score
+	LoadPreferences()
+
+	' Starts a new game
+	NewGame()
+结束 事件
+
+' -----------------------------------------------------------------------------
+' We use a timer event to move the current brick down one row
+' -----------------------------------------------------------------------------
+事件 ProgressTimer.计时()
+	BrickMoveDown()
+结束 事件
+
+' -----------------------------------------------------------------------------
+' Analyze keyboard input
+' -----------------------------------------------------------------------------
+事件 Tetris.按下某键(keycode 为 整数型)
+	如果 keycode = 组件.键码_返回 则 终止()
+
+	如果 IsGameActive() 则
+		判断 keycode
+			分支 组件.键码_导航_左
+				BrickMoveLeft()
+			分支 组件.键码_导航_右
+				BrickMoveRight()
+			分支 组件.键码_导航_上
+				BrickTurnRight()
+			分支 组件.键码_导航_下
+				BrickTurnLeft()
+			分支 组件.键码_导航_中, 组件.键码_空格
+				BrickDropDown()
+		结束 判断
+	结束 如果
+结束 事件
+
+' -----------------------------------------------------------------------------
+' Analyze touch input
+' -----------------------------------------------------------------------------
+事件 Tetris.触摸手势(direction 为 整数型)
+	如果 IsGameActive() 则
+		判断 direction
+			分支 组件.触摸_左滑
+				BrickMoveLeft()
+			分支 组件.触摸_右滑
+				BrickMoveRight()
+			分支 组件.触摸_上滑
+				BrickTurnLeft()
+			分支 组件.触摸_下滑
+				BrickTurnRight()
+			分支 组件.触摸_双击
+				BrickDropDown()
+		结束 判断
+	结束 如果
+结束 事件
+
+' -----------------------------------------------------------------------------
+' Handle menu events
+' -----------------------------------------------------------------------------
+事件 Tetris.选中菜单(caption 为 文本型)
+	判断 caption
+		分支 MENU_NEWGAME
+			NewGame()
+		分支 MENU_QUIT
+			终止()
+	结束 判断
+结束 事件
+
+' -----------------------------------------------------------------------------
+' Load preferences
+' -----------------------------------------------------------------------------
+过程 LoadPreferences()
+	HiScore = 读取设置(PREFERENCE_HISCORE)
+
+	' If no previously stored preference for the given key was found initialize it
+	' to a default value
+	位于 错误
+		分支 转换错误
+			HiScore = 0
+	结束 错误
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Check whether a game is in progress (indicated by an enabled timer)
+' -----------------------------------------------------------------------------
+函数 IsGameActive() 为 逻辑型
+	IsGameActive = ProgressTimer.启用
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Property definition for score: updates the score counter as well as the score
+' display
+' -----------------------------------------------------------------------------
+属性 Score 为 整数型
+	获取
+		Score = ScoreCounter
+	结束 获取
+	设置
+		ScoreCounter = Score
+		ScoreLabel.文本 = "Score: " & ScoreCounter
+	结束 设置
+结束 属性
+
+' -----------------------------------------------------------------------------
+' Property definition for high score: updates the high score counter as well as
+' the high score display
+' -----------------------------------------------------------------------------
+属性 HiScore 为 整数型
+	获取
+		HiScore = HiScoreCounter
+	结束 获取
+	设置
+		HiScoreCounter = HiScore
+		HiScoreLabel.文本 = "HiScore: " & HiScoreCounter
+	结束 设置
+结束 属性
+
+' -----------------------------------------------------------------------------
+' Property definition for current game level: updates the level counter as well
+' as the status display
+' -----------------------------------------------------------------------------
+属性 Level 为 整数型
+	获取
+		Level = LevelCounter
+	结束 获取
+	设置
+		LevelCounter = Level
+		StatusLabel.文本 = "Level: " & LevelCounter
+	结束 设置
+结束 属性
+
+' -----------------------------------------------------------------------------
+' Starts a new game. Resets everything to its initial values.
+' -----------------------------------------------------------------------------
+过程 NewGame()
+	Score = 0
+	Level = 1
+
+	变量 row 为 整数型, col 为 整数型
+	循环 row = 0 至 ROWS - 1
+		循环 col = 0 至 COLUMNS - 1
+			变量 cell 为 图片框
+			cell = BoardCells(col, row)
+			cell.背景颜色 = GetBoardColor(col, row)
+		下个 col
+	下个 row
+
+	NextBrick()
+	NewBrick()
+
+	ProgressTimer.间隔 = 400
+	ProgressTimer.启用 = 真
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Creates the next brick.
+' -----------------------------------------------------------------------------
+过程 NextBrick()
+	判断 算术运算.取整数(算术运算.取随机数() * 7)
+		分支 0
+			NextFallingBrick = 创建 Square
+		分支 1
+			NextFallingBrick = 创建 UpStep
+		分支 2
+			NextFallingBrick = 创建 DownStep
+		分支 3
+			NextFallingBrick = 创建 Bar
+		分支 4
+			NextFallingBrick = 创建 Ell
+		分支 5
+			NextFallingBrick = 创建 InvertedEll
+		分支 6
+			NextFallingBrick = 创建 Podium
+	结束 判断
+
+	NextFallingBrickOrientation = Orientation(算术运算.取随机数() * 4)
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Checks the game board for completed rows. 则 promotes the previous next
+' brick to be the current brick. Finally checks for game over.
+' -----------------------------------------------------------------------------
+过程 NewBrick()
+	CheckRowsComplete()
+
+	FallingBrick = NextFallingBrick
+	FallingBrickOrientation = NextFallingBrickOrientation
+	FallingBrickRow = 0
+	FallingBrickColumn = 3
+
+	NextBrick()
+	PreviewBrick(NextFallingBrick, NextFallingBrickOrientation)
+
+	如果 取反 CanMoveDown() 则
+		ProgressTimer.启用 = 假
+		StatusLabel.文本 = "Game Over"
+	结束 如果
+结束 过程
+
+' -----------------------------------------------------------------------------
+' First clears the preview then shows the next brick shape.
+' -----------------------------------------------------------------------------
+过程 PreviewBrick(brick 为 Brick, orientation 为 整数型)
+	变量 row 为 整数型, col 为 整数型
+	循环 row = 0 至 PREVIEW_ROWS - 1
+		循环 col = 0 至 PREVIEW_COLUMNS - 1
+			变量 cell 为 图片框
+			cell = PreviewCells(row, col)
+			cell.背景颜色 = PREVIEW_COLOR
+		下个 col
+	下个 row
+
+	变量 shape 为 整数型(,)
+	shape = brick.GetShape(orientation)
+
+	变量 x 为 整数型, maxx 为 整数型
+	变量 y 为 整数型, maxy 为 整数型
+	maxx = 取数组下标(shape, 1) - 1
+	maxy = 取数组下标(shape, 2) - 1
+	循环 x = 0 至 maxx
+		循环 y = 0 至 maxy
+			变量 cell 为 图片框
+			cell = PreviewCells(y, x)
+			如果 IsBoardColor(shape(x, y)) 则
+				cell.背景颜色 = PREVIEW_COLOR
+			否则
+				cell.背景颜色 = shape(x, y)
+			结束 如果
+		下个 y
+	下个 x
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Checks whether the given color is the board background color.
+' -----------------------------------------------------------------------------
+函数 IsBoardColor(color 为 整数型) 为 逻辑型
+	IsBoardColor = color = BOARD_COLOR1 或 color = BOARD_COLOR2
+结束 函数
+
+函数 GetBoardColor(column 为 整数型, row 为 整数型) 为 整数型
+	如果 (column + row) % 2 = 0 则
+		GetBoardColor = BOARD_COLOR1
+	否则
+		GetBoardColor = BOARD_COLOR2
+	结束 如果
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Moves the current brick down one row.
+' -----------------------------------------------------------------------------
+过程 BrickMoveDown()
+	BrickRemoveFromBoard()
+	如果 CanMoveDown() 则
+		FallingBrickRow = FallingBrickRow + 1
+		BrickAddToBoard()
+	否则
+		BrickAddToBoard()
+		NewBrick()
+	结束 如果
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Moves the current brick one column to the left.
+' -----------------------------------------------------------------------------
+过程 BrickMoveLeft()
+	BrickRemoveFromBoard()
+	如果 CanMoveLeft() 则 FallingBrickColumn = FallingBrickColumn - 1
+	BrickAddToBoard()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Moves the current brick one column to the right.
+' -----------------------------------------------------------------------------
+过程 BrickMoveRight()
+	BrickRemoveFromBoard()
+	如果 CanMoveRight() 则 FallingBrickColumn = FallingBrickColumn + 1
+	BrickAddToBoard()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Drops the current brick down as many rows as possible.
+' -----------------------------------------------------------------------------
+过程 BrickDropDown()
+	BrickRemoveFromBoard()
+	判断循环 CanMoveDown()
+		FallingBrickRow = FallingBrickRow + 1
+	结束 判断循环
+	BrickAddToBoard()
+	NewBrick()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Rotates the current brick left (counterclockwise).
+' -----------------------------------------------------------------------------
+过程 BrickTurnLeft()
+	BrickRemoveFromBoard()
+	如果 CanTurnLeft() 则 FallingBrickOrientation = TurnLeft(FallingBrickOrientation)
+	BrickAddToBoard()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Rotates the current brick right (clockwise).
+' -----------------------------------------------------------------------------
+过程 BrickTurnRight()
+	BrickRemoveFromBoard()
+	如果 CanTurnRight() 则 FallingBrickOrientation = TurnRight(FallingBrickOrientation)
+	BrickAddToBoard()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Adds the current brick to the board (showing the current brick on the board).
+' -----------------------------------------------------------------------------
+过程 BrickAddToBoard()
+	变量 shape 为 整数型(,)
+	shape = FallingBrick.GetShape(FallingBrickOrientation)
+
+	变量 x 为 整数型, cellx 为 整数型, maxx 为 整数型
+	变量 y 为 整数型, celly 为 整数型, maxy 为 整数型
+	maxx = 取数组下标(shape, 1) - 1
+	maxy = 取数组下标(shape, 2) - 1
+	循环 x = 0 至 maxx
+		循环 y = 0 至 maxy
+			变量 cell 为 图片框
+			cellx = FallingBrickColumn + x
+			celly = FallingBrickRow - (maxy - y)
+			如果 取反 IsBoardColor(shape(x, maxy - y)) 且 VisibleWithinBoardArea(cellx, celly) 则
+				cell = BoardCells(cellx, celly)
+				cell.背景颜色 = shape(x, maxy - y)
+			结束 如果
+		下个 y
+	下个 x
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Removes the current brick from the board (hiding the current brick from the
+' board).
+' -----------------------------------------------------------------------------
+过程 BrickRemoveFromBoard()
+	变量 shape 为 整数型(,)
+	shape = FallingBrick.GetShape(FallingBrickOrientation)
+
+	变量 x 为 整数型, cellx 为 整数型, maxx 为 整数型
+	变量 y 为 整数型, celly 为 整数型, maxy 为 整数型
+	maxx = 取数组下标(shape, 1) - 1
+	maxy = 取数组下标(shape, 2) - 1
+	循环 x = 0 至 maxx
+		循环 y = 0 至 maxy
+			cellx = FallingBrickColumn + x
+			celly = FallingBrickRow - (maxy - y)
+			如果 取反 IsBoardColor(shape(x, maxy - y)) 且 VisibleWithinBoardArea(cellx, celly) 则
+				变量 cell 为 图片框
+				cell = BoardCells(cellx, celly)
+				cell.背景颜色 = GetBoardColor(cellx, celly)
+			结束 如果
+		下个 y
+	下个 x
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Indicates whether a set of coordinates is within the board area. This
+' function allows the y coordinate to 'stick out' on top.
+' -----------------------------------------------------------------------------
+函数 WithinBoardArea(x 为 整数型, y 为 整数型) 为 逻辑型
+	WithinBoardArea = 0 <= x 且 x < COLUMNS 且 y < ROWS
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether a set of coordinates is completely within the board area.
+' -----------------------------------------------------------------------------
+函数 VisibleWithinBoardArea(x 为 整数型, y 为 整数型) 为 逻辑型
+	VisibleWithinBoardArea = 0 <= x 且 x < COLUMNS 且 0 <= y 且 y < ROWS
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can move down one row.
+' -----------------------------------------------------------------------------
+函数 CanMoveDown() 为 逻辑型
+	CanMoveDown = CanMove(FallingBrickOrientation, 0, 1)
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can move left one column.
+' -----------------------------------------------------------------------------
+函数 CanMoveLeft() 为 逻辑型
+	CanMoveLeft = CanMove(FallingBrickOrientation, -1, 0)
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can move right one column.
+' -----------------------------------------------------------------------------
+函数 CanMoveRight() 为 逻辑型
+	CanMoveRight = CanMove(FallingBrickOrientation, 1, 0)
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can turn left (counterclockwise).
+' -----------------------------------------------------------------------------
+函数 CanTurnLeft() 为 逻辑型
+	CanTurnLeft = CanMove(TurnLeft(FallingBrickOrientation), 0, 0)
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can turn right (clockwise).
+' -----------------------------------------------------------------------------
+函数 CanTurnRight() 为 逻辑型
+	CanTurnRight = CanMove(TurnRight(FallingBrickOrientation), 0, 0)
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the current brick can move from its current position
+' to the new (relative) position.
+' -----------------------------------------------------------------------------
+函数 CanMove(orientation 为 整数型, deltax 为 整数型, deltay 为 整数型) 为 逻辑型
+	变量 shape 为 整数型(,)
+	shape = FallingBrick.GetShape(orientation)
+
+	变量 x 为 整数型, cellx 为 整数型, maxx 为 整数型
+	变量 y 为 整数型, celly 为 整数型, maxy 为 整数型
+	maxx = 取数组下标(shape, 1) - 1
+	maxy = 取数组下标(shape, 2) - 1
+	循环 x = 0 至 maxx
+		循环 y = 0 至 maxy
+			如果 取反 IsBoardColor(shape(x, maxy - y)) 则
+				cellx = FallingBrickColumn + deltax + x
+				celly = FallingBrickRow + deltay - (maxy - y)
+				如果 取反 WithinBoardArea(cellx, celly) 则
+					退出 函数
+				结束 如果
+				如果 VisibleWithinBoardArea(cellx, celly) 则
+					变量 cell 为 图片框
+					cell = BoardCells(cellx, celly)
+					如果 取反 IsBoardColor(cell.背景颜色) 则
+						退出 函数
+					结束 如果
+				结束 如果
+			结束 如果
+		下个 y
+	下个 x
+	CanMove = 真
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Returns the given orientation turned left (counterclockwise).
+' -----------------------------------------------------------------------------
+函数 TurnLeft(orientation 为 整数型) 为 整数型
+	TurnLeft = Orientation((orientation - 1 + 取数组下标(Orientation, 1)) % 取数组下标(Orientation, 1))
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Returns the given orientation turned right (clockwise).
+' -----------------------------------------------------------------------------
+函数 TurnRight(orientation 为 整数型) 为 整数型
+	TurnRight = Orientation((orientation + 1) % 取数组下标(Orientation, 1))
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Indicates whether the given row is complete.
+' -----------------------------------------------------------------------------
+函数 IsRowComplete(row 为 整数型) 为 逻辑型
+	变量 col 为 整数型
+	循环 col = 0 至 COLUMNS - 1
+		变量 cell 为 图片框
+		cell = BoardCells(col, row)
+		如果 IsBoardColor(cell.背景颜色) 则
+			退出 函数
+		结束 如果
+	下个 col
+	IsRowComplete = 真
+结束 函数
+
+' -----------------------------------------------------------------------------
+' Removes the given row from the board by moving all rows on top of it down
+' one row and clearing the top (first) row.
+' -----------------------------------------------------------------------------
+过程 RemoveRow(removeRow 为 整数型)
+	变量 row 为 整数型, col 为 整数型
+	循环 row = removeRow - 1 至 0 步进 -1
+		循环 col = 0 至 COLUMNS - 1
+			变量 sourceCell 为 图片框, targetCell 为 图片框
+			sourceCell = BoardCells(col, row)
+			targetCell = BoardCells(col, row + 1)
+			如果 IsBoardColor(sourceCell.背景颜色) 则
+				targetCell.背景颜色 = GetBoardColor(col, row + 1)
+			否则
+				targetCell.背景颜色 = sourceCell.背景颜色
+			结束 如果
+		下个 col
+	下个 row
+
+	循环 col = 0 至 COLUMNS - 1
+		变量 cell 为 图片框
+		cell = BoardCells(col, 0)
+		cell.背景颜色 = GetBoardColor(col, 0)
+	下个 col
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Checks the board for complete rows, removes them and updates the score.
+' -----------------------------------------------------------------------------
+过程 CheckRowsComplete()
+	变量 row 为 整数型
+	循环 row = ROWS - 1 至 0 步进 -1
+		变量 multiplier 为 整数型
+		multiplier = 1
+		判断循环 IsRowComplete(row)
+			RemoveRow(row)
+			Score = Score + 10 * Level * multiplier
+			multiplier = multiplier * 2
+		结束 判断循环
+	下个 row
+
+	CheckHiScore()
+	CheckLevel()
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Ups the current level if conditions for the next level are met.
+' -----------------------------------------------------------------------------
+过程 CheckLevel()
+	如果 Level < MAX_LEVEL 则
+		如果 Score >= Level * Level * 100 则
+			ProgressTimer.间隔 = ProgressTimer.间隔 - 10
+			Level = Level + 1
+		结束 如果
+	结束 如果
+结束 过程
+
+' -----------------------------------------------------------------------------
+' Updates the high score if needed.
+' -----------------------------------------------------------------------------
+过程 CheckHiScore()
+	如果 Score > HiScore 则
+		HiScore = Score
+		保存设置(PREFERENCE_HISCORE, HiScore)
+	结束 如果
+结束 过程
+
+$属性
+	$资源 $窗口
+	$定义 Tetris $为 窗口
+		布局 = 布局_线性
+		布局.方向 = 布局_方向_垂直
+		背景颜色 = &HFF444444
+		标题 = "Tetris"
+		$定义 StatusPanel $为 面板
+			布局 = 布局_线性
+			布局.方向 = 布局_方向_水平
+			背景颜色 = &HFF444444
+			宽度 = 长度_匹配父级
+			$定义 ScoreLabel $为 标签
+				背景颜色 = &HFF444444
+				字体大小 = 16.0
+				字体类型 = 字体类型_等宽
+				文本 = "Score: 0"
+				文本颜色 = 颜色_白
+				宽度 = 105
+			$结束 $定义
+			$定义 HiScoreLabel $为 标签
+				内容对齐 = 对齐_水平居中
+				背景颜色 = &HFF444444
+				字体大小 = 16.0
+				字体类型 = 字体类型_等宽
+				文本 = "HiScore: 0"
+				文本颜色 = 颜色_白
+				宽度 = 105
+			$结束 $定义
+			$定义 StatusLabel $为 标签
+				内容对齐 = 对齐_右
+				背景颜色 = &HFF444444
+				字体大小 = 16.0
+				字体类型 = 字体类型_等宽
+				文本 = "Level: 1"
+				文本颜色 = 颜色_白
+				宽度 = 105
+			$结束 $定义
+		$结束 $定义
+		$定义 SpacerPanel0 $为 面板
+			布局.方向 = 布局_方向_垂直
+			背景颜色 = &HFF444444
+			高度 = 32
+			宽度 = 32
+			$定义 DummyLabel0 $为 标签
+				文本 = "Label11"
+				文本颜色 = &H00FFFFFF
+			$结束 $定义
+		$结束 $定义
+		$定义 GamePanel $为 面板
+			布局 = 布局_线性
+			布局.方向 = 布局_方向_水平
+			背景颜色 = &HFF444444
+			高度 = 长度_匹配父级
+			宽度 = 长度_匹配父级
+			$定义 SpacerPanel1 $为 面板
+				布局 = 布局_线性
+				布局.方向 = 布局_方向_垂直
+				背景颜色 = &HFF444444
+				高度 = 32
+				宽度 = 32
+				$定义 DummyLabel1 $为 标签
+					文本 = "Label7"
+					文本颜色 = &H00FFFFFF
+				$结束 $定义
+			$结束 $定义
+			$定义 Board $为 面板
+				布局 = 布局_表格
+				布局.列数 = 10
+				布局.行数 = 20
+				背景颜色 = &HFF444444
+				高度 = 320
+				宽度 = 160
+			$结束 $定义
+			$定义 SpacerPanel2 $为 面板
+				布局 = 布局_线性
+				布局.方向 = 布局_方向_垂直
+				背景颜色 = &HFF444444
+				高度 = 32
+				宽度 = 32
+				$定义 DummyLabel2 $为 标签
+					文本 = "Label8"
+					文本颜色 = &H00FFFFFF
+				$结束 $定义
+			$结束 $定义
+			$定义 PreviewPanel $为 面板
+				布局 = 布局_线性
+				布局.方向 = 布局_方向_垂直
+				背景颜色 = &HFF444444
+				宽度 = 长度_匹配父级
+				$定义 NextBrickLabel $为 标签
+					背景颜色 = &HFF444444
+					文本 = "Next brick:"
+					文本颜色 = 颜色_白
+				$结束 $定义
+				$定义 PreviewBoard $为 面板
+					布局 = 布局_表格
+					布局.列数 = 4
+					布局.行数 = 4
+					背景颜色 = &HFF444444
+					高度 = 64
+					宽度 = 64
+				$结束 $定义
+			$结束 $定义
+		$结束 $定义
+		$定义 ProgressTimer $为 计时器
+			间隔 = 300
+		$结束 $定义
+	$结束 $定义
+$结束 $属性

@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -19,7 +21,7 @@ import { analyzeSimpleReferences, analyzeSimpleReferencesAsync } from "../refere
 import { refactoringContext, simpleIdentifierSpans, type RefactoringUnit } from "../refactoringModel";
 import { inspectSimplePropertyXml } from "../propertyXml";
 
-const sdkPromise = loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+const sdkPromise = loadSdk(testSdkPath("sdk.json"));
 
 test("十六进制数字和续行符不是名称，真实同名标识符仍报告诊断", async () => {
 	const sdk = await sdkPromise;

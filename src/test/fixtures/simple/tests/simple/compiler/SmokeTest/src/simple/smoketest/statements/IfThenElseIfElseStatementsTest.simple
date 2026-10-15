@@ -1,0 +1,101 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the If-Then-ElseIf-Else statement
+
+' The following constants are used as return values for the actual test functions. They indicate
+' which statement block of the statement was actually executed.
+常量 NONE 为 文本型 = ""
+常量 THEN 为 文本型 = "Then"
+常量 ELSETHEN 为 文本型 = "ElseThen"
+常量 ELSE 为 文本型 = "Else"
+
+函数 Name() 为 文本型
+	Name = "If-Then-ElseIf-Else Statement Tests"
+结束 函数
+
+过程 Run()
+	' Single line If-Then
+	断言真(RunSingleLineIfThenTest(真) = THEN)
+	断言真(RunSingleLineIfThenTest(假) = NONE)
+
+	' Single line If-Then-Else
+	断言真(RunSingleLineIfThenElseTest(真) = THEN)
+	断言真(RunSingleLineIfThenElseTest(假) = ELSE)
+
+	' If-Then
+	断言真(RunIfThenTest(真) = THEN)
+	断言真(RunIfThenTest(假) = NONE)
+
+	' If-Then-Else
+	断言真(RunIfThenElseTest(真) = THEN)
+	断言真(RunIfThenElseTest(假) = ELSE)
+
+	' If-Then-ElseIf
+	断言真(RunIfThenElseIfTest(真, 假) = THEN)
+	断言真(RunIfThenElseIfTest(真, 真) = THEN)
+	断言真(RunIfThenElseIfTest(假, 假) = NONE)
+	断言真(RunIfThenElseIfTest(假, 真) = ELSETHEN)
+
+	' If-Then-ElseIf-Else
+	断言真(RunIfThenElseIfElseTest(真, 假) = THEN)
+	断言真(RunIfThenElseIfElseTest(真, 真) = THEN)
+	断言真(RunIfThenElseIfElseTest(假, 假) = ELSE)
+	断言真(RunIfThenElseIfElseTest(假, 真) = ELSETHEN)
+结束 过程
+
+函数 RunSingleLineIfThenTest(testValue 为 逻辑型) 为 文本型
+	如果 testValue 则 RunSingleLineIfThenTest = THEN
+结束 函数
+
+函数 RunSingleLineIfThenElseTest(testValue 为 逻辑型) 为 文本型
+	如果 testValue 则 RunSingleLineIfThenElseTest = THEN 否则 RunSingleLineIfThenElseTest = ELSE
+结束 函数
+
+函数 RunIfThenTest(testValueForThen 为 逻辑型) 为 文本型
+	如果 testValueForThen 则
+		RunIfThenTest = THEN
+	结束 如果
+结束 函数
+
+函数 RunIfThenElseTest(testValueForThen 为 逻辑型) 为 文本型
+	如果 testValueForThen 则
+		RunIfThenElseTest = THEN
+	否则
+		RunIfThenElseTest = ELSE
+	结束 如果
+结束 函数
+
+函数 RunIfThenElseIfTest(testValueForIf 为 逻辑型, testValueForElseIf 为 逻辑型) 为 文本型
+	如果 testValueForIf 则
+		RunIfThenElseIfTest = THEN
+	否则如果 testValueForElseIf 则
+		RunIfThenElseIfTest = ELSETHEN
+	结束 如果
+结束 函数
+
+函数 RunIfThenElseIfElseTest(testValueForIf 为 逻辑型, testValueForElseIf 为 逻辑型) 为 文本型
+	如果 testValueForIf 则
+		RunIfThenElseIfElseTest = THEN
+	否则如果 testValueForElseIf 则
+		RunIfThenElseIfElseTest = ELSETHEN
+	否则
+		RunIfThenElseIfElseTest = ELSE
+	结束 如果
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

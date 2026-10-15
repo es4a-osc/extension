@@ -1,0 +1,75 @@
+{
+	"name": "SDK",
+	"description": "SDK入库清单",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"capabilities": {
+		"debug": {
+			"command": "capabilities/debug.bat",
+			"description": "调试应用",
+			"arguments": [
+				"PROJECT_FILE",
+				"APK_FILE"
+			]
+		},
+		"compile": {
+			"command": "capabilities/compile.bat",
+			"description": "编译应用",
+			"arguments": [
+				"PROJECT_FILE"
+			]
+		}
+	},
+	"templates": {
+		"project": {
+			"template": "templates/project.properties",
+			"variables": [
+				"主窗口限定名",
+				"应用名称"
+			]
+		},
+		"main": {
+			"template": "templates/主窗口.simple",
+			"variables": [
+				"应用名称"
+			]
+		},
+		"window": {
+			"template": "templates/窗口.simple",
+			"variables": [
+				"窗口名称"
+			]
+		},
+		"object": {
+			"template": "templates/对象.simple",
+			"variables": [
+				"对象名称"
+			]
+		},
+		"interface": {
+			"template": "templates/接口.simple",
+			"variables": []
+		},
+		"service": {
+			"template": "templates/服务.simple",
+			"variables": []
+		}
+	},
+	"compiler": "simple/SimpleCompiler.json",
+	"runtime": "simple/SimpleAndroidRuntime.json",
+	"libraries": [
+		"libraries/com.example.demo/library.json",
+		"libraries/simple.library.wsd.viewpager/library.json",
+		"libraries/simple.library.wsd.grouplist/library.json",
+		"libraries/simple.library.wsd.blebluetooth/library.json",
+		"libraries/simple.library.wsd.accessibility/library.json",
+		"libraries/simple.library.wsd.httpserver/library.json",
+		"libraries/simple.library.wsd.notification/library.json",
+		"libraries/simple.library.wsd.update/library.json"
+	]
+}

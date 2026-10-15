@@ -1,0 +1,297 @@
+{
+	"name": "低功耗蓝牙库",
+	"description": "提供 BLE 设备扫描、GATT 服务发现、特征读写和通知订阅的不可视组件。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展组件",
+			"definitions": [
+				{
+					"name": "低功耗蓝牙",
+					"description": "BLE 低功耗蓝牙 GATT 客户端，支持 Android 4.3（API 18）及以上。使用前需开启蓝牙并取得相应权限；一个应用共享一条 GATT 连接。",
+					"icon": "icons/bluetooth.svg",
+					"kind": "component",
+					"type": "simple.library.wsd.blebluetooth.低功耗蓝牙",
+					"inherits": [
+						"simple.runtime.components.组件"
+					],
+					"permissions": [
+						"android.permission.BLUETOOTH",
+						"android.permission.BLUETOOTH_ADMIN",
+						"android.permission.ACCESS_FINE_LOCATION",
+						"android.permission.BLUETOOTH_SCAN",
+						"android.permission.BLUETOOTH_CONNECT",
+						"android.permission.BLUETOOTH_ADVERTISE"
+					],
+					"events": [
+						{
+							"name": "发现设备",
+							"description": "首次扫描到设备时触发；非 iBeacon 广播的主、次标识均为 0。",
+							"params": [
+								{
+									"name": "名称",
+									"type": "文本型",
+									"description": "设备名称，未知时为空文本。"
+								},
+								{
+									"name": "地址",
+									"type": "文本型",
+									"description": "设备地址。"
+								},
+								{
+									"name": "主标识",
+									"type": "整数型",
+									"description": "iBeacon 主标识（无符号 16 位整数）。"
+								},
+								{
+									"name": "次标识",
+									"type": "整数型",
+									"description": "iBeacon 次标识（无符号 16 位整数）。"
+								},
+								{
+									"name": "配对状态",
+									"type": "整数型",
+									"description": "配对状态：1 未配对、2 正在配对、3 已配对。"
+								}
+							]
+						},
+						{
+							"name": "信号强度改变",
+							"description": "再次扫描到同一设备时通知本次信号强度。",
+							"params": [
+								{
+									"name": "名称",
+									"type": "文本型",
+									"description": "设备名称。"
+								},
+								{
+									"name": "地址",
+									"type": "文本型",
+									"description": "设备地址。"
+								},
+								{
+									"name": "信号强度",
+									"type": "整数型",
+									"description": "信号强度，单位 dBm。"
+								}
+							]
+						},
+						{
+							"name": "发现服务",
+							"description": "发现远端设备的 GATT 服务后触发。",
+							"params": [
+								{
+									"name": "服务信息",
+									"type": "集合",
+									"description": "每个项目为文本数组，首项为服务 UUID，其余为该服务的特征 UUID。"
+								}
+							]
+						},
+						{
+							"name": "连接状态改变",
+							"description": "连接成功、断开或失败时触发。",
+							"params": [
+								{
+									"name": "状态",
+									"type": "整数型",
+									"description": "连接状态：1 已连接、2 已断开或连接失败。"
+								}
+							]
+						},
+						{
+							"name": "读取数据完毕",
+							"description": "特征读取结束或请求无法提交时触发。",
+							"params": [
+								{
+									"name": "结果",
+									"type": "整数型",
+									"description": "结果：1 成功、2 失败。"
+								},
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID（原类库称通道 UUID）。"
+								},
+								{
+									"name": "数据",
+									"type": "字节型()",
+									"description": "读取的数据，失败且没有返回数据时为空数组。"
+								}
+							]
+						},
+						{
+							"name": "写入数据完毕",
+							"description": "特征写入结束或请求无法提交时触发。",
+							"params": [
+								{
+									"name": "结果",
+									"type": "整数型",
+									"description": "结果：1 成功、2 失败。"
+								}
+							]
+						},
+						{
+							"name": "通道数据改变",
+							"description": "收到已订阅特征的通知或指示时触发。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								},
+								{
+									"name": "数据",
+									"type": "字节型()",
+									"description": "收到的数据。"
+								}
+							]
+						}
+					],
+					"functions": [
+						{
+							"name": "初始化BLE",
+							"description": "准备扫描及绑定 GATT 服务，可重复调用；蓝牙须已开启。\n服务绑定异步完成，紧随其后的连接请求会等待绑定完成。\n支持 BLE、蓝牙已开启且绑定请求成功时返回真，否则返回假。",
+							"return": "逻辑型"
+						},
+						{
+							"name": "置可被发现",
+							"description": "弹出系统可发现请求，使本机可被经典蓝牙设备发现。\n此操作不会启动 BLE 广播。"
+						},
+						{
+							"name": "开始搜索",
+							"description": "开始扫描 BLE 设备，重复调用不会重复注册扫描。"
+						},
+						{
+							"name": "停止搜索",
+							"description": "停止扫描，可重复调用。"
+						},
+						{
+							"name": "连接设备",
+							"description": "连接指定 BLE 设备；服务尚未绑定时暂存请求。\n连接结果通过连接状态改变事件通知。",
+							"params": [
+								{
+									"name": "地址",
+									"type": "文本型",
+									"description": "设备地址。"
+								}
+							]
+						},
+						{
+							"name": "断开连接",
+							"description": "取消等待绑定的连接请求，并断开当前连接。\n保留初始化状态，可再次连接设备。"
+						},
+						{
+							"name": "释放资源",
+							"description": "停止扫描、关闭连接、移除接收器并解除服务绑定。\n可重复调用，释放后可重新初始化。"
+						},
+						{
+							"name": "是否可读",
+							"description": "检查指定特征是否支持读取。\n特征存在且支持读取时返回真，否则返回假。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "是否可写",
+							"description": "检查指定特征是否支持有响应或无响应写入。\n特征存在且支持写入时返回真，否则返回假。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "是否可通知",
+							"description": "检查指定特征是否支持通知或指示。\n特征存在且支持通知或指示时返回真，否则返回假。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "读取数据",
+							"description": "按顺序读取特征；可通知的特征会先登记订阅。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								}
+							]
+						},
+						{
+							"name": "写入数据",
+							"description": "将数据复制后排入写入队列，结果通过写入数据完毕事件通知。",
+							"params": [
+								{
+									"name": "服务UUID",
+									"type": "文本型",
+									"description": "服务 UUID。"
+								},
+								{
+									"name": "特征UUID",
+									"type": "文本型",
+									"description": "特征 UUID。"
+								},
+								{
+									"name": "数据",
+									"type": "字节型()",
+									"description": "待写入数据。"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

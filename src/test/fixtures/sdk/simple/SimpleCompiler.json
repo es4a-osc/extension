@@ -1,0 +1,529 @@
+{
+	"name": "编译器",
+	"description": "Simple编译器",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "compiler",
+	"categories": [
+		{
+			"name": "声明",
+			"definitions": [
+				{
+					"name": "别名",
+					"description": "为声明指定别名。",
+					"kind": "modifier"
+				},
+				{
+					"name": "常量",
+					"description": "声明常量。",
+					"kind": "declaration"
+				},
+				{
+					"name": "变量",
+					"description": "声明变量。",
+					"kind": "declaration"
+				},
+				{
+					"name": "函数",
+					"description": "声明有返回值的函数。",
+					"kind": "declaration"
+				},
+				{
+					"name": "过程",
+					"description": "声明无返回值的过程。",
+					"kind": "declaration"
+				},
+				{
+					"name": "事件",
+					"description": "声明事件。",
+					"kind": "declaration"
+				},
+				{
+					"name": "属性",
+					"description": "声明属性。",
+					"kind": "declaration"
+				},
+				{
+					"name": "获取",
+					"description": "声明属性获取器。",
+					"kind": "declaration"
+				},
+				{
+					"name": "设置",
+					"description": "声明属性设置器。",
+					"kind": "declaration"
+				}
+			]
+		},
+		{
+			"name": "修饰符",
+			"definitions": [
+				{
+					"name": "静态",
+					"description": "修饰成员变量、函数或过程，使其归属单元（在实例化前即可访问）。",
+					"kind": "modifier"
+				},
+				{
+					"name": "传值",
+					"description": "按值传递参数，参数值不会被修改。",
+					"kind": "modifier"
+				},
+				{
+					"name": "传址",
+					"description": "按引用传递参数，参数值会被修改。",
+					"kind": "modifier"
+				}
+			]
+		},
+		{
+			"name": "数据类型",
+			"definitions": [
+				{
+					"name": "逻辑型",
+					"description": "表示两个逻辑值：真 和 假。",
+					"kind": "type"
+				},
+				{
+					"name": "字节型",
+					"description": "表示 8 位有符号整数值，在 -128 到 127 之间。",
+					"kind": "type"
+				},
+				{
+					"name": "短整数型",
+					"description": "表示 16 位有符号整数值，在 -32768 到 32767 之间。",
+					"kind": "type"
+				},
+				{
+					"name": "整数型",
+					"description": "表示 32 位有符号整数值，在 -2147483648 到 2147483647 之间。",
+					"kind": "type"
+				},
+				{
+					"name": "长整数型",
+					"description": "表示 64 位有符号整数值，从 -9223372036854775808 到 9223372036854775808 之间。",
+					"kind": "type"
+				},
+				{
+					"name": "单精度小数型",
+					"description": "表示 32 位单精度浮点数，遵循 IEEE 754 标准。",
+					"kind": "type"
+				},
+				{
+					"name": "双精度小数型",
+					"description": "表示 64 位双精度浮点数，遵循 IEEE 754 标准。",
+					"kind": "type"
+				},
+				{
+					"name": "日期时间型",
+					"description": "日期和时间类型。",
+					"kind": "type"
+				},
+				{
+					"name": "文本型",
+					"description": "表示一系列的字符串，可以为空。",
+					"kind": "type"
+				},
+				{
+					"name": "变体型",
+					"description": "可以表示任何数据类型（基本类型、数组，对象、空等）。",
+					"kind": "type"
+				},
+				{
+					"name": "对象",
+					"description": "可保存对象实例引用或空值的数据类型。\n所有Simple对象（包括窗口、对象单元、组件）的基础对象。",
+					"kind": "type",
+					"events": [
+						{
+							"name": "加载",
+							"description": "单元类型首次初始化时触发一次。\n只能访问静态成员，不能使用本对象。"
+						},
+						{
+							"name": "初始化",
+							"description": "每次创建实例时触发，可使用本对象及实例成员。"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "字面量",
+			"definitions": [
+				{
+					"name": "真",
+					"description": "逻辑真值。",
+					"kind": "literal"
+				},
+				{
+					"name": "假",
+					"description": "逻辑假值。",
+					"kind": "literal"
+				},
+				{
+					"name": "空",
+					"description": "表示没有对象或值。",
+					"kind": "literal"
+				}
+			]
+		},
+		{
+			"name": "流程控制",
+			"description": "条件、分支、循环、退出与错误处理等流程控制定义。",
+			"definitions": [
+				{
+					"name": "如果",
+					"description": "开始条件判断。",
+					"kind": "control"
+				},
+				{
+					"name": "则",
+					"description": "分隔条件和条件成立时执行的语句。",
+					"kind": "control"
+				},
+				{
+					"name": "否则如果",
+					"description": "继续判断另一个条件。",
+					"kind": "control"
+				},
+				{
+					"name": "否则",
+					"description": "定义条件不成立时执行的分支。",
+					"kind": "control"
+				},
+				{
+					"name": "判断",
+					"description": "开始多分支判断结构。",
+					"kind": "control"
+				},
+				{
+					"name": "分支",
+					"description": "定义判断结构中的分支。",
+					"kind": "control"
+				},
+				{
+					"name": "判断循环",
+					"description": "定义带条件的循环结构。",
+					"kind": "control"
+				},
+				{
+					"name": "循环",
+					"description": "定义计数循环或集合遍历。",
+					"kind": "control"
+				},
+				{
+					"name": "执行",
+					"description": "开始执行循环结构。",
+					"kind": "control"
+				},
+				{
+					"name": "直到",
+					"description": "指定循环结束条件。",
+					"kind": "control"
+				},
+				{
+					"name": "每个",
+					"description": "遍历集合中的每个元素。",
+					"kind": "control"
+				},
+				{
+					"name": "从",
+					"description": "指定遍历的数据来源。",
+					"kind": "control"
+				},
+				{
+					"name": "至",
+					"description": "指定计数循环或范围的结束值。",
+					"kind": "control"
+				},
+				{
+					"name": "步进",
+					"description": "指定计数循环的步长。",
+					"kind": "control"
+				},
+				{
+					"name": "下个",
+					"description": "结束当前计数循环并进入下一次迭代。",
+					"kind": "control"
+				},
+				{
+					"name": "退出",
+					"description": "退出当前控制结构。",
+					"kind": "control"
+				},
+				{
+					"name": "位于",
+					"description": "指定事件或声明的所属对象。",
+					"kind": "control"
+				},
+				{
+					"name": "错误",
+					"description": "声明或处理错误。",
+					"kind": "control"
+				},
+				{
+					"name": "结束",
+					"description": "结束当前声明或控制结构。",
+					"kind": "control"
+				}
+			]
+		},
+		{
+			"name": "语法",
+			"definitions": [
+				{
+					"name": "创建",
+					"description": "创建对象实例。",
+					"kind": "declaration"
+				},
+				{
+					"name": "为",
+					"description": "指定声明的类型或目标。",
+					"kind": "operator"
+				},
+				{
+					"name": "本对象",
+					"description": "当前单元的实例引用。\n不能用于静态函数、静态过程或加载事件。",
+					"kind": "keyword"
+				},
+				{
+					"name": "触发事件",
+					"description": "触发指定自定义事件，必须在过程或函数中使用。",
+					"kind": "keyword"
+				}
+			]
+		},
+		{
+			"name": "运算符",
+			"definitions": [
+				{
+					"name": "+",
+					"description": "加法运算或正数修饰。",
+					"kind": "operator"
+				},
+				{
+					"name": "-",
+					"description": "减法运算或负数修饰。",
+					"kind": "operator"
+				},
+				{
+					"name": "*",
+					"description": "乘法运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "/",
+					"description": "除法运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "\\",
+					"description": "整数除法。",
+					"kind": "operator"
+				},
+				{
+					"name": "%",
+					"description": "求余，也叫求模，求得两个数相除后的余数。",
+					"kind": "operator"
+				},
+				{
+					"name": "^",
+					"description": "幂运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "<<",
+					"description": "将操作数的二进制表示向左移动指定的位数。",
+					"kind": "operator"
+				},
+				{
+					"name": ">>",
+					"description": "将操作数的二进制表示向右移动指定的位数。",
+					"kind": "operator"
+				},
+				{
+					"name": "&",
+					"description": "连接两个文本值。",
+					"kind": "operator"
+				}
+			]
+		},
+		{
+			"name": "比较符",
+			"definitions": [
+				{
+					"name": "=",
+					"description": "在赋值语句中将右侧表达式的值赋给左侧目标；在比较表达式中判断两侧操作数是否相等。",
+					"kind": "operator"
+				},
+				{
+					"name": "<>",
+					"description": "比较两个操作数是否不相等。",
+					"kind": "operator"
+				},
+				{
+					"name": "<",
+					"description": "比较左操作数是否小于右操作数。",
+					"kind": "operator"
+				},
+				{
+					"name": "<=",
+					"description": "比较左操作数是否小于或等于右操作数。",
+					"kind": "operator"
+				},
+				{
+					"name": ">",
+					"description": "比较左操作数是否大于右操作数。",
+					"kind": "operator"
+				},
+				{
+					"name": ">=",
+					"description": "比较左操作数是否大于或等于右操作数。",
+					"kind": "operator"
+				},
+				{
+					"name": "匹配",
+					"description": "执行匹配比较。",
+					"kind": "operator"
+				},
+				{
+					"name": "是",
+					"description": "判断对象或类型关系。",
+					"kind": "operator"
+				},
+				{
+					"name": "非",
+					"description": "判断对象或类型关系不成立。",
+					"kind": "operator"
+				},
+				{
+					"name": "类型检验",
+					"description": "检查表达式的运行时类型。",
+					"kind": "operator"
+				}
+			]
+		},
+		{
+			"name": "逻辑符",
+			"definitions": [
+				{
+					"name": "且",
+					"description": "逻辑与或按位与运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "或",
+					"description": "逻辑或或按位或运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "异或",
+					"description": "逻辑异或或按位异或运算。",
+					"kind": "operator"
+				},
+				{
+					"name": "取反",
+					"description": "执行逻辑取反或按位取反。",
+					"kind": "operator"
+				}
+			]
+		},
+		{
+			"name": "标点符号",
+			"definitions": [
+				{
+					"name": "(",
+					"description": "左圆括号。",
+					"kind": "punctuation"
+				},
+				{
+					"name": ")",
+					"description": "右圆括号。",
+					"kind": "punctuation"
+				},
+				{
+					"name": ".",
+					"description": "成员访问符。",
+					"kind": "punctuation"
+				},
+				{
+					"name": ",",
+					"description": "参数或元素分隔符。",
+					"kind": "punctuation"
+				},
+				{
+					"name": ":",
+					"description": "显式结束当前语句，使下一条语句可以写在同一行。",
+					"hover": true,
+					"kind": "punctuation"
+				}
+			]
+		},
+		{
+			"name": "属性区",
+			"hidden": true,
+			"definitions": [
+				{
+					"name": "$属性",
+					"description": "开始源文件属性区。",
+					"kind": "$keyword"
+				},
+				{
+					"name": "$资源",
+					"description": "指定属性区所描述的资源类型。",
+					"kind": "$keyword"
+				},
+				{
+					"name": "$定义",
+					"description": "在窗口属性区中定义组件实例。",
+					"kind": "$keyword"
+				},
+				{
+					"name": "$为",
+					"description": "指定组件实例的类型。",
+					"kind": "$keyword"
+				},
+				{
+					"name": "$结束",
+					"description": "结束组件定义或源文件属性区。",
+					"kind": "$keyword"
+				},
+				{
+					"name": "$窗口",
+					"description": "资源类型：窗口。",
+					"kind": "$type"
+				},
+				{
+					"name": "$对象",
+					"description": "资源类型：对象。",
+					"kind": "$type",
+					"properties": [
+						{
+							"name": "基础对象",
+							"type": "对象",
+							"description": "对象单元可选的基础对象完全限定名称。"
+						},
+						{
+							"name": "实现接口",
+							"type": "接口列表",
+							"description": "对象单元实现的接口完全限定名称；多个接口使用逗号分隔。"
+						}
+					]
+				},
+				{
+					"name": "$接口",
+					"description": "资源类型：接口。",
+					"kind": "$type"
+				},
+				{
+					"name": "$服务",
+					"description": "资源类型：服务。",
+					"kind": "$type"
+				}
+			]
+		}
+	]
+}

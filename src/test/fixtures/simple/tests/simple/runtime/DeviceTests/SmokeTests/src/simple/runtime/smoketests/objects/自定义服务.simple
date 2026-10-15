@@ -1,0 +1,88 @@
+''' 服务对象将由系统实例化，所以不会触发对象基本事件
+
+''' 覆写父类“服务”中的“服务创建”过程
+''' 服务被创建时执行该过程
+过程 服务创建()
+	测试服务.反馈窗口.投递消息("服务", "服务创建")
+结束 过程
+
+''' 覆写父类“服务”中的“服务处理”过程
+''' 收到意图时将执行该过程
+''' ___处理意图：___ 传递给服务的意图
+过程 服务处理(处理意图 为 意图)
+	变量 局_处理标记 为 文本型
+	局_处理标记 = 处理意图.取附加("处理标记")
+	判断 局_处理标记
+		分支 "取网络时间"
+			测试服务.反馈窗口.投递消息("取网络时间", 取网络时间())
+		分支 "取IP位置"
+			变量 局_IP地址 为 文本型
+			局_IP地址 = 处理意图.取附加("IP地址")
+			测试服务.反馈窗口.投递消息("取IP位置", 取IP位置(局_IP地址))
+		分支 否则
+			测试服务.反馈窗口.投递消息("服务", 局_处理标记 & " 该标记无法处理!")
+	结束 判断
+结束 过程
+
+''' 覆写父类“服务”中的“服务销毁”过程
+''' 服务被销毁时执行该过程
+过程 服务销毁()
+	测试服务.反馈窗口.投递消息("服务", "服务销毁")
+结束 过程
+
+''' HTTP请求取北京时间戳
+''' ___返回：___ 返回北京时间戳
+函数 取网络时间() 为 文本型
+	' HTTP请求
+	变量 局_HTTP请求 为 HTTP请求
+	局_HTTP请求 = 创建 HTTP请求
+	局_HTTP请求.打开("https://f.m.suning.com/api/ct.do")
+	局_HTTP请求.发送()
+
+	' 解析响应数据
+	' {"api":"time","code":"1","currentTime": 1788551131189,"msg":""}
+	变量 局_JSON对象 为 JSON值
+	局_JSON对象 = 创建 JSON值
+	局_JSON对象.解析对象(局_HTTP请求.响应文本)
+	取网络时间 = 局_JSON对象.取文本("currentTime")
+结束 函数
+
+''' HTTP请求取指定IP的位置
+''' ___返回：___ 返回地址文本
+函数 取IP位置(IP地址 为 文本型) 为 文本型
+	' HTTP请求
+	变量 局_HTTP请求 为 HTTP请求
+	局_HTTP请求 = 创建 HTTP请求
+	' 免费米扑代理 https://proxy.mimvp.com/freeopen.php
+	'局_HTTP请求.置代理地址("xxx.xxx.xxx.xxx", 123456)
+	局_HTTP请求.打开("https://api.ip.sb/geoip/" & IP地址)
+	局_HTTP请求.发送()
+
+	' 解析响应数据
+	' {
+	' "region": "Gyeonggi-do",
+	' "organization": "Cloudflare Warp",
+	' "region_code": "41",
+	' "isp": "Cloudflare Warp",
+	' "city": "Yanggok",
+	' "asn_organization": "Cloudflare, Inc.",
+	' "postal_code": "10059",
+	' "asn": 13335,
+	' "latitude": 37.6526,
+	' "ip": "104.28.207.60",
+	' "continent_code": "AS",
+	' "offset": 32400,
+	' "country": "South Korea",
+	' "timezone": "Asia/Seoul",
+	' "country_code": "KR",
+	' "longitude": 126.6225
+	' }
+	变量 局_JSON对象 为 JSON值
+	局_JSON对象 = 创建 JSON值
+	局_JSON对象.解析对象(局_HTTP请求.响应文本)
+	取IP位置 = 局_JSON对象.取文本("country") & " / " & 局_JSON对象.取文本("region") & " / " & 局_JSON对象.取文本("city")
+结束 函数
+
+$属性
+	$资源 $服务
+$结束 $属性

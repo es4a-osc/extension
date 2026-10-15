@@ -1,0 +1,112 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the For-Next statement
+
+' Counters for checking that end and step expressions are evaluated just once
+变量 endCounter 为 整数型
+变量 stepCounter 为 整数型
+
+函数 Name() 为 文本型
+	Name = "For-Next Statement Tests"
+结束 函数
+
+过程 Run()
+	' For-Next without Step expression
+	断言真(ForIntegerTest(0, 5) = 15)
+	断言真(ForDoubleTest(0, 5) = 15)
+
+	' For-Next with positive Step expression
+	断言真(ForWithStepIntegerTest(0, 5, 2) = 6)
+	断言真(ForWithStepDoubleTest(0, 5, 2) = 6)
+
+	' For-Next with negative Step expression
+	断言真(ForWithStepIntegerTest(0, -5, -2) = -6)
+	断言真(ForWithStepDoubleTest(0, -5, -2) = -6)
+
+	' Check that end and step expression are evaluated just once
+	endCounter = 0 : stepCounter = 0
+	断言真(ForEndStepExpressionEvaluationTest() = 9)
+	断言真(endCounter = 1 且 stepCounter = 1)
+
+	' For-Next with Exit
+	断言真(ForWithExitTest(5))
+结束 过程
+
+函数 ForIntegerTest(start 为 整数型, stop 为 整数型) 为 整数型
+	变量 i 为 整数型
+	循环 i = start 至 stop
+		ForIntegerTest = ForIntegerTest + i
+	下个 i
+结束 函数
+
+函数 ForDoubleTest(start 为 双精度小数型, stop 为 双精度小数型) 为 双精度小数型
+	变量 d 为 双精度小数型
+	循环 d = start 至 stop
+		ForDoubleTest = ForDoubleTest + d
+	下个 d
+结束 函数
+
+函数 ForWithStepIntegerTest(start 为 整数型, stop 为 整数型, step 为 整数型) 为 整数型
+	变量 i 为 整数型
+	循环 i = start 至 stop 步进 step
+		ForWithStepIntegerTest = ForWithStepIntegerTest + i
+	下个 i
+结束 函数
+
+函数 ForWithStepDoubleTest(start 为 双精度小数型, stop 为 双精度小数型, step 为 双精度小数型) 为 双精度小数型
+	变量 d 为 双精度小数型
+	循环 d = start 至 stop 步进 step
+		ForWithStepDoubleTest = ForWithStepDoubleTest + d
+	下个 d
+结束 函数
+
+函数 EndExpression() 为 整数型
+	endCounter = endCounter + 1
+	EndExpression = 10
+结束 函数
+
+函数 StepExpression() 为 整数型
+	stepCounter = stepCounter + 1
+	StepExpression = 2
+结束 函数
+
+函数 ForEndStepExpressionEvaluationTest() 为 整数型
+	变量 i 为 整数型
+	循环 i = 1 至 EndExpression() 步进 StepExpression()
+		ForEndStepExpressionEvaluationTest = i
+	下个 i
+结束 函数
+
+函数 ForWithExitTest(x 为 整数型) 为 逻辑型
+	变量 i 为 整数型
+	循环 i = 0 至 x + 10
+		变量 i 为 整数型
+		i = 0
+		判断循环 真
+			如果 i = x 则
+				ForWithExitTest = 真
+				退出 循环
+			结束 如果
+			ForWithExitTest = 假
+			i = i + 1
+		结束 判断循环
+		ForWithExitTest = 假
+	下个 i
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

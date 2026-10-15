@@ -1,0 +1,582 @@
+{
+	"name": "跨程序辅助库",
+	"description": "提供活动窗口无障碍节点读取、操作及事件监听。使用前须在系统设置中启用无障碍服务；库自带服务声明和默认资源。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展组件",
+			"definitions": [
+				{
+					"name": "跨程序辅助",
+					"description": "订阅系统无障碍事件，读取和操作当前活动窗口中的节点；节点离开原窗口后可能失效。",
+					"icon": "icons/accessible.svg",
+					"kind": "component",
+					"type": "simple.library.wsd.accessibility.跨程序辅助",
+					"inherits": [
+						"simple.runtime.components.组件"
+					],
+					"functions": [
+						{
+							"name": "初始化",
+							"description": "开始接收无障碍服务事件；服务尚未启用时打开系统无障碍设置。"
+						},
+						{
+							"name": "是否已开启",
+							"description": "判断本应用的无障碍服务是否已在系统设置中启用；不保证服务已连接。",
+							"return": "逻辑型"
+						},
+						{
+							"name": "取当前类名",
+							"description": "取得最近一次窗口切换事件报告的界面类名。",
+							"return": "文本型"
+						},
+						{
+							"name": "执行全局动作",
+							"description": "执行无障碍服务的全局操作并返回是否被接受；动作是全局操作编号，不是键盘按键码。",
+							"params": [
+								{
+									"name": "动作",
+									"type": "整数型",
+									"description": "无障碍服务的全局操作编号。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "打开最近通知",
+							"description": "触发最近一次收到的通知的内容操作；没有可用操作或操作失效时返回假。",
+							"return": "逻辑型"
+						},
+						{
+							"name": "取根控件",
+							"description": "取得当前活动窗口的根无障碍节点；服务未连接或没有活动根节点时返回空值。",
+							"return": "对象"
+						},
+						{
+							"name": "取父控件",
+							"description": "取得指定节点的父节点。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "取子控件数",
+							"description": "取得指定节点的直接子节点数量。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取子控件",
+							"description": "按从零开始的索引取得直接子节点；索引无效时返回空值。",
+							"params": [
+								{
+									"name": "索引",
+									"type": "整数型",
+									"description": "从零开始的节点索引。"
+								},
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "保存控件",
+							"description": "按名称保存当前窗口的节点引用；窗口切换时自动清除。",
+							"params": [
+								{
+									"name": "名称",
+									"type": "文本型",
+									"description": "保存或查找节点所用的名称。"
+								},
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							]
+						},
+						{
+							"name": "读取控件",
+							"description": "按名称读取此前保存的节点引用。",
+							"params": [
+								{
+									"name": "名称",
+									"type": "文本型",
+									"description": "保存或查找节点所用的名称。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "设置标记",
+							"description": "把标记保存到节点的附加信息；仅 Android API 19 及以上有效。",
+							"params": [
+								{
+									"name": "标记",
+									"type": "文本型",
+									"description": "保存到节点附加信息中的文本。"
+								},
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							]
+						},
+						{
+							"name": "取标记",
+							"description": "取得节点附加信息中的标记；不存在时返回空文本。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "是否可点击",
+							"description": "判断节点是否声明可点击。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "是否可滑动",
+							"description": "判断节点是否声明可滚动。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "是否可长按",
+							"description": "判断节点是否声明可长按。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "正向滑动控件",
+							"description": "对节点执行向前滚动操作，并返回是否被接受。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "反向滑动控件",
+							"description": "对节点执行向后滚动操作，并返回是否被接受。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "单击父控件",
+							"description": "对指定节点的父节点执行点击操作，并返回是否执行成功。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "单击控件",
+							"description": "直接对指定节点执行点击操作，并返回是否执行成功。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "长按父控件",
+							"description": "对指定节点的父节点执行长按操作，并返回是否被接受。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "长按控件",
+							"description": "直接对指定节点执行长按操作，并返回是否被接受。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "获取控件焦点",
+							"description": "对指定节点执行获取焦点操作，并返回是否被接受。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "置控件内容",
+							"description": "设置节点文本并返回是否被接受；仅 Android API 21 及以上有效。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								},
+								{
+									"name": "内容",
+									"type": "文本型",
+									"description": "要设置或查找的文本。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "粘贴",
+							"description": "对节点执行粘贴操作并返回是否被接受；仅 Android API 18 及以上有效。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "复制",
+							"description": "对节点执行复制操作并返回是否被接受；仅 Android API 18 及以上有效。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "清空所有编辑框",
+							"description": "遍历当前活动窗口的后代节点并清空可编辑内容；仅 Android API 21 及以上有效。"
+						},
+						{
+							"name": "尝试长按所有控件",
+							"description": "遍历当前活动窗口的节点，逐个触发长按并记录结果；会实际操作界面。"
+						},
+						{
+							"name": "按内容描述查找控件",
+							"description": "深度优先搜索起点的后代节点，返回内容描述包含指定文本的节点列表；不包含起点。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								},
+								{
+									"name": "内容",
+									"type": "文本型",
+									"description": "要设置或查找的文本。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "按资源ID查找控件",
+							"description": "按视图资源 ID 搜索当前活动窗口中的节点；根节点不可用或 Android API 低于 18 时返回空值。",
+							"params": [
+								{
+									"name": "资源ID",
+									"type": "文本型",
+									"description": "要匹配的视图资源 ID。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "按文本查找控件",
+							"description": "按文本搜索当前活动窗口中的节点；根节点不可用时返回空值。",
+							"params": [
+								{
+									"name": "文本",
+									"type": "文本型",
+									"description": "要搜索的节点文本。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "在控件内按资源ID查找控件",
+							"description": "按视图资源 ID 搜索指定节点及其子树中的节点；节点为空或 Android API 低于 18 时返回空值。",
+							"params": [
+								{
+									"name": "资源ID",
+									"type": "文本型",
+									"description": "要匹配的视图资源 ID。"
+								},
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "取控件集合项目数",
+							"description": "取得节点列表中的项目数量；列表为空时返回零。",
+							"params": [
+								{
+									"name": "控件集合",
+									"type": "对象",
+									"description": "无障碍节点列表对象（List<AccessibilityNodeInfo>）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取控件",
+							"description": "按从零开始的索引取得节点列表中的节点；无效时返回空值。",
+							"params": [
+								{
+									"name": "索引",
+									"type": "整数型",
+									"description": "从零开始的节点索引。"
+								},
+								{
+									"name": "控件集合",
+									"type": "对象",
+									"description": "无障碍节点列表对象（List<AccessibilityNodeInfo>）。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "取控件资源ID",
+							"description": "取得节点的视图资源 ID；节点无 ID 或 Android API 低于 18 时返回空文本。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取控件内容描述",
+							"description": "取得节点的内容描述。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取控件内容",
+							"description": "取得节点显示的文本。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取控件坐标",
+							"description": "取得节点在屏幕上的边界矩形，返回 Android Rect 对象。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "对象"
+						},
+						{
+							"name": "取左边界",
+							"description": "取得边界矩形的左边界坐标。",
+							"params": [
+								{
+									"name": "坐标",
+									"type": "对象",
+									"description": "取控件坐标返回的边界矩形对象（Rect）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取上边界",
+							"description": "取得边界矩形的上边界坐标。",
+							"params": [
+								{
+									"name": "坐标",
+									"type": "对象",
+									"description": "取控件坐标返回的边界矩形对象（Rect）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取右边界",
+							"description": "取得边界矩形的右边界坐标。",
+							"params": [
+								{
+									"name": "坐标",
+									"type": "对象",
+									"description": "取控件坐标返回的边界矩形对象（Rect）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取下边界",
+							"description": "取得边界矩形的下边界坐标。",
+							"params": [
+								{
+									"name": "坐标",
+									"type": "对象",
+									"description": "取控件坐标返回的边界矩形对象（Rect）。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "取控件信息",
+							"description": "将指定节点的信息编码为 JSON 文本；节点为空时返回空文本。",
+							"params": [
+								{
+									"name": "控件",
+									"type": "对象",
+									"description": "要读取或操作的无障碍节点对象（AccessibilityNodeInfo）。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取所有控件信息",
+							"description": "将当前活动窗口后代节点的信息编码为 JSON 数组文本。",
+							"return": "文本型"
+						}
+					],
+					"events": [
+						{
+							"name": "控件被滑动",
+							"description": "无障碍服务收到节点滚动事件时触发。"
+						},
+						{
+							"name": "控件被单击",
+							"description": "无障碍服务收到节点点击事件时触发。"
+						},
+						{
+							"name": "控件被长按",
+							"description": "无障碍服务收到节点长按事件时触发。"
+						},
+						{
+							"name": "音量被改变",
+							"description": "无障碍服务收到音量键按下事件时触发。",
+							"params": [
+								{
+									"name": "增大",
+									"type": "逻辑型",
+									"description": "真表示按下音量增大键，假表示按下音量减小键。"
+								}
+							]
+						},
+						{
+							"name": "窗口被切换",
+							"description": "无障碍服务收到窗口状态变化事件时触发。"
+						},
+						{
+							"name": "窗口发生变化",
+							"description": "无障碍服务收到窗口内容变化事件时触发。"
+						},
+						{
+							"name": "通知栏消息被改变",
+							"description": "无障碍服务收到通知状态变化事件时触发。",
+							"params": [
+								{
+									"name": "消息",
+									"type": "文本型",
+									"description": "通知中的消息文本。"
+								},
+								{
+									"name": "包名",
+									"type": "文本型",
+									"description": "发送通知的应用包名。"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

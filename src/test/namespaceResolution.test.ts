@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -21,7 +23,7 @@ import { simpleTestProjectPath, simpleTestUnitPath } from "./testProjects";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const root = path.resolve("C:/namespace-resolution/src");
-const sdkPromise = loadSdk(path.resolve(__dirname, "../../../sdk/sdk.json"));
+const sdkPromise = loadSdk(testSdkPath("sdk.json"));
 function unit(name: string, code = ""): RefactoringUnit {
 	return { filePath: path.join(root, name.replaceAll(".", "/") + ".simple"), sourceRoot: root, userCode: code,
 		property: inspectSimplePropertyXml("$属性\r\n$资源 $对象\r\n$结束 $属性\r\n") };

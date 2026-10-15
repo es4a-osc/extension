@@ -1,0 +1,228 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the Select statement
+
+' The following constants are used as return values for the functions testing logical expressions
+' within branch statements indicating which statement block was actually executed.
+常量 NONE 为 文本型 = "None"
+常量 ELSE 为 文本型 = "Else"
+
+常量 ONE 为 文本型 = "One"
+常量 TWO_TO_FOUR 为 文本型 = "Two to Four"
+常量 FIVE_SEVEN_TO_EIGHT_TEN 为 文本型 = "Five, Seven To Eight, Ten"
+常量 ELEVEN 为 文本型 = "Eleven"
+
+常量 FORTYTWO 为 文本型 = "Forty-two"
+
+常量 WITHIN_RANGE 为 文本型 = "Within range"
+
+常量 EQUAL 为 文本型 = "Equal"
+常量 NOT_EQUAL 为 文本型 = "Not equal"
+常量 LESS 为 文本型 = "Less"
+常量 LESS_OR_EQUAL 为 文本型 = "Less or equal"
+常量 GREATER 为 文本型 = "Greater"
+常量 GREATER_OR_EQUAL 为 文本型 = "Greater or equal"
+
+' For side-effect during short-circuit evaluation
+变量 sideEffect 为 逻辑型
+
+函数 Name() 为 文本型
+	Name = "Select Statement Tests"
+结束 函数
+
+过程 Run()
+	' Empty Select statement (just to make sure we can handle this)
+	断言真(EmptySelect(0) = NONE)
+
+	' Check a Select statement with 整数型 constant 分支 statements
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(0) = ELSE)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(1) = ONE)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(2) = TWO_TO_FOUR)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(4) = TWO_TO_FOUR)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(5) = FIVE_SEVEN_TO_EIGHT_TEN)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(7) = FIVE_SEVEN_TO_EIGHT_TEN)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(10) = FIVE_SEVEN_TO_EIGHT_TEN)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(11) = ELEVEN)
+	断言真(SelectWithIntegerConstantsAndEqualOrRangeOnly(12) = ELSE)
+
+	' Check a Select statement with an 整数型 non-constant 分支 range statement
+	断言真(SelectWithIntegerRange(2, 4, 6) = ELSE)
+	断言真(SelectWithIntegerRange(5, 4, 6) = WITHIN_RANGE)
+	断言真(SelectWithIntegerRange(8, 4, 6) = ELSE)
+
+	' Check a Select statement with an 整数型 constant 分支 equality statement
+	断言真(SelectWithIntegerConstantEquality(42) = EQUAL)
+	断言真(SelectWithIntegerConstantEquality(40) = NOT_EQUAL)
+
+	' Check a Select statement with an 整数型 non-constant 分支 equality statement
+	断言真(SelectWithIntegerEquality(42, 42) = EQUAL)
+	断言真(SelectWithIntegerEquality(40, 42) = NOT_EQUAL)
+
+	' Check a Select statement with an 整数型 constant 分支 less comparison statement
+	断言真(SelectWithIntegerConstantLessComparison(40) = LESS)
+	断言真(SelectWithIntegerConstantLessComparison(42) = LESS_OR_EQUAL)
+	断言真(SelectWithIntegerConstantLessComparison(44) = NONE)
+
+	' Check a Select statement with an 整数型 non-constant 分支 less comparison statement
+	断言真(SelectWithIntegerLessComparison(40, 42) = LESS)
+	断言真(SelectWithIntegerLessComparison(42, 42) = LESS_OR_EQUAL)
+	断言真(SelectWithIntegerLessComparison(44, 42) = NONE)
+
+	' Check a Select statement with an 整数型 constant 分支 greater comparison statement
+	断言真(SelectWithIntegerConstantGreaterComparison(40) = NONE)
+	断言真(SelectWithIntegerConstantGreaterComparison(42) = GREATER_OR_EQUAL)
+	断言真(SelectWithIntegerConstantGreaterComparison(44) = GREATER)
+
+	' Check a Select statement with an 整数型 non-constant 分支 greater comparison statement
+	断言真(SelectWithIntegerGreaterComparison(40, 42) = NONE)
+	断言真(SelectWithIntegerGreaterComparison(42, 42) = GREATER_OR_EQUAL)
+	断言真(SelectWithIntegerGreaterComparison(44, 42) = GREATER)
+
+	' Check a Select statement with Strings
+	断言真(SelectWithString(ONE) = 1)
+	断言真(SelectWithString(ELEVEN) = 11)
+	断言真(SelectWithString(FORTYTWO) = -1)
+
+	' Short curcuit evaluation
+	sideEffect = 假 : 断言真(CheckShortCurcuitEvaluation(0) = ELSE) : 断言假(sideEffect)
+结束 过程
+
+函数 EmptySelect(value 为 整数型) 为 文本型
+	EmptySelect = NONE
+	判断 value
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerConstantsAndEqualOrRangeOnly(value 为 整数型) 为 文本型
+	SelectWithIntegerConstantsAndEqualOrRangeOnly = NONE
+	判断 value
+		分支 1
+			SelectWithIntegerConstantsAndEqualOrRangeOnly = ONE
+		分支 2 至 4
+			SelectWithIntegerConstantsAndEqualOrRangeOnly = TWO_TO_FOUR
+		分支 5, 7 至 8, 10
+			SelectWithIntegerConstantsAndEqualOrRangeOnly = FIVE_SEVEN_TO_EIGHT_TEN
+		分支 是 = 11
+			SelectWithIntegerConstantsAndEqualOrRangeOnly = ELEVEN
+		分支 否则
+			SelectWithIntegerConstantsAndEqualOrRangeOnly = ELSE
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerRange(value 为 整数型, low 为 整数型, high 为 整数型) 为 文本型
+	SelectWithIntegerRange = NONE
+	判断 value
+		分支 low 至 high
+			SelectWithIntegerRange = WITHIN_RANGE
+		分支 否则
+			SelectWithIntegerRange = ELSE
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerConstantEquality(value 为 整数型) 为 文本型
+	SelectWithIntegerConstantEquality = NONE
+	判断 value
+		分支 是 = 42
+			SelectWithIntegerConstantEquality = EQUAL
+		分支 是 <> 42
+			SelectWithIntegerConstantEquality = NOT_EQUAL
+		分支 否则
+			SelectWithIntegerConstantEquality = ELSE
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerEquality(value 为 整数型, notAConstant 为 整数型) 为 文本型
+	SelectWithIntegerEquality = NONE
+	判断 value
+		分支 是 = notAConstant
+			SelectWithIntegerEquality = EQUAL
+		分支 是 <> notAConstant
+			SelectWithIntegerEquality = NOT_EQUAL
+		分支 否则
+			SelectWithIntegerEquality = ELSE
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerConstantLessComparison(value 为 整数型) 为 文本型
+	SelectWithIntegerConstantLessComparison = NONE
+	判断 value
+		分支 是 < 42
+			SelectWithIntegerConstantLessComparison = LESS
+		分支 是 <= 42
+			SelectWithIntegerConstantLessComparison = LESS_OR_EQUAL
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerLessComparison(value 为 整数型, notAConstant 为 整数型) 为 文本型
+	SelectWithIntegerLessComparison = NONE
+	判断 value
+		分支 是 < notAConstant
+			SelectWithIntegerLessComparison = LESS
+		分支 是 <= notAConstant
+			SelectWithIntegerLessComparison = LESS_OR_EQUAL
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerConstantGreaterComparison(value 为 整数型) 为 文本型
+	SelectWithIntegerConstantGreaterComparison = NONE
+	判断 value
+		分支 是 > 42
+			SelectWithIntegerConstantGreaterComparison = GREATER
+		分支 是 >= 42
+			SelectWithIntegerConstantGreaterComparison = GREATER_OR_EQUAL
+	结束 判断
+结束 函数
+
+函数 SelectWithIntegerGreaterComparison(value 为 整数型, notAConstant 为 整数型) 为 文本型
+	SelectWithIntegerGreaterComparison = NONE
+	判断 value
+		分支 是 > notAConstant
+			SelectWithIntegerGreaterComparison = GREATER
+		分支 是 >= notAConstant
+			SelectWithIntegerGreaterComparison = GREATER_OR_EQUAL
+	结束 判断
+结束 函数
+
+函数 SelectWithString(value 为 文本型) 为 整数型
+	SelectWithString = 0
+	判断 value
+		分支 ELEVEN
+			SelectWithString = 11
+		分支 ONE
+			SelectWithString = 1
+		分支 否则
+			SelectWithString = -1
+	结束 判断
+结束 函数
+
+函数 CheckShortCurcuitEvaluation(value 为 整数型) 为 文本型
+	CheckShortCurcuitEvaluation = NONE
+	判断 value
+		分支 10 至 FunctionWithSideEffect()
+			CheckShortCurcuitEvaluation = WITHIN_RANGE
+		分支 否则
+			CheckShortCurcuitEvaluation = ELSE
+	结束 判断
+结束 函数
+
+函数 FunctionWithSideEffect() 为 整数型
+	sideEffect = 真
+	FunctionWithSideEffect = 20
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

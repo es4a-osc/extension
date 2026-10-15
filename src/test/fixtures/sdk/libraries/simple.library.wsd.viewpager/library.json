@@ -1,0 +1,150 @@
+{
+	"name": "滑动页面框库",
+	"description": "提供可左右滑动切换页面的可视容器组件。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展可视组件",
+			"definitions": [
+				{
+					"name": "滑动页面框",
+					"description": "可添加多个页面并通过左右滑动切换的可视容器组件。",
+					"icon": "icons/carousel-horizontal.svg",
+					"kind": "component",
+					"type": "simple.library.wsd.viewpager.滑动页面框",
+					"inherits": [
+						"simple.runtime.components.可视组件",
+						"simple.runtime.components.组件容器"
+					],
+					"projection": {
+						"layout": "frame"
+					},
+					"constants": [
+						{
+							"name": "滑动状态_未滑动",
+							"type": "整数型",
+							"description": "页面当前没有滑动。",
+							"value": "0"
+						},
+						{
+							"name": "滑动状态_正在滑动",
+							"type": "整数型",
+							"description": "页面正在被拖动。",
+							"value": "1"
+						},
+						{
+							"name": "滑动状态_滑动完毕",
+							"type": "整数型",
+							"description": "页面滑动已经结束。",
+							"value": "2"
+						}
+					],
+					"properties": [
+						{
+							"name": "禁止滑动",
+							"type": "逻辑型",
+							"description": "是否禁止用户通过触摸滑动切换页面。",
+							"initializer": "假"
+						},
+						{
+							"name": "切换特效",
+							"type": "逻辑型",
+							"description": "切换现行页面时是否显示平滑滚动特效。",
+							"initializer": "真"
+						},
+						{
+							"name": "现行页面",
+							"type": "整数型",
+							"description": "当前页面的索引；没有页面时返回 -1。"
+						}
+					],
+					"functions": [
+						{
+							"name": "添加页面",
+							"description": "把一个可视组件添加为新页面。",
+							"params": [
+								{
+									"name": "组件",
+									"type": "可视组件",
+									"description": "要添加为页面的可视组件。"
+								}
+							]
+						},
+						{
+							"name": "删除页面",
+							"description": "删除指定索引的页面。",
+							"params": [
+								{
+									"name": "位置",
+									"type": "整数型",
+									"description": "要删除的页面索引。"
+								}
+							]
+						},
+						{
+							"name": "清空页面",
+							"description": "删除全部页面。"
+						},
+						{
+							"name": "取页面数",
+							"description": "取得当前页面数量。",
+							"return": "整数型"
+						}
+					],
+					"events": [
+						{
+							"name": "页面被滑动",
+							"description": "页面滑动位置发生变化时触发。",
+							"params": [
+								{
+									"name": "位置",
+									"type": "整数型",
+									"description": "当前页面索引。"
+								},
+								{
+									"name": "位置偏移",
+									"type": "单精度小数型",
+									"description": "当前页面的偏移比例。"
+								},
+								{
+									"name": "位置偏移像素",
+									"type": "整数型",
+									"description": "当前页面的偏移像素。"
+								}
+							]
+						},
+						{
+							"name": "滑动状态改变",
+							"description": "页面滑动状态改变时触发。",
+							"params": [
+								{
+									"name": "状态",
+									"type": "整数型",
+									"description": "滑动状态常量。"
+								}
+							]
+						},
+						{
+							"name": "页面被选择",
+							"description": "切换到指定页面时触发。",
+							"params": [
+								{
+									"name": "位置",
+									"type": "整数型",
+									"description": "选中的页面索引。"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

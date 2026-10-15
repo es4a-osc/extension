@@ -1434,6 +1434,7 @@
 		"clean-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
 		"compile-tests": "npm run clean-tests && tsc -p tsconfig.test.json",
 		"test": "npm run compile-tests && node --test out/test/*.test.js",
+		"test:sdk": "npm run compile-tests && node out/test/validateSdk.js",
 		"test:integration": "npm run compile && npm run compile-tests && vscode-test",
 		"package:vsix": "vsce package --allow-missing-repository --skip-license"
 	},

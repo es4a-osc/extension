@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -67,7 +69,7 @@ suite("声明直接改名", () => {
 	suiteSetup(async () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
-		await configuration.update("sdk.path", path.resolve(__dirname, "../../../../sdk/sdk.json"), vscode.ConfigurationTarget.Global);
+		await configuration.update("sdk.path", testSdkPath("sdk.json"), vscode.ConfigurationTarget.Global);
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
@@ -247,7 +249,7 @@ suite("声明直接改名", () => {
 			const projectFile = path.join(directory, "project.properties");
 			await fs.writeFile(projectFile, "source=./src\r\n");
 			const project = await loadSimpleProject(projectFile);
-			const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+			const sdk = await loadSdk(testSdkPath("sdk.json"));
 			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(file)));
 			const editor = await vscode.window.showTextDocument(document, { preview: false });
 			const errors: string[] = [];
@@ -295,7 +297,7 @@ suite("声明直接改名", () => {
 			const projectFile = path.join(directory, "project.properties");
 			await fs.writeFile(projectFile, "source=./src\r\n");
 			const project = await loadSimpleProject(projectFile);
-			const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+			const sdk = await loadSdk(testSdkPath("sdk.json"));
 			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(file)));
 			const editor = await vscode.window.showTextDocument(document, { preview: false });
 			const errors: string[] = [];

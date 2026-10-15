@@ -3,8 +3,9 @@
 xhwsd@qq.com 2026-8-28
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
-import * as path from "node:path";
 import { describe, test } from "node:test";
 import { renameSimpleComponent } from "../componentRename";
 import {
@@ -16,7 +17,6 @@ import {
 import { loadSdk } from "../sdk";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
-const ROOT_DIRECTORY = path.resolve(__dirname, "../..");
 
 describe("Simple 组件改名", () => {
 	test("同步事件限定名和普通组件引用并跳过字符串、注释及更长标识符", () => {
@@ -129,7 +129,7 @@ describe("Simple 组件改名", () => {
 		].join("\r\n");
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(path.join(ROOT_DIRECTORY, "..", "sdk", "sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		const unsynchronized = renameSimpleComponent(splitSimpleUnitSource(source).userCode, document, "/属性/定义[1]/定义[1]/定义[1]", "中心按钮", sdk, false);
 		assert.equal(unsynchronized.userCode, splitSimpleUnitSource(source).userCode);
 		assert.equal(serializeSimplePropertySource(unsynchronized.propertyDocument), splitSimpleUnitSource(source).propertySource.replace("$定义 按钮1 $为", "$定义 中心按钮 $为"));

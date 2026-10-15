@@ -3,9 +3,10 @@
 xhwsd@qq.com 2026-8-27
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { test } from "node:test";
 import { provideSimpleCompletions } from "../completionModel";
 import { buildDocumentTokenRules, tokenizeSimpleText } from "../compilerTokens";
@@ -20,7 +21,7 @@ import {
 	type SimpleTestProjectName
 } from "./testProjects";
 
-const SDK = loadSdk(path.resolve("..", "sdk", "sdk.json"));
+const SDK = loadSdk(testSdkPath("sdk.json"));
 
 /** 返回测试样例目录中的绝对路径。 */
 function fixture(project: SimpleTestProjectName, ...segments: string[]): string {

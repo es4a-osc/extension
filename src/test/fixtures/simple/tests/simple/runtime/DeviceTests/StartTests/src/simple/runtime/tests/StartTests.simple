@@ -1,0 +1,115 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Start screen of device tests.
+
+静态 变量 AccelerometerTestsForm 为 窗口
+静态 变量 ButtonTestsForm 为 窗口
+静态 变量 CanvasTestsForm 为 窗口
+静态 变量 EmailPickerTestsForm 为 窗口
+静态 变量 CheckBoxTestsForm 为 窗口
+静态 变量 ImageTestsForm 为 窗口
+静态 变量 LabelTestsForm 为 窗口
+静态 变量 LocationSensorTestsForm 为 窗口
+静态 变量 OrientationSensorTestsForm 为 窗口
+静态 变量 PanelTestsForm 为 窗口
+静态 变量 PasswordTextBoxTestsForm 为 窗口
+静态 变量 RadioButtonTestsForm 为 窗口
+静态 变量 TimerTestsForm 为 窗口
+
+静态 变量 StartTestsForm 为 窗口
+静态 变量 FinishTestsForm 为 窗口
+
+静态 变量 CurrentTestIndex 为 整数型
+
+静态 过程 NextTest()
+	CurrentTestIndex = CurrentTestIndex + 1
+	切换窗口(GetTestForm(CurrentTestIndex))
+结束 过程
+
+静态 过程 PrevTest()
+	CurrentTestIndex = CurrentTestIndex - 1
+	切换窗口(GetTestForm(CurrentTestIndex))
+结束 过程
+
+静态 函数 GetTestForm(testIndex 为 整数型) 为 窗口
+	判断 testIndex
+		分支 0
+			GetTestForm = StartTestsForm
+		分支 1
+			如果 AccelerometerTestsForm = 空 则 AccelerometerTestsForm = 创建 AccelerometerTests : GetTestForm = AccelerometerTestsForm
+		分支 2
+			如果 ButtonTestsForm = 空 则 ButtonTestsForm = 创建 ButtonTests : GetTestForm = ButtonTestsForm
+		分支 3
+			如果 CanvasTestsForm = 空 则 CanvasTestsForm = 创建 CanvasTests : GetTestForm = CanvasTestsForm
+		分支 4
+			如果 EmailPickerTestsForm = 空 则 EmailPickerTestsForm = 创建 EmailPickerTests : GetTestForm = EmailPickerTestsForm
+		分支 5
+			如果 CheckBoxTestsForm = 空 则 CheckBoxTestsForm = 创建 CheckBoxTests : GetTestForm = CheckBoxTestsForm
+		分支 6
+			如果 ImageTestsForm = 空 则 ImageTestsForm = 创建 ImageTests : GetTestForm = ImageTestsForm
+		分支 7
+			如果 LabelTestsForm = 空 则 LabelTestsForm = 创建 LabelTests : GetTestForm = LabelTestsForm
+		分支 8
+			如果 LocationSensorTestsForm = 空 则 LocationSensorTestsForm = 创建 LocationSensorTests : GetTestForm = LocationSensorTestsForm
+		分支 9
+			如果 OrientationSensorTestsForm = 空 则 OrientationSensorTestsForm = 创建 OrientationSensorTests : GetTestForm = OrientationSensorTestsForm
+		分支 10
+			如果 PanelTestsForm = 空 则 PanelTestsForm = 创建 PanelTests : GetTestForm = PanelTestsForm
+		分支 11
+			如果 PasswordTextBoxTestsForm = 空 则 PasswordTextBoxTestsForm = 创建 PasswordTextBoxTests : GetTestForm = PasswordTextBoxTestsForm
+		分支 12
+			如果 RadioButtonTestsForm = 空 则 RadioButtonTestsForm = 创建 RadioButtonTests : GetTestForm = RadioButtonTestsForm
+		分支 13
+			如果 TimerTestsForm = 空 则 TimerTestsForm = 创建 TimerTests : GetTestForm = TimerTestsForm
+		分支 否则
+			如果 FinishTestsForm = 空 则 FinishTestsForm = 创建 FinishTests : GetTestForm = FinishTestsForm
+	结束 判断
+结束 函数
+
+事件 StartTests.初始化()
+	StartTestsForm = 本对象
+结束 事件
+
+事件 ExitButton.被单击()
+	终止()
+结束 事件
+
+事件 NextButton.被单击()
+	NextTest()
+结束 事件
+
+$属性
+	$资源 $窗口
+	$定义 StartTests $为 窗口
+		布局 = 1
+		布局.方向 = 1
+		标题 =  "冒烟测试 - 开始"
+		$定义 TopPanel $为 面板
+			布局 = 1
+			布局.方向 = 0
+			背景颜色 = &HFF000000
+			宽度 = -2
+			$定义 NextButton $为 按钮
+				文本 = "下一个"
+			$结束 $定义
+			$定义 ExitButton $为 按钮
+				文本 = "退出"
+			$结束 $定义
+		$结束 $定义
+		$定义 InstructionsLabel $为 标签
+			文本 = "点击每个屏幕上的 下一个 按钮继续..."
+		$结束 $定义
+	$结束 $定义
+$结束 $属性

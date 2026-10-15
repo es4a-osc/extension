@@ -1,0 +1,126 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the For-Each statement
+
+' Counters for checking that init expression is evaluated just once
+变量 initCounter 为 整数型
+
+变量 c 为 集合
+变量 a 为 整数型(3)
+
+函数 Name() 为 文本型
+	Name = "For-Each Statement Tests"
+结束 函数
+
+事件 ForEachStatementsTest.初始化()
+	' Initialize collection and array
+	c = 创建 集合
+	c.加入("one")
+	c.加入(2)
+	c.加入(本对象)
+结束 事件
+
+过程 Run()
+	' For-Each with a collection
+	initCounter = 0
+	断言真(ForEachCollectionTest() = c.计数)
+	断言真(initCounter = 1)
+
+	initCounter = 0
+	断言真(ForEachVariantCollectionTest() = c.计数)
+	断言真(initCounter = 1)
+
+	' For-Each with an array
+	initCounter = 0
+	断言真(ForEachArrayTest() = 数组操作.取数组下标(a, 1))
+	断言真(initCounter = 1)
+
+	initCounter = 0
+	断言真(ForEachVariantArrayTest() = 数组操作.取数组下标(a, 1))
+	断言真(initCounter = 1)
+
+	' For-Each with Exit
+	断言真(ForEachWithExitTest(5))
+结束 过程
+
+函数 ForEachCollectionTest() 为 整数型
+	变量 v 为 变体型
+	循环 每个 v 从 GetCollection()
+		ForEachCollectionTest = ForEachCollectionTest + 1
+	下个 v
+结束 函数
+
+函数 ForEachVariantCollectionTest() 为 整数型
+	变量 v 为 变体型
+	循环 每个 v 从 GetVariantCollection()
+		ForEachVariantCollectionTest = ForEachVariantCollectionTest + 1
+	下个 v
+结束 函数
+
+函数 ForEachArrayTest() 为 整数型
+	变量 i 为 整数型
+	循环 每个 i 从 GetArray()
+		ForEachArrayTest = ForEachArrayTest + 1
+	下个 i
+结束 函数
+
+函数 ForEachVariantArrayTest() 为 整数型
+	变量 i 为 整数型
+	循环 每个 i 从 GetVariantArray()
+		ForEachVariantArrayTest = ForEachVariantArrayTest + 1
+	下个 i
+结束 函数
+
+函数 ForEachWithExitTest(x 为 整数型) 为 逻辑型
+	变量 v 为 变体型
+	循环 每个 v 从 GetCollection()
+		变量 i 为 整数型
+		i = 0
+		判断循环 真
+			如果 i = x 则
+				ForEachWithExitTest = 真
+				退出 循环
+			结束 如果
+			ForEachWithExitTest = 假
+			i = i + 1
+		结束 判断循环
+		ForEachWithExitTest = 假
+	下个 v
+结束 函数
+
+函数 GetCollection() 为 集合
+	initCounter = initCounter + 1
+	GetCollection = c
+结束 函数
+
+函数 GetVariantCollection() 为 变体型
+	initCounter = initCounter + 1
+	GetVariantCollection = c
+结束 函数
+
+函数 GetArray() 为 整数型()
+	initCounter = initCounter + 1
+	GetArray = a
+结束 函数
+
+函数 GetVariantArray() 为 变体型
+	initCounter = initCounter + 1
+	GetVariantArray = a
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

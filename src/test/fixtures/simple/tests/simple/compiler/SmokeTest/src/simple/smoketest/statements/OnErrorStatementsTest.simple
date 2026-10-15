@@ -1,0 +1,81 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the On Error statement
+
+函数 Name() 为 文本型
+	Name = "On-Error Statement Tests"
+结束 函数
+
+过程 Run()
+	' Tests whether an array index out of bounds runtime error is correctly caught
+	断言真(CatchIndexOutOfBoundsErrorNo1())
+	断言真(CatchIndexOutOfBoundsErrorNo2())
+	断言真(CatchIndexOutOfBoundsErrorNo3())
+	断言真(CatchIndexOutOfBoundsErrorNo4())
+结束 过程
+
+函数 CatchIndexOutOfBoundsErrorNo1() 为 逻辑型
+	变量 array 为 整数型(2)
+	array(10) = 10
+
+	位于 错误
+		分支 断言失败, 未初始化实例错误
+		分支 索引超出界限错误
+			CatchIndexOutOfBoundsErrorNo1 = 真
+		分支 否则
+	结束 错误
+结束 函数
+
+函数 CatchIndexOutOfBoundsErrorNo2() 为 逻辑型
+	变量 array 为 整数型(2)
+	array(10) = 10
+
+	位于 错误
+		分支 断言失败, 索引超出界限错误, 未初始化实例错误
+			CatchIndexOutOfBoundsErrorNo2 = 真
+	结束 错误
+结束 函数
+
+函数 CatchIndexOutOfBoundsErrorNo3() 为 逻辑型
+	变量 array 为 整数型(2)
+	array(10) = 10
+
+	位于 错误
+		分支 否则
+			CatchIndexOutOfBoundsErrorNo3 = 真
+	结束 错误
+结束 函数
+
+函数 CatchIndexOutOfBoundsErrorNo4Inner() 为 逻辑型
+	变量 array 为 整数型(2)
+	array(10) = 10
+
+	位于 错误
+	结束 错误
+结束 函数
+
+函数 CatchIndexOutOfBoundsErrorNo4() 为 逻辑型
+	CatchIndexOutOfBoundsErrorNo4 = CatchIndexOutOfBoundsErrorNo4Inner()
+
+	位于 错误
+		分支 否则
+			CatchIndexOutOfBoundsErrorNo4 = 真
+	结束 错误
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-13
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -36,8 +38,8 @@ suite("活动标签 F5", () => {
 			await fs.writeFile(path.join(directory, "debug.bat"), "@echo off\r\nexit /b 0\r\n");
 			await fs.writeFile(sdkFile, JSON.stringify({
 				name: "F5 测试 SDK",
-				compiler: path.resolve(__dirname, "../../../../sdk/simple/SimpleCompiler.json"),
-				runtime: path.resolve(__dirname, "../../../../sdk/simple/SimpleAndroidRuntime.json"),
+				compiler: testSdkPath("simple/SimpleCompiler.json"),
+				runtime: testSdkPath("simple/SimpleAndroidRuntime.json"),
 				capabilities: { debug: { command: "debug.bat", arguments: ["PROJECT_FILE"] } }
 			}));
 			await configuration.update("sdk.path", sdkFile, vscode.ConfigurationTarget.Global);

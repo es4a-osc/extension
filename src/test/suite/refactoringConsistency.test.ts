@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-12
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -241,7 +243,7 @@ suite("重构异步一致性", () => {
 
 	for (const kind of ["SDK", "继承"] as const) test(`F2 拒绝${kind}名称捕获，不改代码、XML 或磁盘`, async () => {
 		await withProject(async ({ project, owner, caller, ownerFile, callerFile, documents, refactoring }) => {
-			const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+			const sdk = await loadSdk(testSdkPath("sdk.json"));
 			const programs = { getProjects: async () => [project] } as unknown as ProgramTreeProvider;
 			const renames = new SimpleRenameProvider(programs, refactoring, documents, () => sdk);
 			const cancellation = new vscode.CancellationTokenSource();
@@ -358,7 +360,7 @@ suite("重构异步一致性", () => {
 			const otherDocument = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(otherUnit)));
 			const edit = new vscode.WorkspaceEdit(); edit.insert(owner.uri, new vscode.Position(0, 0), "未声明原值 = 1\r\n");
 			assert.ok(await vscode.workspace.applyEdit(edit));
-			const sdk = await loadSdk(path.resolve(__dirname, "../../../../sdk/sdk.json"));
+			const sdk = await loadSdk(testSdkPath("sdk.json"));
 			const errors: string[] = [];
 			const programs = { getProjects: async () => [project, other] } as unknown as ProgramTreeProvider;
 			const diagnostics = new SimpleDiagnosticProvider(programs, refactoring, documents, { contextForFile: () => undefined } as unknown as ProjectSymbolIndex, () => sdk, () => undefined, (message) => errors.push(message));

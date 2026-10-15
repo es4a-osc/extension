@@ -1,0 +1,35 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests New expressions
+
+函数 Name() 为 文本型
+	Name = "New Expression Tests"
+结束 函数
+
+过程 Run()
+	' The only thing we test here is checking that the allocation succeeded.
+	' We do this by accessing a data member or array element and if there is no crash
+	' we conclude that it worked.
+
+	' TODO: check object allocation
+
+	变量 singleDimArray 为 整数型() : singleDimArray = 创建 整数型(5) : singleDimArray(4) = 42
+	变量 multiDimArray 为 整数型(,) : multiDimArray = 创建 整数型(5, 3) : multiDimArray(4, 2) = 42
+结束 过程
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

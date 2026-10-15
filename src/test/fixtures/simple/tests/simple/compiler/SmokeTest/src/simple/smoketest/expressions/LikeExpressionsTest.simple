@@ -1,0 +1,52 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests Like expressions
+
+常量 FOOF 为 文本型 = "foof"
+常量 GOOF 为 文本型 = "goof"
+
+常量 FOOF_PATTERN 为 文本型 = "f.*f"
+常量 NUMBER_PATTERN 为 文本型 = "1.*0"
+
+函数 Name() 为 文本型
+	Name = "Like Expression Tests"
+结束 函数
+
+过程 Run()
+	' Like with empty strings
+	断言真("" 匹配 "")
+	断言假(FOOF 匹配 "")
+
+	' Like with constant strings
+	断言真(FOOF 匹配 FOOF_PATTERN)
+	断言假(GOOF 匹配 FOOF_PATTERN)
+
+	' Like with constant numbers
+	断言真(1234567890 匹配 NUMBER_PATTERN)
+	断言假(12345 匹配 NUMBER_PATTERN)
+
+	' Like with strings
+	断言真(LikeTest(FOOF, FOOF_PATTERN))
+	断言假(LikeTest(GOOF, FOOF_PATTERN))
+结束 过程
+
+函数 LikeTest(string 为 文本型, pattern 为 文本型) 为 逻辑型
+	LikeTest = string 匹配 pattern
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

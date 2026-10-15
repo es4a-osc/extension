@@ -1,0 +1,78 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests the various forms of the Do-Until statement
+
+函数 Name() 为 文本型
+	Name = "Do-Until Statement Tests"
+结束 函数
+
+过程 Run()
+	' Simple Do-Until loop
+	断言真(DoUntilTest(0, 5) = 5)
+
+	' Do-Until loop with constant True expression
+	断言真(DoUntilTrueTest(0) = 1)
+
+	' Do-Until loop with constant False expression
+	断言真(DoUntilFalseTest() = 5)
+
+	' Do-Until loop with Exit
+	断言真(DoUntilWithExitTest(5))
+结束 过程
+
+函数 DoUntilTest(start 为 整数型, stop 为 整数型) 为 整数型
+	执行
+		start = start + 1
+	直到 start = stop
+	DoUntilTest = start
+结束 函数
+
+函数 DoUntilTrueTest(start 为 整数型) 为 整数型
+	执行
+		start = start + 1
+	直到 真
+	DoUntilTrueTest = start
+结束 函数
+
+函数 DoUntilFalseTest() 为 整数型
+	变量 i 为 整数型
+	i = 0
+	执行
+		i = i + 1
+		如果 i = 5 则
+			DoUntilFalseTest = 5
+			退出 函数
+		结束 如果
+	直到 假
+结束 函数
+
+函数 DoUntilWithExitTest(v 为 整数型) 为 逻辑型
+	执行
+		变量 i 为 整数型
+		循环 i = 0 至 v + 10
+			如果 i = v 则
+				DoUntilWithExitTest = 真
+				退出 执行
+			结束 如果
+			DoUntilWithExitTest = 假
+		下个
+		DoUntilWithExitTest = 假
+	直到 假
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

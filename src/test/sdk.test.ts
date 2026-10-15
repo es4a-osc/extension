@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-8-27
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -343,7 +345,7 @@ test("属性选择项和缺省值支持字符串简写及标签值对象", async
 });
 
 test("当前 SDK 以稳定标识声明项目能力", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 
 	assert.deepEqual(
 		sdk.capabilities.projects.map((capability) => capability.id),
@@ -352,7 +354,7 @@ test("当前 SDK 以稳定标识声明项目能力", async () => {
 	assert.deepEqual(sdk.capabilities.tools, []);
 	assert.equal(
 		sdk.capabilities.projects[0]?.command,
-		path.resolve("..", "sdk", "capabilities", "debug.bat")
+		testSdkPath("capabilities", "debug.bat")
 	);
 	assert.deepEqual(sdk.capabilities.projects.map((capability) => capability.arguments), [
 		["PROJECT_FILE", "APK_FILE"],
@@ -383,7 +385,7 @@ test("只接受 SDK 入口的完整绝对 JSON 文件路径", async (context) =>
 });
 
 test("运行库将所有组件容器归入独立分类", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const containerCategory = runtime.categories.find((category) => category.name === "组件容器");
@@ -413,7 +415,7 @@ test("运行库将所有组件容器归入独立分类", async () => {
 });
 
 test("运行库按组件体系和用途排列组件定义", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitionNames = (categoryName: string): readonly string[] => (
@@ -440,7 +442,7 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 });
 
 test("新增运行库组件加载中文参数、数组签名及继承成员", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const index = buildDefinitionIndex(sdk.manifests);
@@ -489,13 +491,13 @@ test("新增运行库组件加载中文参数、数组签名及继承成员", as
 });
 
 test("分组列表框作为扩展类库加载并继承运行库成员", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	assert.equal(runtime.categories.flatMap((category) => category.definitions)
 		.some((definition) => definition.name === "分组列表框"), false);
 	const manifest = sdk.manifests.find((item) => item.kind === "library"
-		&& item.filePath === path.resolve("..", "sdk", "libraries", "simple.library.wsd.grouplist", "library.json"));
+		&& item.filePath === testSdkPath("libraries", "simple.library.wsd.grouplist", "library.json"));
 	assert.ok(manifest, "分组列表框扩展库未注册或加载失败");
 	const index = buildDefinitionIndex(sdk.manifests);
 	const reference = index.get("分组列表框");
@@ -513,7 +515,7 @@ test("分组列表框作为扩展类库加载并继承运行库成员", async ()
 });
 
 test("运行库通过 kind 和 inherits 区分组件角色", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions);
@@ -547,7 +549,7 @@ test("运行库通过 kind 和 inherits 区分组件角色", async () => {
 });
 
 test("可视组件像素属性使用变体输入和像素编辑器", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const visualComponent = runtime.categories
@@ -576,7 +578,7 @@ test("可视组件像素属性使用变体输入和像素编辑器", async () =>
 });
 
 test("可视组件只为受父级布局约束的属性声明适用布局", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const visualComponent = runtime.categories
@@ -653,7 +655,7 @@ test("可视组件只为受父级布局约束的属性声明适用布局", async
 });
 
 test("运行库完整声明 Java 相对布局常量、属性和方法", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions);
@@ -809,7 +811,7 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 });
 
 test("运行库为全部对象、接口和组件声明完整运行时类型名", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions)
@@ -833,7 +835,7 @@ test("运行库为全部对象、接口和组件声明完整运行时类型名",
 });
 
 test("运行库为全部具体组件声明可复用的 24×24 SVG 图标", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const components = runtime.categories.flatMap((category) => category.definitions)
@@ -850,7 +852,7 @@ test("运行库为全部具体组件声明可复用的 24×24 SVG 图标", async
 });
 
 test("运行库按对象集和函数集分类", async () => {
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	assert.deepEqual(

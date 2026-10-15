@@ -1,0 +1,50 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests scopes
+
+静态 变量 var1 为 文本型
+静态 变量 var2 为 整数型
+静态 变量 var3 为 对象
+
+事件 ScopesTest.加载()
+	var1 = "Not a number"
+	var2 = 0
+	var3 = 空
+结束 事件
+
+函数 Name() 为 文本型
+	Name = "Scopes Tests"
+结束 函数
+
+过程 Run()
+	TestProcedure(0)
+结束 过程
+
+静态 过程 TestProcedure(var1 为 整数型)
+	变量 var2 为 文本型
+
+	执行
+		变量 var2 为 对象
+		变量 var3 为 文本型
+
+		var1 = simple.smoketest.scopes.ScopesTest.var2
+		var2 = ScopesTest.var3
+	判断循环 假
+结束 过程
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

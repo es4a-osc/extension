@@ -1,0 +1,144 @@
+{
+	"name": "应用更新库",
+	"description": "提供应用版本检查、更新提示及安装包下载功能。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展组件",
+			"definitions": [
+				{
+					"name": "应用更新",
+					"description": "检查应用更新并显示更新对话框。",
+					"kind": "component",
+					"type": "simple.library.wsd.update.应用更新",
+					"inherits": [
+						"simple.runtime.components.组件"
+					],
+					"properties": [
+						{
+							"name": "提交请求方式",
+							"type": "逻辑型",
+							"description": "是否使用 POST 请求；假表示使用 GET 请求。"
+						},
+						{
+							"name": "仅无线网络下载",
+							"type": "逻辑型",
+							"description": "是否仅在无线网络环境下下载安装包。"
+						},
+						{
+							"name": "下载保存路径",
+							"type": "文本型",
+							"description": "安装包的下载保存路径。"
+						},
+						{
+							"name": "主题颜色",
+							"type": "整数型",
+							"description": "设置更新按钮和进度条的主题颜色。",
+							"editor": "simple.color"
+						},
+						{
+							"name": "顶部图片",
+							"type": "整数型",
+							"description": "更新对话框顶部图片的资源标识；设置后自动识别主题颜色。"
+						},
+						{
+							"name": "禁止通知栏进度",
+							"type": "逻辑型",
+							"description": "是否禁止在通知栏显示下载进度。"
+						},
+						{
+							"name": "显示忽略版本",
+							"type": "逻辑型",
+							"description": "是否显示忽略当前版本的选项。"
+						}
+					],
+					"functions": [
+						{
+							"name": "添加请求参数",
+							"description": "添加检查更新请求使用的自定义参数。",
+							"params": [
+								{
+									"name": "参数名",
+									"type": "文本型",
+									"description": "参数名称。"
+								},
+								{
+									"name": "值",
+									"type": "文本型",
+									"description": "参数值。"
+								}
+							]
+						},
+						{
+							"name": "检验更新",
+							"description": "请求指定地址并检查是否存在新版本。",
+							"params": [
+								{
+									"name": "更新地址",
+									"type": "文本型",
+									"description": "更新信息接口地址。"
+								}
+							]
+						},
+						{
+							"name": "显示更新对话框",
+							"description": "显示最近一次检测到的新版本更新对话框。"
+						}
+					],
+					"events": [
+						{
+							"name": "检测更新前",
+							"description": "发起更新检查网络请求前触发。"
+						},
+						{
+							"name": "检测更新后",
+							"description": "更新检查网络请求结束后触发。"
+						},
+						{
+							"name": "已检测到更新",
+							"description": "检测到新版本时触发。",
+							"params": [
+								{
+									"name": "更新标识",
+									"type": "文本型",
+									"description": "服务端返回的更新标识。"
+								},
+								{
+									"name": "新版本",
+									"type": "文本型",
+									"description": "新版本号。"
+								},
+								{
+									"name": "下载地址",
+									"type": "文本型",
+									"description": "安装包下载地址。"
+								},
+								{
+									"name": "更新日志",
+									"type": "文本型",
+									"description": "更新日志。"
+								},
+								{
+									"name": "包大小",
+									"type": "文本型",
+									"description": "安装包大小。"
+								}
+							]
+						},
+						{
+							"name": "未检测到更新",
+							"description": "没有检测到新版本时触发。"
+						}
+					]
+				}
+			]
+		}
+	]
+}

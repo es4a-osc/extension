@@ -1,0 +1,166 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests logical and bitwise Xor expressions
+
+' The following constants are used as return values for the functions testing logical expressions
+' within branch statements indicating which statement block was actually executed.
+常量 NONE 为 文本型 = "None"
+常量 TRUE 为 文本型 = "True"
+常量 FALSE 为 文本型 = "False"
+
+函数 Name() 为 文本型
+	Name = "Xor Expression Tests"
+结束 函数
+
+过程 Run()
+	' Bitwise Xor
+	' While these don't check that constant folding is done, they do ensure that it is done
+	' correctly if it is done at all!
+	断言真(FourInteger() = &H4)
+
+	' Simple bitwise Xor
+	断言真(SimpleXorInteger(&HF, &H88) = &H87)
+	断言真(SimpleXorLong(&HFFFF, &H800080008000) = &H800080007FFF)
+	断言真(SimpleXorVariant(&HF, &H88) = &H87)
+	断言真(SimpleXorVariant(&HFFFF, &H800080008000) = &H800080007FFF)
+
+	' Complex bitwise Xor
+	断言真(ComplexXorInteger(&HF, &H88) = &HEE)
+	断言真(ComplexXorLong(&HFFFF, &H800880088800) = &HE0FFE)
+	断言真(ComplexXorVariant(&HF, &H88) = &HEE)
+
+	' Logical Xor
+	' While these don't check that constant folding is done, they do ensure that it is done
+	' correctly if it is done at all!
+	断言假(TrueTrueBoolean())
+	断言真(TrueFalseBoolean())
+	断言真(FalseTrueBoolean())
+	断言假(FalseFalseBoolean())
+
+	' Simple logical Xor
+	断言假(SimpleXorBoolean(真, 真))
+	断言真(SimpleXorBoolean(真, 假))
+	断言真(SimpleXorBoolean(假, 真))
+	断言假(SimpleXorBoolean(假, 假))
+
+	断言真(SimpleXorBooleanWithBranchOnFalse(真, 真) = FALSE)
+	断言真(SimpleXorBooleanWithBranchOnFalse(真, 假) = TRUE)
+	断言真(SimpleXorBooleanWithBranchOnFalse(假, 真) = TRUE)
+	断言真(SimpleXorBooleanWithBranchOnFalse(假, 假) = FALSE)
+
+	断言真(SimpleXorBooleanWithBranchOnTrue(真, 真) = FALSE)
+	断言真(SimpleXorBooleanWithBranchOnTrue(真, 假) = TRUE)
+	断言真(SimpleXorBooleanWithBranchOnTrue(假, 真) = TRUE)
+	断言真(SimpleXorBooleanWithBranchOnTrue(假, 假) = FALSE)
+
+	' Complex logical Xor
+	断言假(ComplexXorBoolean(真, 真))
+	断言假(ComplexXorBoolean(真, 假))
+	断言真(ComplexXorBoolean(假, 真))
+	断言假(ComplexXorBoolean(假, 假))
+
+	断言真(ComplexXorBooleanWithBranch(真, 真) = FALSE)
+	断言真(ComplexXorBooleanWithBranch(真, 假) = FALSE)
+	断言真(ComplexXorBooleanWithBranch(假, 真) = TRUE)
+	断言真(ComplexXorBooleanWithBranch(假, 假) = FALSE)
+结束 过程
+
+函数 FourInteger() 为 整数型
+	FourInteger = &H7 异或 &H3
+结束 函数
+
+函数 SimpleXorInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	SimpleXorInteger = e1 异或 e2
+结束 函数
+
+函数 SimpleXorLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	SimpleXorLong = e1 异或 e2
+结束 函数
+
+函数 SimpleXorVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	SimpleXorVariant = e1 异或 e2
+结束 函数
+
+函数 ComplexXorInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	ComplexXorInteger = e1 + e2 异或 e2 - e1
+结束 函数
+
+函数 ComplexXorLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	ComplexXorLong = e1 + e2 异或 e2 - e1
+结束 函数
+
+函数 ComplexXorVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	ComplexXorVariant = e1 + e2 异或 e2 - e1
+结束 函数
+
+函数 TrueTrueBoolean() 为 逻辑型
+	TrueTrueBoolean = 真 异或 真
+结束 函数
+
+函数 TrueFalseBoolean() 为 逻辑型
+	TrueFalseBoolean = 真 异或 假
+结束 函数
+
+函数 FalseTrueBoolean() 为 逻辑型
+	FalseTrueBoolean = 假 异或 真
+结束 函数
+
+函数 FalseFalseBoolean() 为 逻辑型
+	FalseFalseBoolean = 假 异或 假
+结束 函数
+
+函数 SimpleXorBoolean(e1 为 逻辑型, e2 为 逻辑型) 为 逻辑型
+	SimpleXorBoolean = e1 异或 e2
+结束 函数
+
+函数 SimpleXorBooleanWithBranchOnFalse(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	SimpleXorBooleanWithBranchOnFalse = NONE
+	如果 e1 异或 e2 则
+		SimpleXorBooleanWithBranchOnFalse = TRUE
+	否则
+		SimpleXorBooleanWithBranchOnFalse = FALSE
+	结束 如果
+结束 函数
+
+函数 SimpleXorBooleanWithBranchOnTrue(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	SimpleXorBooleanWithBranchOnTrue = NONE
+	变量 return 为 逻辑型
+	执行
+		如果 return 则
+			SimpleXorBooleanWithBranchOnTrue = TRUE
+			退出 函数
+		结束 如果
+		return = 真
+	判断循环 e1 异或 e2
+	SimpleXorBooleanWithBranchOnTrue = FALSE
+结束 函数
+
+函数 ComplexXorBoolean(e1 为 逻辑型, e2 为 逻辑型) 为 逻辑型
+	ComplexXorBoolean = 取反 e1 或 e2 且 e1 异或 e2
+结束 函数
+
+函数 ComplexXorBooleanWithBranch(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	ComplexXorBooleanWithBranch = NONE
+	如果 取反 e1 或 e2 且 e1 异或 e2 则
+		ComplexXorBooleanWithBranch = TRUE
+	否则
+		ComplexXorBooleanWithBranch = FALSE
+	结束 如果
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

@@ -1,0 +1,514 @@
+{
+	"name": "HTTP服务库",
+	"description": "基于[AndroidAsync](https://github.com/koush/AndroidAsync)封装的HTTP服务端，支持HTTP、WebSocket通信功能。",
+	"version": "0.1.0",
+	"authors": [
+		{
+			"name": "树先生",
+			"email": "xhwsd@qq.com"
+		}
+	],
+	"kind": "library",
+	"categories": [
+		{
+			"name": "扩展对象",
+			"definitions": [
+				{
+					"name": "HTTP服务",
+					"description": "提供 HTTP 路由、WebSocket 连接及服务启停功能。",
+					"kind": "object",
+					"type": "simple.library.wsd.httpserver.HTTP服务",
+					"functions": [
+						{
+							"name": "注销路由",
+							"description": "注销指定请求方法和路径规则的 HTTP 路由。",
+							"params": [
+								{
+									"name": "操作方式",
+									"type": "文本型",
+									"description": "HTTP 请求方法，如 GET、POST、PATCH 或 DELETE。"
+								},
+								{
+									"name": "匹配规则",
+									"type": "文本型",
+									"description": "匹配请求路径的正则表达式。"
+								}
+							]
+						},
+						{
+							"name": "注册路由",
+							"description": "注册 HTTP 请求路由。",
+							"params": [
+								{
+									"name": "操作方式",
+									"type": "文本型",
+									"description": "HTTP 请求方法，如 GET、POST、PATCH 或 DELETE。"
+								},
+								{
+									"name": "匹配规则",
+									"type": "文本型",
+									"description": "匹配请求路径的正则表达式。"
+								},
+								{
+									"name": "单元实例",
+									"type": "对象",
+									"description": "处理回调的单元对象。"
+								},
+								{
+									"name": "过程名称",
+									"type": "文本型",
+									"description": "过程定义：过程名(收到请求 为 Web请求, 响应客户 为 Web响应, 附加标记 为 变体型)。"
+								}
+							]
+						},
+						{
+							"name": "注册路由",
+							"description": "注册 HTTP 请求路由并传递附加标记。",
+							"params": [
+								{
+									"name": "操作方式",
+									"type": "文本型",
+									"description": "HTTP 请求方法，如 GET、POST、PATCH 或 DELETE。"
+								},
+								{
+									"name": "匹配规则",
+									"type": "文本型",
+									"description": "匹配请求路径的正则表达式。"
+								},
+								{
+									"name": "单元实例",
+									"type": "对象",
+									"description": "处理回调的单元对象。"
+								},
+								{
+									"name": "过程名称",
+									"type": "文本型",
+									"description": "过程定义：过程名(收到请求 为 Web请求, 响应客户 为 Web响应, 附加标记 为 变体型)。"
+								},
+								{
+									"name": "附加标记",
+									"type": "变体型",
+									"description": "原样传给处理过程。"
+								}
+							]
+						},
+						{
+							"name": "启动",
+							"description": "启动服务并绑定监听端口。",
+							"params": [
+								{
+									"name": "端口",
+									"type": "整数型",
+									"description": "监听端口。"
+								}
+							]
+						},
+						{
+							"name": "停止",
+							"description": "停止服务。"
+						},
+						{
+							"name": "注册套接字",
+							"description": "注册 WebSocket 路径；连接、收到文本和关闭事件交给同一处理过程。",
+							"params": [
+								{
+									"name": "匹配规则",
+									"type": "文本型",
+									"description": "匹配请求路径的正则表达式。"
+								},
+								{
+									"name": "单元实例",
+									"type": "对象",
+									"description": "处理回调的单元对象。"
+								},
+								{
+									"name": "过程名称",
+									"type": "文本型",
+									"description": "过程定义：过程名(套接字 为 Web套接字, 事件类型 为 文本型, 事件数据 为 变体型, 附加标记 为 变体型)。事件类型为 connected、string 或 closed；事件数据依次为 Web请求、收到的文本或关闭错误信息。"
+								}
+							]
+						},
+						{
+							"name": "注册套接字",
+							"description": "注册 WebSocket 路径并传递附加标记。",
+							"params": [
+								{
+									"name": "匹配规则",
+									"type": "文本型",
+									"description": "匹配请求路径的正则表达式。"
+								},
+								{
+									"name": "单元实例",
+									"type": "对象",
+									"description": "处理回调的单元对象。"
+								},
+								{
+									"name": "过程名称",
+									"type": "文本型",
+									"description": "过程定义：过程名(套接字 为 Web套接字, 事件类型 为 文本型, 事件数据 为 变体型, 附加标记 为 变体型)。事件类型为 connected、string 或 closed；事件数据依次为 Web请求、收到的文本或关闭错误信息。"
+								},
+								{
+									"name": "附加标记",
+									"type": "变体型",
+									"description": "原样传给处理过程。"
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "HTTP服务请求",
+					"description": "读取 HTTP 请求方式、路径、匹配结果、正文、查询参数和协议头。",
+					"kind": "object",
+					"type": "simple.library.wsd.httpserver.HTTP服务请求",
+					"properties": [
+						{
+							"name": "请求路径",
+							"type": "文本型",
+							"description": "当前请求的路径。",
+							"writable": false
+						},
+						{
+							"name": "请求方式",
+							"type": "文本型",
+							"description": "当前请求的 HTTP 方法。",
+							"writable": false
+						}
+					],
+					"functions": [
+						{
+							"name": "有无协议头",
+							"description": "判断请求中是否存在指定协议头，名称不区分大小写。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "要检查的协议头名称。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "取协议头名",
+							"description": "取得全部请求协议头名称。",
+							"return": "文本型()"
+						},
+						{
+							"name": "取协议头值",
+							"description": "取得指定请求协议头的一个值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取协议头所有值",
+							"description": "取得指定请求协议头的全部值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								}
+							],
+							"return": "文本型()"
+						},
+						{
+							"name": "取匹配计数",
+							"description": "取得路由正则表达式的捕获组数量。",
+							"return": "整数型"
+						},
+						{
+							"name": "取匹配文本",
+							"description": "取得指定捕获组的文本；索引 0 表示整个匹配。",
+							"params": [
+								{
+									"name": "组索引",
+									"type": "整数型",
+									"description": "捕获组索引，从 0 开始。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取主体内容类型",
+							"description": "取得请求正文的内容类型。",
+							"return": "文本型"
+						},
+						{
+							"name": "取主体长度",
+							"description": "取得请求正文长度。",
+							"return": "整数型"
+						},
+						{
+							"name": "取主体数据",
+							"description": "取得已解析的正文：文本、JSON值或以文本数组保存字段值的哈希表。",
+							"return": "变体型"
+						},
+						{
+							"name": "有无查询",
+							"description": "判断是否存在指定查询参数，即使参数值为空也视为存在。",
+							"params": [
+								{
+									"name": "参数名",
+									"type": "文本型",
+									"description": "要检查的查询参数名称。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "取查询名",
+							"description": "取得全部查询参数名称。",
+							"return": "文本型()"
+						},
+						{
+							"name": "取查询值",
+							"description": "取得指定查询参数的值。",
+							"params": [
+								{
+									"name": "参数名",
+									"type": "文本型",
+									"description": "查询参数名称。"
+								}
+							],
+							"return": "文本型"
+						}
+					]
+				},
+				{
+					"name": "HTTP服务响应",
+					"description": "设置 HTTP 响应状态和协议头，发送正文或结束响应。",
+					"kind": "object",
+					"type": "simple.library.wsd.httpserver.HTTP服务响应",
+					"functions": [
+						{
+							"name": "结束",
+							"description": "结束本次 HTTP 响应。"
+						},
+						{
+							"name": "发送",
+							"description": "发送文本或由 JSON 对象创建的 JSON值。",
+							"params": [
+								{
+									"name": "数据",
+									"type": "变体型",
+									"description": "响应正文。"
+								}
+							]
+						},
+						{
+							"name": "发送",
+							"description": "按指定内容类型发送文本或字节数组。",
+							"params": [
+								{
+									"name": "内容类型",
+									"type": "文本型",
+									"description": "如 application/json、text/plain 或 text/html。"
+								},
+								{
+									"name": "数据",
+									"type": "变体型",
+									"description": "文本或字节数组。"
+								}
+							]
+						},
+						{
+							"name": "取代码",
+							"description": "取得 HTTP 响应状态码。",
+							"return": "整数型"
+						},
+						{
+							"name": "置代码",
+							"description": "设置 HTTP 响应状态码。",
+							"params": [
+								{
+									"name": "代码",
+									"type": "整数型",
+									"description": "HTTP 状态码。"
+								}
+							]
+						},
+						{
+							"name": "有无协议头",
+							"description": "判断响应中是否存在指定协议头，名称不区分大小写。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "要检查的协议头名称。"
+								}
+							],
+							"return": "逻辑型"
+						},
+						{
+							"name": "取协议头名",
+							"description": "取得全部响应协议头名称。",
+							"return": "文本型()"
+						},
+						{
+							"name": "取协议头值",
+							"description": "取得指定响应协议头的值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								}
+							],
+							"return": "文本型"
+						},
+						{
+							"name": "取协议头所有值",
+							"description": "取得指定响应协议头的全部值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								}
+							],
+							"return": "文本型()"
+						},
+						{
+							"name": "置协议头值",
+							"description": "设置指定响应协议头的值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								},
+								{
+									"name": "协议头值",
+									"type": "文本型",
+									"description": "协议头内容。"
+								}
+							]
+						},
+						{
+							"name": "添加协议头值",
+							"description": "为指定响应协议头追加一个值，保留已有值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								},
+								{
+									"name": "协议头值",
+									"type": "文本型",
+									"description": "要追加的协议头内容。"
+								}
+							]
+						},
+						{
+							"name": "删除协议头",
+							"description": "删除指定响应协议头及其全部值。",
+							"params": [
+								{
+									"name": "协议头名",
+									"type": "文本型",
+									"description": "协议头名称。"
+								}
+							]
+						},
+						{
+							"name": "置内容类型",
+							"description": "设置响应的内容类型。",
+							"params": [
+								{
+									"name": "内容类型",
+									"type": "文本型",
+									"description": "如 application/json、text/plain 或 text/html。"
+								}
+							]
+						},
+						{
+							"name": "重定向",
+							"description": "向客户端发送重定向响应。",
+							"params": [
+								{
+									"name": "位置",
+									"type": "文本型",
+									"description": "重定向目标地址。"
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "HTTP服务套接字",
+					"description": "通过 WebSocket 连接发送文本或字节数据，并发送探测与答复。",
+					"kind": "object",
+					"type": "simple.library.wsd.httpserver.HTTP服务套接字",
+					"functions": [
+						{
+							"name": "发送",
+							"description": "发送文本或字节数组。",
+							"params": [
+								{
+									"name": "数据",
+									"type": "变体型",
+									"description": "要发送的文本或字节数组。"
+								}
+							]
+						},
+						{
+							"name": "发送",
+							"description": "发送字节数组的指定区段。",
+							"params": [
+								{
+									"name": "字节数组",
+									"type": "字节型()",
+									"description": "要发送的数据。"
+								},
+								{
+									"name": "偏移位置",
+									"type": "整数型",
+									"description": "区段起始下标。"
+								},
+								{
+									"name": "数据长度",
+									"type": "整数型",
+									"description": "AndroidAsync 2.2.1 将此参数作为结束下标（不含）；实际发送字节数为此值减去偏移位置。"
+								}
+							]
+						},
+						{
+							"name": "探测",
+							"description": "向客户端发送 WebSocket Ping。",
+							"params": [
+								{
+									"name": "消息",
+									"type": "文本型",
+									"description": "消息文本。"
+								}
+							]
+						},
+						{
+							"name": "答复",
+							"description": "向客户端发送 WebSocket Pong。",
+							"params": [
+								{
+									"name": "消息",
+									"type": "文本型",
+									"description": "消息文本。"
+								}
+							]
+						},
+						{
+							"name": "正在缓存",
+							"description": "判断发送数据是否仍在缓存中。",
+							"return": "逻辑型"
+						}
+					]
+				}
+			]
+		}
+	]
+}

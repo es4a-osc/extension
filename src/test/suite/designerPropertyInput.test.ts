@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testSdkPath } from "../testFixtures";
+
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -136,7 +138,7 @@ suite("设计器属性输入", () => {
 		const sourceFile = path.join(directory, "主窗口.simple");
 		const source = '事件 按钮1.被单击()\r\n\t按钮1.文本 = "演示"\r\n结束 事件\r\n\r\n$属性\r\n\t$资源 $窗口\r\n\t$定义 主窗口 $为 窗口\r\n\t\t$定义 按钮1 $为 按钮\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n$结束 $属性\r\n';
 		const documents = new SimpleCodeFileSystemProvider();
-		const sdk = await loadSdk(path.resolve(extension.extensionPath, "../sdk/sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		let planCalls = 0;
 		const provider = new SimpleDesignerProvider(documents, extension.extensionUri, {
 			getDocument: () => ({}), updateColumnOrder: async () => undefined, updateDisplayOption: async () => undefined, moveDocument: async () => undefined, deleteDocument: async () => undefined
@@ -234,7 +236,7 @@ suite("设计器属性输入", () => {
 		const sourceFile = path.join(directory, "主窗口.simple");
 		const source = '事件 按钮1.被单击()\r\n结束 事件\r\n\r\n$属性\r\n\t$资源 $窗口\r\n\t$定义 主窗口 $为 窗口\r\n\t\t$定义 按钮1 $为 按钮\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n$结束 $属性\r\n';
 		const documents = new SimpleCodeFileSystemProvider();
-		const sdk = await loadSdk(path.resolve(extension.extensionPath, "../sdk/sdk.json"));
+		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		let release!: () => void;
 		let analyzing = false;
 		const gate = new Promise<void>((resolve) => { release = resolve; });

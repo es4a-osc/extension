@@ -1,0 +1,98 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests results of converting Booleans into other types.
+
+函数 Name() 为 文本型
+	Name = "Boolean Conversion Tests"
+结束 函数
+
+过程 Run()
+	' Boolean to Boolean
+	断言假(ConvertToBoolean(假))
+	断言真(ConvertToBoolean(真))
+
+	' Boolean to Byte
+	断言真(ConvertToByte(假) = 0)
+	断言真(ConvertToByte(真) = -1)
+
+	' Boolean to Short
+	断言真(ConvertToShort(假) = 0)
+	断言真(ConvertToShort(真) = -1)
+
+	' Boolean to Integer
+	断言真(ConvertToInteger(假) = 0)
+	断言真(ConvertToInteger(真) = -1)
+
+	' Boolean to Long
+	断言真(ConvertToLong(假) = 0)
+	断言真(ConvertToLong(真) = -1)
+
+	' Boolean to Single
+	断言真(ConvertToSingle(假) = 0)
+	断言真(ConvertToSingle(真) = -1)
+
+	' Boolean to Double
+	断言真(ConvertToDouble(假) = 0)
+	断言真(ConvertToDouble(真) = -1)
+
+	' Boolean to String
+	断言真(ConvertToString(假) = "假")
+	断言真(ConvertToString(真) = "真")
+
+	' Boolean to Variant
+	断言真(ConvertToVariant(假) = 0)
+	断言真(ConvertToVariant(真) = -1)
+结束 过程
+
+函数 ConvertToBoolean(value 为 逻辑型) 为 逻辑型
+	ConvertToBoolean = value
+结束 函数
+
+函数 ConvertToByte(value 为 逻辑型) 为 字节型
+	ConvertToByte = value
+结束 函数
+
+函数 ConvertToShort(value 为 逻辑型) 为 短整数型
+	ConvertToShort = value
+结束 函数
+
+函数 ConvertToInteger(value 为 逻辑型) 为 整数型
+	ConvertToInteger = value
+结束 函数
+
+函数 ConvertToLong(value 为 逻辑型) 为 长整数型
+	ConvertToLong = value
+结束 函数
+
+函数 ConvertToSingle(value 为 逻辑型) 为 单精度小数型
+	ConvertToSingle = value
+结束 函数
+
+函数 ConvertToDouble(value 为 逻辑型) 为 双精度小数型
+	ConvertToDouble = value
+结束 函数
+
+函数 ConvertToString(value 为 逻辑型) 为 文本型
+	ConvertToString = value
+结束 函数
+
+函数 ConvertToVariant(value 为 逻辑型) 为 变体型
+	ConvertToVariant = value
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

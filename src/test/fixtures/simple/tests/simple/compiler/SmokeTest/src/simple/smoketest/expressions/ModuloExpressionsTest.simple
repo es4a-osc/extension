@@ -1,0 +1,20 @@
+' 验证百分号求模运算符 xhwsd@qq.com 2026-9-4
+
+函数 Name() 为 文本型
+	Name = "Modulo Expression Tests"
+结束 函数
+
+过程 Run()
+	断言真(5 % 2 = 1)
+	断言真(ModuloInteger(17, 5) = 2)
+	断言真((20 + 3) % 5 = 3)
+结束 过程
+
+函数 ModuloInteger(左值 为 整数型, 右值 为 整数型) 为 整数型
+	ModuloInteger = 左值 % 右值
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

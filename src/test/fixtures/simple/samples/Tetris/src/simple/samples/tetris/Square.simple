@@ -1,0 +1,33 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+常量 BRICK_COLOR 为 整数型 = 组件.颜色_黄
+
+变量 Shape 为 整数型(2, 2)
+
+事件 Square.初始化()
+	Shape(0, 0) = BRICK_COLOR
+	Shape(0, 1) = BRICK_COLOR
+	Shape(1, 0) = BRICK_COLOR
+	Shape(1, 1) = BRICK_COLOR
+结束 事件
+
+函数 GetShape(orientation 为 整数型) 为 整数型(,)
+	GetShape = Shape
+结束 函数
+
+$属性
+	$资源 $对象
+	基础对象 = simple.samples.tetris.Brick
+$结束 $属性

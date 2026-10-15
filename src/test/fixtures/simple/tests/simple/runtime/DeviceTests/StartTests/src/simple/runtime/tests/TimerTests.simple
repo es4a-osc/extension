@@ -1,0 +1,82 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Test Timer component.
+
+变量 Seconds 为 整数型
+
+事件 PrevButton.被单击()
+	StartTests.PrevTest()
+结束 事件
+
+事件 NextButton.被单击()
+	StartTests.NextTest()
+结束 事件
+
+事件 ExitButton.被单击()
+	终止()
+结束 事件
+
+事件 CountdownButton.被单击()
+	Seconds = 4
+	CountdownButton.启用 = 假
+	StatusLabel.文本 = "计时器运行：4"
+	Timer1.启用 =  真
+结束 事件
+
+事件 Timer1.计时()
+	Seconds = Seconds - 1
+	如果 Seconds <= 0 则
+		Timer1.启用 = 假
+		StatusLabel.文本 = "计时器已停止"
+		CountdownButton.启用 = 真
+	否则
+		StatusLabel.文本 = "计时器运行：" & Seconds
+	结束 如果
+结束 事件
+
+$属性
+	$资源 $窗口
+	$定义 TimerTests $为 窗口
+		布局 = 1
+		布局.方向 = 1
+		滚动 = 真
+		标题 = "测试 - 计时器"
+		$定义 TopPanel $为 面板
+			布局 = 1
+			布局.方向 = 0
+			背景颜色 = &HFF000000
+			宽度 = -2
+			$定义 PrevButton $为 按钮
+				文本 = "上一个"
+			$结束 $定义
+			$定义 NextButton $为 按钮
+				文本 = "下一个"
+			$结束 $定义
+			$定义 ExitButton $为 按钮
+				文本 = "退出"
+			$结束 $定义
+		$结束 $定义
+		$定义 CountdownButton $为 按钮
+			文本 = "开始 5 秒倒计时"
+		$结束 $定义
+		$定义 StatusLabel $为 标签
+			文本 = "计时器已停止"
+		$结束 $定义
+		$定义 Timer1 $为 计时器
+			启用 = 假
+			间隔 = 1000
+		$结束 $定义
+	$结束 $定义
+$结束 $属性

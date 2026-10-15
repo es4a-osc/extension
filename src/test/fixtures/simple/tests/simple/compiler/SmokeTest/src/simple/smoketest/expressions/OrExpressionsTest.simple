@@ -1,0 +1,181 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests logical and bitwise Or expressions
+
+' The following constants are used as return values for the functions testing logical expressions
+' within branch statements indicating which statement block was actually executed.
+常量 NONE 为 文本型 = "None"
+常量 TRUE 为 文本型 = "True"
+常量 FALSE 为 文本型 = "False"
+
+' For side-effect during short-circuit evaluation
+变量 sideEffect 为 逻辑型
+
+函数 Name() 为 文本型
+	Name = "Or Expression Tests"
+结束 函数
+
+过程 Run()
+	' Bitwise Or
+	' While these don't check that constant folding is done, they do ensure that it is done
+	' correctly if it is done at all!
+	断言真(FiveInteger() = &H5)
+
+	' Simple bitwise Or
+	断言真(SimpleOrInteger(&H78, &H88) = &HF8)
+	断言真(SimpleOrLong(&H788878887888, &H800080008000) = &HF888F888F888)
+	断言真(SimpleOrVariant(&H78, &H88) = &HF8)
+	断言真(SimpleOrVariant(&H788878887888, &H800080008000) = &HF888F888F888)
+
+	' Complex bitwise Or
+	断言真(ComplexOrInteger(&HF, &H88) = &HFF)
+	断言真(ComplexOrLong(&HFFFF, &H800880088800) = &H8008800F8FFF)
+	断言真(ComplexOrVariant(&HF, &H88) = &HFF)
+
+	' Logical Or
+	' While these don't check that constant folding is done, they do ensure that it is done
+	' correctly if it is done at all!
+	断言真(TrueTrueBoolean())
+	断言真(TrueFalseBoolean())
+	断言真(FalseTrueBoolean())
+	断言假(FalseFalseBoolean())
+
+	' Simple logical Or
+	断言真(SimpleOrBoolean(真, 真))
+	断言真(SimpleOrBoolean(真, 假))
+	断言真(SimpleOrBoolean(假, 真))
+	断言假(SimpleOrBoolean(假, 假))
+
+	断言真(SimpleOrBooleanWithBranchOnFalse(真, 真) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnFalse(真, 假) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnFalse(假, 真) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnFalse(假, 假) = FALSE)
+
+	断言真(SimpleOrBooleanWithBranchOnTrue(真, 真) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnTrue(真, 假) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnTrue(假, 真) = TRUE)
+	断言真(SimpleOrBooleanWithBranchOnTrue(假, 假) = FALSE)
+
+	' Complex logical Or
+	断言假(ComplexOrBoolean(真, 真))
+	断言假(ComplexOrBoolean(真, 假))
+	断言真(ComplexOrBoolean(假, 真))
+	断言假(ComplexOrBoolean(假, 假))
+
+	断言真(ComplexOrBooleanWithBranch(真, 真) = FALSE)
+	断言真(ComplexOrBooleanWithBranch(真, 假) = FALSE)
+	断言真(ComplexOrBooleanWithBranch(假, 真) = TRUE)
+	断言真(ComplexOrBooleanWithBranch(假, 假) = FALSE)
+
+	' Short curcuit evaluation
+	sideEffect = 假 : CheckShortCurcuitEvaluation(真) : 断言假(sideEffect)
+结束 过程
+
+函数 FiveInteger() 为 整数型
+	FiveInteger = &H4 或 &H1
+结束 函数
+
+函数 SimpleOrInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	SimpleOrInteger = e1 或 e2
+结束 函数
+
+函数 SimpleOrLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	SimpleOrLong = e1 或 e2
+结束 函数
+
+函数 SimpleOrVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	SimpleOrVariant = e1 或 e2
+结束 函数
+
+函数 ComplexOrInteger(e1 为 整数型, e2 为 整数型) 为 整数型
+	ComplexOrInteger = e1 + e2 或 e2 - e1
+结束 函数
+
+函数 ComplexOrLong(e1 为 长整数型, e2 为 长整数型) 为 长整数型
+	ComplexOrLong = e1 + e2 或 e2 - e1
+结束 函数
+
+函数 ComplexOrVariant(e1 为 变体型, e2 为 变体型) 为 变体型
+	ComplexOrVariant = e1 + e2 或 e2 - e1
+结束 函数
+
+函数 TrueTrueBoolean() 为 逻辑型
+	TrueTrueBoolean = 真 或 真
+结束 函数
+
+函数 TrueFalseBoolean() 为 逻辑型
+	TrueFalseBoolean = 真 或 假
+结束 函数
+
+函数 FalseTrueBoolean() 为 逻辑型
+	FalseTrueBoolean = 假 或 真
+结束 函数
+
+函数 FalseFalseBoolean() 为 逻辑型
+	FalseFalseBoolean = 假 或 假
+结束 函数
+
+函数 SimpleOrBoolean(e1 为 逻辑型, e2 为 逻辑型) 为 逻辑型
+	SimpleOrBoolean = e1 或 e2
+结束 函数
+
+函数 SimpleOrBooleanWithBranchOnFalse(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	SimpleOrBooleanWithBranchOnFalse = NONE
+	如果 e1 或 e2 则
+		SimpleOrBooleanWithBranchOnFalse = TRUE
+	否则
+		SimpleOrBooleanWithBranchOnFalse = FALSE
+	结束 如果
+结束 函数
+
+函数 SimpleOrBooleanWithBranchOnTrue(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	SimpleOrBooleanWithBranchOnTrue = NONE
+	变量 return 为 逻辑型
+	执行
+		如果 return 则
+			SimpleOrBooleanWithBranchOnTrue = TRUE
+			退出 函数
+		结束 如果
+		return = 真
+	判断循环 e1 或 e2
+	SimpleOrBooleanWithBranchOnTrue = FALSE
+结束 函数
+
+函数 ComplexOrBoolean(e1 为 逻辑型, e2 为 逻辑型) 为 逻辑型
+	ComplexOrBoolean = 取反 e1 或 e2 且 e1 异或 e2
+结束 函数
+
+函数 ComplexOrBooleanWithBranch(e1 为 逻辑型, e2 为 逻辑型) 为 文本型
+	ComplexOrBooleanWithBranch = NONE
+	如果 取反 e1 或 e2 且 e1 异或 e2 则
+		ComplexOrBooleanWithBranch = TRUE
+	否则
+		ComplexOrBooleanWithBranch = FALSE
+	结束 如果
+结束 函数
+
+函数 CheckShortCurcuitEvaluation(E 为 逻辑型) 为 逻辑型
+	CheckShortCurcuitEvaluation = E 或 FunctionWithSideEffect()
+结束 函数
+
+函数 FunctionWithSideEffect() 为 逻辑型
+	sideEffect = 真
+	FunctionWithSideEffect = 真
+结束 函数
+
+$属性
+	$资源 $对象
+	实现接口 = simple.smoketest.Test
+$结束 $属性

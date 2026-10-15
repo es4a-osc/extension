@@ -3,9 +3,10 @@
 xhwsd@qq.com 2026-8-27
 */
 
+import { testSdkPath } from "./testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { test } from "node:test";
 import {
 	buildCompilerTokenRules,
@@ -450,7 +451,7 @@ test("Tetris 完整代码中的布局限定属性按 SDK 着色", async () => {
 		"Tetris", "src", "simple", "samples", "tetris", "Tetris.simple"
 	);
 	const source = await fs.readFile(filePath, "utf8");
-	const sdk = await loadSdk(path.resolve("..", "sdk", "sdk.json"));
+	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	const project = await loadSimpleProject(simpleTestProjectPath("Tetris", "project.properties"));
 	const index = new ProjectSymbolIndex();
 	await index.updateProjects([project]);

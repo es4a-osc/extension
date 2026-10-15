@@ -1,0 +1,107 @@
+' Copyright 2009 Google Inc.
+'
+' Licensed under the Apache License, Version 2.0 (the "License");
+' you may not use this file except in compliance with the License.
+' You may obtain a copy of the License at
+'
+'      http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+' Tests CheckBox component.
+
+事件 PrevButton.被单击()
+	StartTests.PrevTest()
+结束 事件
+
+事件 NextButton.被单击()
+	StartTests.NextTest()
+结束 事件
+
+事件 ExitButton.被单击()
+	终止()
+结束 事件
+
+事件 CheckBox0.获得焦点()
+	CheckBox0.文本 = "获得焦点"
+结束 事件
+
+事件 CheckBox0.失去焦点()
+	CheckBox0.文本 = "失去焦点"
+结束 事件
+
+事件 CheckBox1.状态改变()
+	如果 CheckBox1.选中  则
+		CheckBox1.文本 = "已选中"
+	否则
+		CheckBox1.文本 = "未选中"
+	结束 如果
+结束 事件
+
+$属性
+	$资源 $窗口
+	$定义 CheckBoxTests $为 窗口
+		布局 = 1
+		布局.方向 = 1
+		滚动 = 真
+		标题 = "测试 - 复选框"
+		$定义 TopPanel $为 面板
+			布局 = 1
+			布局.方向 = 0
+			背景颜色 = &HFF000000
+			宽度 = -2
+			$定义 PrevButton $为 按钮
+				文本 = "上一个"
+			$结束 $定义
+			$定义 NextButton $为 按钮
+				文本 = "下一个"
+			$结束 $定义
+			$定义 ExitButton $为 按钮
+				文本 = "退出"
+			$结束 $定义
+		$结束 $定义
+		$定义 CheckBox0 $为 复选框
+			文本 = "焦点测试"
+		$结束 $定义
+		$定义 CheckBox1 $为 复选框
+			文本 = "选中我！"
+		$结束 $定义
+		$定义 CheckBox2 $为 复选框
+			文本 = "文本右侧"
+			内容对齐 = 2
+			宽度 = -2
+		$结束 $定义
+		$定义 CheckBox3 $为 复选框
+			文本 = "绿色背景"
+			背景颜色 = &HFF00FF00
+		$结束 $定义
+		$定义 CheckBox4 $为 复选框
+			文本 = "禁用"
+			启用 = 假
+		$结束 $定义
+		$定义 CheckBox5 $为 复选框
+			文本 = "粗体"
+			字体加粗 = 真
+		$结束 $定义
+		$定义 CheckBox6 $为 复选框
+			文本 = "斜体"
+			字体倾斜 = 真
+		$结束 $定义
+		$定义 CheckBox7 $为 复选框
+			文本 = "大文本"
+			字体大小 = 20
+		$结束 $定义
+		$定义 CheckBox8 $为 复选框
+			文本 = "等宽字体文本：wiwiw"
+			字体类型 = 3
+		$结束 $定义
+		$定义 CheckBox9 $为 复选框
+			文本 = "带图片"
+			文本颜色 = &HFF00FF00
+		$结束 $定义
+	$结束 $定义
+$结束 $属性
