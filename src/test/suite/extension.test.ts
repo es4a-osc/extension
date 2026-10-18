@@ -2400,6 +2400,25 @@ suite("ES4A 扩展", () => {
 		}
 	});
 
+	test("VS Code 关键字成员悬停显示运行库签名", async () => {
+		await vscode.commands.executeCommand("es4a.refreshLibraries");
+		const source = "过程 Run()\r\n\t变量 表达式 为 正则表达式\r\n\t表达式.匹配(\"abc\")\r\n结束 过程\r\n";
+		const document = await vscode.workspace.openTextDocument({ content: source, language: "simple" });
+		const position = document.positionAt(source.indexOf("表达式.匹配") + "表达式.".length + 1);
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(position, position);
+		await vscode.commands.executeCommand("editor.action.showHover");
+		const hovers = await vscode.commands.executeCommand<readonly vscode.Hover[]>(
+			"vscode.executeHoverProvider", document.uri, position
+		);
+		const text = hovers.flatMap((hover) => hover.contents.map(
+			(content) => typeof content === "string" ? content : content.value
+		)).join("\n");
+		assert.match(text, /过程 匹配\(文本 为 文本型\)/u);
+		assert.match(text, /simple\.runtime\.collections\.正则表达式/u);
+		assert.doesNotMatch(text, /执行匹配比较/u);
+	});
+
 	test("VS Code 从编译器和运行库清单提供悬停说明", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");

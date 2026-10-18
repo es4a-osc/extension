@@ -111,7 +111,8 @@ export function atomicPropertySymbolExpression(input: string): AtomicPropertySym
 /**
  * 识别需要兼容放行的组合表达式。
  *
- * 这里只避开字符串内部的运算符，不尝试替代 Simple 解析器验证表达式是否合法。
+ * 屏蔽字符串正文并排除非表达式字符，避免把网址中的斜杠等标点误当成运算符。
+ * 这里只判断语法外形，不尝试替代 Simple 解析器验证表达式是否合法。
  */
 function isSimpleCompositeExpression(expression: string): boolean {
 	let quoted = false;
@@ -137,6 +138,8 @@ function isSimpleCompositeExpression(expression: string): boolean {
 		}
 		unquoted += character;
 	}
+
+	if (quoted || /[^\p{L}\p{N}_ \t.,&*/\\%=<>+()^-]/u.test(unquoted)) return false;
 
 	if (/^[ \t]*\(.*\)[ \t]*$/u.test(unquoted)) return true;
 	if (/(?:^|[ \t(])(?:且|或|异或|是|非)(?=$|[ \t)])/u.test(unquoted)) return true;

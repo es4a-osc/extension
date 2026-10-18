@@ -1117,6 +1117,11 @@ export function findSimpleKeywordHover(
 	if (resource !== undefined) {
 		return resource;
 	}
+	// 点号后的名称先按限定成员解析，未知成员也不能回退成同名关键字。
+	const memberRange = identifierRange(source, offset);
+	if (memberRange !== undefined && qualifierBefore(source, memberRange.start) !== undefined) {
+		return findRuntimeHover(source, offset, sdk, context);
+	}
 
 	const lineStart = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
 	const lineEndIndex = source.indexOf("\n", offset);

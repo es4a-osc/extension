@@ -12,7 +12,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { SimpleCodeFileSystemProvider, toSimpleCodeUri, toSimpleDesignerUri } from "../../simpleCodeFileSystem";
 import { SimpleDesignerProvider } from "../../designerWebview";
-import { serializePropertyXml } from "../../propertyXml";
+import { parseSimplePropertyXml, serializePropertyXml } from "../../propertyXml";
 import { loadSdk } from "../../sdk";
 import { getVisibleSimpleUnitUserCode } from "../../simpleUnitSource";
 import type { SimpleDesignerDocument } from "../../designerDocument";
@@ -107,7 +107,7 @@ window.addEventListener("message", async (event) => {
 				input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
 				check(input.value === original && submitted.length === before, "Escape 未取消编辑");
 			} else {
-				input.value = renaming ? "演示按钮" : "回车演示";
+				input.value = renaming ? "演示按钮" : action === "url" ? "ws://127.0.0.1:5000/ws" : "回车演示";
 				input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
 				input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true, cancelable: true }));
 				check(submitted.length === before && document.activeElement === input, "输入法选字提前提交或失焦");
@@ -201,6 +201,19 @@ suite("设计器属性输入", () => {
 			assert.equal(getVisibleSimpleUnitUserCode(saved), getVisibleSimpleUnitUserCode(source));
 			assert.match(saved, /\$定义 演示按钮 \$为 按钮/u);
 			assert.match(saved, /文本 = "回车演示"/u);
+			await run("url");
+			await waitFor(() => edits.length === 3);
+			await provider.saveCustomDocument(designer, cancellation.token);
+			const savedUrl = await fs.readFile(sourceFile, "utf8");
+			assert.equal(savedUrl.replace('"ws://127.0.0.1:5000/ws"', '"回车演示"'), saved);
+			const reopened = parseSimplePropertyXml(savedUrl);
+			assert.equal(reopened?.status, "valid");
+			assert.match(serializePropertyXml(reopened!), /值="&quot;ws:\/\/127\.0\.0\.1:5000\/ws&quot;"/u);
+			await edits[2]!.undo();
+			assert.match(serializePropertyXml(documents.getProperty(owner)!.document!), /回车演示/u);
+			await edits[2]!.redo();
+			assert.match(serializePropertyXml(documents.getProperty(owner)!.document!), /ws:\/\/127\.0\.0\.1:5000\/ws/u);
+			await edits[2]!.undo();
 			await edits[1]!.undo();
 			await edits[0]!.undo();
 			assert.equal(owner.getText(), getVisibleSimpleUnitUserCode(source));

@@ -20,6 +20,7 @@ import {
 	propertyValueAriaLabel
 } from "../designer/propertyPresentation";
 import type { PropertyPanelRow } from "../propertyPanelModel";
+import { parseSimpleStringLiteral } from "../simpleStringLiteral";
 
 const defaultStringRow: PropertyPanelRow = {
 	defaultExpression: "\"缺省标题\"",
@@ -240,6 +241,33 @@ test("属性输入按数值、变体和文本类型生成 Simple 表达式", () 
 	assert.equal(normalizePropertyInput("变体型", "取值() + 1"), "取值() + 1");
 	assert.equal(normalizePropertyInput("文本型", "取值() & \"像素\""), "取值() & \"像素\"");
 	assert.equal(normalizePropertyInput("整数型", "当前值 + 1"), "当前值 + 1");
+});
+
+test("网址和含标点的正文不会因斜杠、加号等字符误判为组合表达式", () => {
+	for (const value of [
+		"ws://127.0.0.1:5000/ws",
+		"wss://example.com/ws?token=a+b&name=测试",
+		"https://example.com/a-b",
+		"file:///C:/示例/a.txt",
+		"C:\\示例\\a-b.txt",
+		"a+b@example.com",
+		"你好，WebSocket! a/b",
+		"(ws://localhost:5000/ws)",
+		"普通\"文本 & 后缀"
+	]) {
+		for (const typeName of ["文本型", "变体型"]) {
+			assert.equal(parseSimpleStringLiteral(normalizePropertyInput(typeName, value)!), value);
+		}
+		assert.equal(normalizePropertyInput("整数型", value), undefined);
+		assert.equal(normalizePropertyInput("变体型", value, "simple.pixel"), undefined);
+	}
+	for (const expression of [
+		"当前值 / 2", "当前值 \\ 2", "(当前值 + 1) / 2", "真 且 非 假",
+		'取值("ws://127.0.0.1:5000/ws", 1) & "?a=b&c=d"',
+		'"https://example.com/" & "a+b"', '"转义\\\"引号/" & "后缀"'
+	]) {
+		assert.equal(normalizePropertyInput("文本型", expression), expression);
+	}
 });
 
 test("像素编辑器严格校验直接值并兼容 Simple 表达式", () => {
