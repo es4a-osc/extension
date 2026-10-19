@@ -80,6 +80,10 @@ test("十六进制整数字面量悬停显示精确十进制值", async () => {
 });
 
 test("运行库类型和全局函数返回清单说明与完整签名", async () => {
+	const menuType = await hover("变量 menu 为 弹出¦菜单");
+	assert.equal(menuType?.declarationSource, "simple.runtime.components.弹出菜单");
+	assert.equal(menuType?.kind, "component");
+
 	const runtimeType = await hover("变量 timer 为 计¦时器");
 	assert.equal(runtimeType?.name, "计时器");
 	assert.equal(runtimeType?.kind, "component");
@@ -89,11 +93,15 @@ test("运行库类型和全局函数返回清单说明与完整签名", async ()
 	assert.match(runtimeType?.description ?? "", /时间间隔/);
 	assert.equal(runtimeType?.librarySymbol?.definitionName, "计时器");
 
+	const unitFunction = await hover("其它操作.取单元¦类名()");
+	assert.equal(unitFunction?.owner, "其它操作");
+	assert.equal(unitFunction?.declarationSource, "simple.runtime.其它操作");
+
 	const globalFunction = await hover("分割¦文本(内容, 分隔符, 1)");
 	assert.equal(globalFunction?.name, "分割文本");
 	assert.equal(globalFunction?.kind, "functions");
-	assert.equal(globalFunction?.owner, "数组操作");
-	assert.equal(globalFunction?.declarationSource, "simple.runtime.数组操作");
+	assert.equal(globalFunction?.owner, "文本操作");
+	assert.equal(globalFunction?.declarationSource, "simple.runtime.文本操作");
 	assert.match(globalFunction?.signature ?? "", /文本 为 文本型/);
 	assert.match(globalFunction?.signature ?? "", /文本型\(\)/);
 	assert.equal(globalFunction?.librarySymbol?.memberGroup, "functions");
@@ -102,6 +110,15 @@ test("运行库类型和全局函数返回清单说明与完整签名", async ()
 		"欲查找的分割文本",
 		"分割次数"
 	]);
+});
+
+test("对象方法的全局与限定调用悬停指向对象操作", async () => {
+	for (const source of ["取对象¦类名(实例)", "simple.runtime.对象操作.取对象¦类名(实例)"]) {
+		const info = await hover(source);
+		assert.equal(info?.owner, "对象操作");
+		assert.equal(info?.declarationSource, "simple.runtime.对象操作");
+		assert.equal(info?.librarySymbol?.definitionName, "对象操作");
+	}
 });
 
 test("组件事件处理过程保留当前单元归属并显示事件说明和定义来源", async () => {
@@ -226,9 +243,9 @@ test("完整代码属性区名称和对象类名提供悬停且不污染用户�
 });
 
 test("运行库静态成员和已知变量实例成员按访问方式悬停", async () => {
-	const staticFunction = await hover("数组操作.分割¦文本(内容, 分隔符, 1)");
+	const staticFunction = await hover("文本操作.分割¦文本(内容, 分隔符, 1)");
 	assert.equal(staticFunction?.name, "分割文本");
-	assert.equal(staticFunction?.owner, "数组操作");
+	assert.equal(staticFunction?.owner, "文本操作");
 
 	const instanceProperty = await hover([
 		"过程 Run()",

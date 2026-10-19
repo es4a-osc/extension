@@ -62,12 +62,12 @@ test("将中文候选转换为连续拼音首字母", () => {
 test("中英文混合输入转首拼匹配，同时保留原名称和作用域约束", async () => {
 	for (const query of ["分割", "fgwb", "分割wb", "fg文本", "分g文b", "分割WB"]) {
 		assert.deepEqual(
-			await complete(unit(`过程 Run()\r\n\t数组操作.${query}¦\r\n结束 过程`)),
+			await complete(unit(`过程 Run()\r\n\t文本操作.${query}¦\r\n结束 过程`)),
 			["分割文本"],
 			query
 		);
 	}
-	assert.deepEqual(await complete(unit("过程 Run()\r\n\t数组操作.分割wx¦\r\n结束 过程")), []);
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t文本操作.分割wx¦\r\n结束 过程")), []);
 	assert.deepEqual(await complete(unit("过程 Run()\r\n\t未知对象.分割wb¦\r\n结束 过程")), []);
 
 	for (const query of ["HTTP服", "http服", "局_HTTP服", "局_httpfw1"]) {
@@ -340,11 +340,28 @@ test("SDK 类型支持首拼、静态成员首拼和全局函数首拼", async (
 	assert.ok((await complete(unit("过程 Run()\r\n\t变量 值 为 mb¦\r\n结束 过程"))).includes("面板"));
 	assert.ok((await complete(unit("过程 Run()\r\n\t变量 值 为 ck¦\r\n结束 过程"))).includes("窗口"));
 
-	const qualified = await complete(unit("过程 Run()\r\n\t数组操作.fgwb¦\r\n结束 过程"));
+	const qualified = await complete(unit("过程 Run()\r\n\t文本操作.fgwb¦\r\n结束 过程"));
 	assert.deepEqual(qualified, ["分割文本"]);
 
 	const global = await complete(unit("过程 Run()\r\n\tfgwb¦\r\n结束 过程"));
 	assert.ok(global.includes("分割文本"));
+});
+
+test("对象方法迁移后按新归属补全并保留全局短名", async () => {
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t对象操作.qdxlm¦\r\n结束 过程")), ["取对象类名"]);
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t其它操作.qdxlm¦\r\n结束 过程")), []);
+	assert.deepEqual(await complete(unit("过程 Run()\r\n\t其它操作.qdym¦\r\n结束 过程")), ["取单元名"]);
+	assert.ok((await complete(unit("过程 Run()\r\n\tqdxlm¦\r\n结束 过程"))).includes("取对象类名"));
+});
+
+test("弹出菜单组件提供父子项方法补全", async () => {
+	const source = [
+		"过程 Run()",
+		"\t变量 菜单 为 弹出菜单",
+		"\t菜单.zfx¦",
+		"结束 过程"
+	].join("\r\n");
+	assert.deepEqual(await complete(unit(source)), ["置父项"]);
 });
 
 test("创建组件类型后按语法位置提示位于", async () => {

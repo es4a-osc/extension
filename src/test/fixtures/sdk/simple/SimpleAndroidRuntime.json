@@ -1015,6 +1015,165 @@
 					]
 				},
 				{
+					"name": "弹出菜单",
+					"description": "以可视组件为锚点显示动态菜单或 XML 菜单资源；支持分组、排序、父子菜单及选中、关闭事件，无需额外权限。",
+					"icon": "icons/menu-deep.svg",
+					"kind": "component",
+					"type": "simple.runtime.components.弹出菜单",
+					"inherits": [
+						"simple.runtime.components.组件"
+					],
+					"events": [
+						{
+							"name": "被选中",
+							"description": "用户选中菜单项时触发。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识或 XML 菜单资源标识。"
+								}
+							]
+						},
+						{
+							"name": "被关闭",
+							"description": "菜单关闭时触发；组件销毁时不派发。"
+						}
+					],
+					"properties": [
+						{
+							"name": "菜单项",
+							"type": "文本型",
+							"initializer": "\"\"",
+							"description": "@menu/资源名；设置有效资源会清空动态项目，空文本使用动态菜单。"
+						}
+					],
+					"functions": [
+						{
+							"name": "添加",
+							"description": "添加动态顶层项目并切换为动态模式，返回不复用的正整数标识。",
+							"params": [
+								{
+									"name": "标题",
+									"type": "文本型",
+									"description": "菜单项标题。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "删除",
+							"description": "删除动态菜单项及其全部子项；不存在时不作处理。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								}
+							]
+						},
+						{
+							"name": "清空",
+							"description": "清空动态项目，不改变菜单资源路径。"
+						},
+						{
+							"name": "取分组",
+							"description": "读取动态菜单项分组，0 表示未分组。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "置分组",
+							"description": "设置动态菜单项分组。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								},
+								{
+									"name": "分组标识",
+									"type": "整数型",
+									"description": "分组标识，0 表示未分组。"
+								}
+							]
+						},
+						{
+							"name": "取排序",
+							"description": "读取 Android 菜单排序值。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "置排序",
+							"description": "设置排序值，同值保持添加次序。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								},
+								{
+									"name": "排序值",
+									"type": "整数型",
+									"description": "Android 菜单排序值；简单排序使用非负小整数。"
+								}
+							]
+						},
+						{
+							"name": "取父项",
+							"description": "读取父项标识，0 表示顶层。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "置父项",
+							"description": "设置父项，拒绝不存在的标识及父子循环。",
+							"params": [
+								{
+									"name": "项目标识",
+									"type": "整数型",
+									"description": "动态菜单项标识。"
+								},
+								{
+									"name": "父项标识",
+									"type": "整数型",
+									"description": "父菜单项标识，0 表示移至顶层。"
+								}
+							]
+						},
+						{
+							"name": "弹出",
+							"description": "以已附着到当前窗口的可视组件为锚点弹出菜单；数据修改在下一次弹出时生效。",
+							"params": [
+								{
+									"name": "锚点组件",
+									"type": "可视组件",
+									"description": "用于定位菜单的可视组件。"
+								}
+							]
+						}
+					]
+				},
+				{
 					"name": "音频播放器",
 					"description": "音频播放器组件。",
 					"icon": "icons/player-play.svg",
@@ -9403,47 +9562,6 @@
 							"return": "文本型()"
 						},
 						{
-							"name": "连接数组文本",
-							"description": "将数组成员追加到单个文本中。",
-							"global": true,
-							"params": [
-								{
-									"name": "数组",
-									"type": "文本型()",
-									"description": "包含要连接文本的数组"
-								},
-								{
-									"name": "分隔符",
-									"type": "文本型",
-									"description": "在数组成员之间连接文本"
-								}
-							],
-							"return": "文本型"
-						},
-						{
-							"name": "分割文本",
-							"description": "查找指定文本来分割文本。",
-							"global": true,
-							"params": [
-								{
-									"name": "文本",
-									"type": "文本型",
-									"description": "欲分割的文本"
-								},
-								{
-									"name": "分隔符",
-									"type": "文本型",
-									"description": "欲查找的分割文本"
-								},
-								{
-									"name": "数量",
-									"type": "整数型",
-									"description": "分割次数"
-								}
-							],
-							"return": "文本型()"
-						},
-						{
 							"name": "取数组下标",
 							"description": "返回数组维度的大小。",
 							"global": true,
@@ -9482,6 +9600,32 @@
 					"kind": "object",
 					"type": "simple.runtime.文本操作",
 					"functions": [
+						{
+							"name": "代码",
+							"description": "返回给定字符串第一个字符的unicode值。",
+							"global": true,
+							"params": [
+								{
+									"name": "文本",
+									"type": "文本型",
+									"description": "用于转换第一个字符的字符串"
+								}
+							],
+							"return": "整数型"
+						},
+						{
+							"name": "字符",
+							"description": "返回给定unicode值的字符串。",
+							"global": true,
+							"params": [
+								{
+									"name": "字符码",
+									"type": "整数型",
+									"description": "要转换为字符串的unicode值"
+								}
+							],
+							"return": "文本型"
+						},
 						{
 							"name": "寻找文本",
 							"description": "从给定文本寻找指定文本。",
@@ -9728,6 +9872,47 @@
 									"byRef": true
 								}
 							]
+						},
+						{
+							"name": "分割文本",
+							"description": "查找指定文本来分割文本。",
+							"global": true,
+							"params": [
+								{
+									"name": "文本",
+									"type": "文本型",
+									"description": "欲分割的文本"
+								},
+								{
+									"name": "分隔符",
+									"type": "文本型",
+									"description": "欲查找的分割文本"
+								},
+								{
+									"name": "数量",
+									"type": "整数型",
+									"description": "分割次数"
+								}
+							],
+							"return": "文本型()"
+						},
+						{
+							"name": "连接数组文本",
+							"description": "将数组成员追加到单个文本中。",
+							"global": true,
+							"params": [
+								{
+									"name": "数组",
+									"type": "文本型()",
+									"description": "包含要连接文本的数组"
+								},
+								{
+									"name": "分隔符",
+									"type": "文本型",
+									"description": "在数组成员之间连接文本"
+								}
+							],
+							"return": "文本型"
 						},
 						{
 							"name": "格式化文本",
@@ -10384,10 +10569,10 @@
 					]
 				},
 				{
-					"name": "程序操作",
-					"description": "程序相关函数",
+					"name": "其它操作",
+					"description": "程序标识生成与当前单元信息。",
 					"kind": "object",
-					"type": "simple.runtime.程序操作",
+					"type": "simple.runtime.其它操作",
 					"functions": [
 						{
 							"name": "取单元名",
@@ -10400,7 +10585,15 @@
 							"description": "返回当前单元类名。",
 							"global": true,
 							"return": "文本型"
-						},
+						}
+					]
+				},
+				{
+					"name": "对象操作",
+					"description": "对象信息、实例创建及反射访问。",
+					"kind": "object",
+					"type": "simple.runtime.对象操作",
+					"functions": [
 						{
 							"name": "取对象名",
 							"description": "取指定对象的对象名。",
@@ -10698,32 +10891,6 @@
 					"type": "simple.runtime.数据转换",
 					"functions": [
 						{
-							"name": "代码",
-							"description": "返回给定字符串第一个字符的unicode值。",
-							"global": true,
-							"params": [
-								{
-									"name": "文本",
-									"type": "文本型",
-									"description": "用于转换第一个字符的字符串"
-								}
-							],
-							"return": "整数型"
-						},
-						{
-							"name": "字符",
-							"description": "返回给定unicode值的字符串。",
-							"global": true,
-							"params": [
-								{
-									"name": "字符码",
-									"type": "整数型",
-									"description": "要转换为字符串的unicode值"
-								}
-							],
-							"return": "文本型"
-						},
-						{
 							"name": "十六进制",
 							"description": "返回包含给定值的十六进制值的字符串。如果给定值不是整数，那么将使用其整数部分。",
 							"global": true,
@@ -10869,10 +11036,10 @@
 					]
 				},
 				{
-					"name": "算术运算",
+					"name": "数值运算",
 					"description": "实现各种数学运行时函数。",
 					"kind": "object",
-					"type": "simple.runtime.算术运算",
+					"type": "simple.runtime.数值运算",
 					"constants": [
 						{
 							"name": "E",

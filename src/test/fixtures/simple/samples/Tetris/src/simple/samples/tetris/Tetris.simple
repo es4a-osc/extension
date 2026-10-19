@@ -273,7 +273,7 @@
 ' Creates the next brick.
 ' -----------------------------------------------------------------------------
 过程 NextBrick()
-	判断 算术运算.取整数(算术运算.取随机数() * 7)
+	判断 数值运算.取整数(数值运算.取随机数() * 7)
 		分支 0
 			NextFallingBrick = 创建 Square
 		分支 1
@@ -290,7 +290,7 @@
 			NextFallingBrick = 创建 Podium
 	结束 判断
 
-	NextFallingBrickOrientation = Orientation(算术运算.取随机数() * 4)
+	NextFallingBrickOrientation = Orientation(数值运算.取随机数() * 4)
 结束 过程
 
 ' -----------------------------------------------------------------------------

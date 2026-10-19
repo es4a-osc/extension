@@ -2116,7 +2116,7 @@ suite("ES4A 扩展", () => {
 
 		const staticMember = await completionLabels([
 			"过程 Run()",
-			"\t数组操作.fgwb¦",
+			"\t文本操作.fgwb¦",
 			"结束 过程",
 			"$属性",
 			"\t$资源 $对象",
@@ -2236,7 +2236,7 @@ suite("ES4A 扩展", () => {
 			["分g文", "分g文b"],
 			["分割WB", "分割WB"]
 		] as const) {
-			const prefix = `过程 Run()\r\n\t数组操作.${query}`;
+			const prefix = `过程 Run()\r\n\t文本操作.${query}`;
 			const document = await vscode.workspace.openTextDocument({
 				content: `${prefix}\r\n结束 过程`, language: "simple"
 			});
@@ -2289,7 +2289,7 @@ suite("ES4A 扩展", () => {
 		try {
 			for (const [prefixQuery, suffix] of [["分割", "wb"], ["fg", "文本"]] as const) {
 				const sourceFile = path.join(temporaryDirectory, `${prefixQuery}.simple`);
-				const prefix = `过程 Run()\r\n\t数组操作.${prefixQuery}`;
+				const prefix = `过程 Run()\r\n\t文本操作.${prefixQuery}`;
 				await fs.writeFile(sourceFile, `${prefix}\r\n结束 过程`, "utf8");
 				const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(sourceFile)));
 				const editor = await vscode.window.showTextDocument(document, { preview: false });
@@ -2298,12 +2298,12 @@ suite("ES4A 扩展", () => {
 					await vscode.commands.executeCommand("editor.action.triggerSuggest");
 					await new Promise((resolve) => setTimeout(resolve, 150));
 					await vscode.commands.executeCommand("type", { text: suffix });
-					for (let attempt = 0; attempt < 20 && !document.getText().includes("数组操作.分割文本("); attempt += 1) {
+					for (let attempt = 0; attempt < 20 && !document.getText().includes("文本操作.分割文本("); attempt += 1) {
 						await new Promise((resolve) => setTimeout(resolve, 100));
 						await vscode.commands.executeCommand("selectFirstSuggestion");
 						await vscode.commands.executeCommand("acceptSelectedSuggestion");
 					}
-					assert.ok(document.getText().includes("数组操作.分割文本("), `${prefixQuery + suffix}: ${document.getText()}`);
+					assert.ok(document.getText().includes("文本操作.分割文本("), `${prefixQuery + suffix}: ${document.getText()}`);
 				} finally {
 					await vscode.commands.executeCommand("hideSuggestWidget");
 					await vscode.commands.executeCommand("leaveSnippet");
@@ -2443,10 +2443,10 @@ suite("ES4A 扩展", () => {
 		].join("\r\n"))).join("\n");
 		assert.match(documentedVariable, /\*\*加粗说明\*\*  \n- 列表项/u);
 
-		const runtimeFunction = (await hoverContents("数组操作.分割¦文本(内容, 分隔符, 1)")).join("\n");
+		const runtimeFunction = (await hoverContents("文本操作.分割¦文本(内容, 分隔符, 1)")).join("\n");
 		assert.match(runtimeFunction, /函数 分割文本\(文本 为 文本型/);
 		assert.match(runtimeFunction, /所属库：运行库/u);
-		assert.match(runtimeFunction, /所属类：simple\.runtime\.数组操作/u);
+		assert.match(runtimeFunction, /所属类：simple\.runtime\.文本操作/u);
 		assert.match(runtimeFunction, /查找指定文本来分割文本/);
 		assert.match(runtimeFunction, /```\n\*文本：\*/u);
 		assert.ok(runtimeFunction.indexOf("*文本：*") < runtimeFunction.indexOf("查找指定文本来分割文本。"));
@@ -2463,7 +2463,7 @@ suite("ES4A 扩展", () => {
 		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		const provider = new SimpleHoverProvider();
 		provider.updateSdk(sdk);
-		const source = "数组操作.分割文本(内容, 分隔符, 1)";
+		const source = "文本操作.分割文本(内容, 分隔符, 1)";
 		const document = await vscode.workspace.openTextDocument({ content: source, language: "simple" });
 		const hover = provider.provideHover(document, document.positionAt(source.indexOf("分割文本") + 1));
 		const markdown = hover?.contents.find(
@@ -6281,8 +6281,8 @@ ${propertySource}`;
 		assert.ok(runtime, "没有找到运行库清单");
 		const definition = runtime.categories
 			.flatMap((category) => category.definitions)
-			.find((candidate) => candidate.name === "数组操作");
-		assert.ok(definition, "没有找到数组定义");
+			.find((candidate) => candidate.name === "文本操作");
+		assert.ok(definition, "没有找到文本定义");
 		const member = definition.functions?.find((candidate) => candidate.name === "分割文本");
 		assert.ok(member, "没有找到分割文本方法");
 		const provider = new LibraryTreeProvider(async () => sdk);
@@ -6296,13 +6296,29 @@ ${propertySource}`;
 			assert.ok(group?.kind === "group");
 			const owner = provider.getParent(group);
 			assert.ok(owner?.kind === "definition");
-		assert.equal(owner.reference.definition.name, "数组操作");
+			assert.equal(owner.reference.definition.name, "文本操作");
 			const category = provider.getParent(owner);
 			assert.ok(category?.kind === "category");
 			assert.equal(provider.getParent(category)?.kind, "manifest");
+
+			const objectDefinition = runtime.categories.flatMap((item) => item.definitions)
+				.find((item) => item.type === "simple.runtime.对象操作");
+			assert.ok(objectDefinition, "没有找到对象操作方法集");
+			const objectMethod = objectDefinition.functions?.find((item) => item.name === "取对象类名");
+			assert.ok(objectMethod);
+			const objectNode = await provider.findSymbol(
+				libraryMemberTarget({ definition: objectDefinition, manifest: runtime }, "functions", objectMethod)
+			);
+			assert.ok(objectNode?.kind === "member");
+			const objectGroup = provider.getParent(objectNode);
+			assert.ok(objectGroup?.kind === "group");
+			const objectOwner = provider.getParent(objectGroup);
+			assert.ok(objectOwner?.kind === "definition");
+			assert.equal(objectOwner.reference.definition.name, "对象操作");
+
 			for (const name of [
 				"NFC读写器", "WIFI管理器", "光线传感器", "距离传感器",
-				"摄像框", "相机", "蓝牙通信器", "语音处理器"
+				"摄像框", "相机", "蓝牙通信器", "语音处理器", "弹出菜单"
 			]) {
 				const component: LibraryDefinition | undefined = runtime.categories.flatMap((item) => item.definitions)
 					.find((item) => item.name === name);

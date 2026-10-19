@@ -44,7 +44,7 @@ test("从 SDK 函数和事件定义生成参数签名", () => {
 										return: "整数型"
 									}
 								],
-								name: "算术运算"
+								name: "数值运算"
 							}
 						],
 						name: "对象"
@@ -61,8 +61,8 @@ test("从 SDK 函数和事件定义生成参数签名", () => {
 	assert.deepEqual(
 		buildSdkSignatures(sdk).map(formatSignature),
 		[
-			"算术运算.最大值(left 为 整数型, 传址 right 为 整数型) 为 整数型",
-			"算术运算.按下某键(keycode 为 整数型)"
+			"数值运算.最大值(left 为 整数型, 传址 right 为 整数型) 为 整数型",
+			"数值运算.按下某键(keycode 为 整数型)"
 		]
 	);
 });
@@ -106,12 +106,12 @@ test("嵌套调用按括号层级计算当前参数", () => {
 		qualifier: undefined
 	});
 
-	const qualified = "算术运算.最大值(1, ";
+	const qualified = "数值运算.最大值(1, ";
 	assert.deepEqual(findCallContext(qualified, qualified.length), {
 		activeParameter: 1,
 		name: "最大值",
 		nameStart: qualified.indexOf("最大值"),
-		qualifier: "算术运算"
+		qualifier: "数值运算"
 	});
 
 	const declaration = "函数 Sum(";
