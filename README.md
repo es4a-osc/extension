@@ -7,9 +7,9 @@ Simple 采用类似 BASIC 的中文语法，面向 Android 应用开发。ES4A �
 
 ## 界面预览
 
-![窗口设计器：属性、布局与组件选择](preview1.png)
+<img src="preview1.png" alt="窗口设计器：属性、布局与组件选择" width="960">
 
-![Simple 代码编辑与项目管理](preview2.png)
+<img src="preview2.png" alt="Simple 代码编辑与项目管理" width="960">
 
 
 ## 主要功能
