@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-8-29
 */
 
-import { testSdkPath } from "./testFixtures";
+import { testFixturePath, testSdkPath } from "./testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -489,15 +489,7 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 });
 
 test("扩展类库组件定义的行尾注释不影响限定名和别名投影", async () => {
-	const source = await fs.readFile(testSdkPath("libraries",
-		"com.example.demo",
-		"sample",
-		"src",
-		"com",
-		"example",
-		"demo",
-		"sample",
-		"主窗口.simple"), "utf8");
+	const source = await fs.readFile(testFixturePath("library-test", "com.example.demo", "src", "com", "example", "demo", "test", "主窗口.simple"), "utf8");
 	const document = parseSimplePropertyXml(source);
 	const sdk = await loadSdk(testSdkPath("sdk.json"));
 	assert.ok(document);

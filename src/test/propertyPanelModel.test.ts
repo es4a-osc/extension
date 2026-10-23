@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-8-28
 */
 
-import { testSdkPath } from "./testFixtures";
+import { testFixturePath, testSdkPath } from "./testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -165,15 +165,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	});
 
 	test("扩展类库组件属性框顶部显示定义短名称", async () => {
-		const source = fs.readFileSync(testSdkPath("libraries",
-			"com.example.demo",
-			"sample",
-			"src",
-			"com",
-			"example",
-			"demo",
-			"sample",
-			"主窗口.simple"), "utf8");
+		const source = fs.readFileSync(testFixturePath("library-test", "com.example.demo", "src", "com", "example", "demo", "test", "主窗口.simple"), "utf8");
 		const document = parseSimplePropertyXml(source);
 		const sdk = await loadSdk(testSdkPath("sdk.json"));
 		assert.ok(document);

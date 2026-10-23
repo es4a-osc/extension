@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-12
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testFixturePath, testSdkPath } from "../testFixtures";
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -114,7 +114,7 @@ suite("设计器满尺寸组件拖放", () => {
 			const extension = vscode.extensions.getExtension("es4a.es4a")!;
 			await extension.activate();
 			const sdk = await loadSdk(testSdkPath("sdk.json"));
-			const source = await fs.readFile(testSdkPath("libraries/simple.library.wsd.grouplist/sample/src/simple/library/wsd/grouplist/sample/主窗口.simple"), "utf8");
+			const source = await fs.readFile(testFixturePath("library-test/simple.library.wsd.grouplist/src/simple/library/wsd/grouplist/test/主窗口.simple"), "utf8");
 			const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-designer-drop-"));
 			const sourceFile = path.join(directory, "主窗口.simple");
 			const sourceUri = vscode.Uri.file(sourceFile);

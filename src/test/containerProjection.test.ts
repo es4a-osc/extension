@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-8
 */
 
-import { testSdkPath } from "./testFixtures";
+import { testFixturePath, testSdkPath } from "./testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -197,8 +197,7 @@ test("通用 limit 对新增、粘贴、移动和剪贴板子树一致，非可�
 
 test("真实滑动页面框样例及滚动框清单加载为单帧容器投影", async () => {
 	const sdk = await loadSdk(testSdkPath("sdk.json"));
-	const file = testSdkPath("libraries", "simple.library.wsd.viewpager",
-		"sample", "src", "simple", "library", "wsd", "viewpager", "sample", "主窗口.simple");
+	const file = testFixturePath("library-test", "simple.library.wsd.viewpager", "src", "simple", "library", "wsd", "viewpager", "test", "主窗口.simple");
 	const source = await fs.readFile(file, "utf8");
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
