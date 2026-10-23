@@ -1436,7 +1436,7 @@
 		"test": "npm run compile-tests && node --test out/test/*.test.js",
 		"test:sdk": "npm run compile-tests && node out/test/validateSdk.js",
 		"test:integration": "npm run compile && npm run compile-tests && vscode-test",
-		"package:vsix": "vsce package --allow-missing-repository --skip-license"
+		"package:vsix": "vsce package --allow-missing-repository --skip-license --baseImagesUrl https://gitee.com/es4a/extension/raw/main/"
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
