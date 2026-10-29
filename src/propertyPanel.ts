@@ -22,7 +22,7 @@ import {
 	writePropertyXmlValue,
 	type SimplePropertyXmlDocument
 } from "./propertyXml";
-import type { Sdk } from "./sdk";
+import { buildDefinitionIndex, getEffectivePropertyByProjection, type Sdk } from "./sdk";
 import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
 
 /** 属性输入包含无法从当前 SDK 或项目语义索引解析的原子符号。 */
@@ -180,10 +180,14 @@ export function updatePropertyPanelValue(
 			removeElementWhenEmpty: request.removeElementWhenEmpty
 		}
 	);
-	if (permittedRow.name === "布局") {
+	const definitions = buildDefinitionIndex(sdk?.manifests ?? []);
+	const definition = definitions.get(getPropertyXmlAttribute(selectedNode, "组件") ?? "");
+	const layoutMember = getEffectivePropertyByProjection(definition, "layout", definitions)?.member;
+	if (layoutMember !== undefined && permittedRow.name === layoutMember.name) {
+		// 切换布局只清除该属性原有的子赋值，未知属性与其它 XML 内容仍保持。
 		const layoutPropertyNames = getPropertyXmlChildren(selectedNode, "赋值")
 			.map((property) => getPropertyXmlAttribute(property, "属性"))
-			.filter((name): name is string => name?.startsWith("布局.") === true);
+			.filter((name): name is string => name?.startsWith(layoutMember.name + ".") === true);
 		for (const name of layoutPropertyNames) {
 			const valuePath = createPropertyXmlAttributePath(
 				selectedPath,

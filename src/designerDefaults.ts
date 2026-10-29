@@ -1,47 +1,60 @@
 /*
-集中计算画布投影使用的容器布局及隐含宽高尺寸。
+集中解析清单声明的布局投影及隐含尺寸，供画布和属性框共用。
 xhwsd@qq.com 2026-8-31
 */
 
-import type { LibraryContainerLayout } from "./sdk";
+import { resolveSdkConstantValue, type LibraryContainerLayout, type LibraryDefinitionReference } from "./sdk";
 
 /** 设计器支持的容器排列投影；不改变 Simple 的真实布局表达式。 */
 export type DesignerLayoutKind = LibraryContainerLayout | "unsupported";
 
-/** 将已有布局投影对应到 SDK 布局定义和常量，供画布及属性适用性判断共用。 */
-export function designerLayoutDefinition(layout: DesignerLayoutKind): {
-	readonly name: string;
-	readonly expression: string;
-} | undefined {
-	switch (layout) {
-		case "absolute": return { name: "绝对布局", expression: "布局_绝对" };
-		case "frame": return { name: "单帧布局", expression: "布局_单帧" };
-		case "grid": return { name: "表格布局", expression: "布局_表格" };
-		case "linear-horizontal":
-		case "linear-vertical": return { name: "线性布局", expression: "布局_线性" };
-		case "relative": return { name: "相对布局", expression: "布局_相对" };
-		case "unsupported": return undefined;
-	}
+/** 横纵线性布局共用一个布局定义，方向由对应属性投影单独确定。 */
+function sameLayoutFamily(left: LibraryContainerLayout | undefined, right: DesignerLayoutKind): boolean {
+	return left === right || left?.startsWith("linear-") === true && right.startsWith("linear-");
+}
+
+/** 按固定投影查找清单加载顺序中的首个布局定义，不从中文名称反推类型。 */
+export function designerLayoutDefinition(
+	layout: DesignerLayoutKind,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>
+): LibraryDefinitionReference | undefined {
+	return Array.from(definitions.values()).find((reference) => (
+		reference.definition.kind === "layout"
+		&& reference.definition.projection?.layoutValue !== undefined
+		&& sameLayoutFamily(reference.definition.projection.layout, layout)
+	));
+}
+
+/** 按布局选择值与清单中的显式投影关联查找定义；冲突关联保持不可解析。 */
+export function resolveDesignerLayoutDefinition(
+	expression: string | undefined,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>
+): LibraryDefinitionReference | undefined {
+	const value = resolveSdkConstantValue(expression, definitions)?.trim();
+	if (value === undefined) return undefined;
+	const candidates = new Set(Array.from(definitions.values()).filter((reference) => (
+		reference.definition.kind === "layout"
+		&& reference.definition.projection?.layout !== undefined
+		&& reference.definition.projection.layoutValue !== undefined
+		&& resolveSdkConstantValue(reference.definition.projection.layoutValue, definitions)?.trim() === value
+	)));
+	return candidates.size === 1 ? candidates.values().next().value : undefined;
 }
 
 /** 未显式设置尺寸时由父容器赋予的布局参数类型。 */
 export type DesignerDefaultLengthKind = "content" | "parent";
 
-/** 将父容器的布局表达式解析为设计器支持的低保真排列。 */
+/** 读取布局定义声明的排列语义，线性方向只接受可确定的清单常量或数值。 */
 export function designerLayoutKind(
 	layoutExpression: string | undefined,
-	directionExpression: string | undefined
+	directionExpression: string | undefined,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>
 ): DesignerLayoutKind {
-	const layout = layoutExpression ?? "1";
-	if (layout === "2" || /布局_表格$/u.test(layout)) return "grid";
-	if (layout === "3" || /布局_单帧$/u.test(layout)) return "frame";
-	if (layout === "4" || /布局_相对$/u.test(layout)) return "relative";
-	if (layout === "5" || /布局_绝对$/u.test(layout)) return "absolute";
-	if (layout !== "1" && !/布局_线性$/u.test(layout)) return "unsupported";
-	const direction = directionExpression ?? "1";
-	return direction === "0" || /布局_方向_水平$/u.test(direction)
-		? "linear-horizontal"
-		: "linear-vertical";
+	const layout = resolveDesignerLayoutDefinition(layoutExpression, definitions)?.definition.projection?.layout;
+	if (layout === undefined) return "unsupported";
+	if (!layout.startsWith("linear-") || directionExpression === undefined) return layout;
+	const direction = resolveSdkConstantValue(directionExpression, definitions)?.trim();
+	return direction === "0" ? "linear-horizontal" : direction === "1" ? "linear-vertical" : "unsupported";
 }
 
 /** 按当前 Android 容器添加子视图时使用的真实初始布局参数返回缺省尺寸。 */

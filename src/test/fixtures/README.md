@@ -21,11 +21,11 @@
 显式提供入口和可选附加类库，例如：
 
 ```powershell
-npm run test:sdk -- D:/ES4A/sdk/sdk.json D:/ES4A/libraries/com.example.demo/library.json
+npm run test:sdk -- D:/ES4A/sdk D:/ES4A/libraries/com.example.demo/library.json
 ```
 
 验证遍历输入中的所有定义、成员、参数及已声明图标，核对索引、继承合并、签名和设计器消费。附加库仅在系统临时目录组合入口，不修改原 SDK 清单。没有公开成员元数据的父类型单独列入 `unresolvedParents`；已公开父类型的继承仍逐项比较，循环继承失败。
 
-需要同时核对真实类库树时，在当前终端设置 `ES4A_TEST_SDK_PATH` 为待测 SDK 入口，再运行 `npm run test:integration`。固定回归照常执行，新增全量用例同时检查外部入口。隐藏分类验证其不出现在树中；编译器标记验证可浏览且不作为运行库符号导航目标。
+需要同时核对真实类库树时，在当前终端设置 `ES4A_TEST_SDK_PATH` 为待测 SDK 根目录，再运行 `npm run test:integration`。固定回归照常执行，新增全量用例同时检查外部 SDK。隐藏分类验证其不出现在树中；编译器标记验证可浏览且不作为运行库符号导航目标。
 
 真实清单测试的期望取自输入契约，不锁定组件名单、分类名称、图标文件名或参数文案。固定样本中的明确断言以及独立的错误注入验证负责检出算法错误，避免只将同一消费结果互相比较。

@@ -146,7 +146,6 @@ test("相对布局未设置关系时悬停明确说明左上角和边距定位",
 		name: "按钮1",
 		path: "/属性/定义[1]/定义[1]",
 		relativeRules: {},
-		textComponent: true,
 		type: "按钮",
 		visual: true
 	};
@@ -180,7 +179,6 @@ test("设计器 SDK 描述悬停保留换行", () => {
 		name: "按钮1",
 		path: "/属性/定义[1]/定义[1]",
 		runtimeType: "simple.runtime.components.按钮",
-		textComponent: true,
 		type: "按钮",
 		visual: true
 	};
@@ -214,12 +212,11 @@ test("水平进度条与其它非文本组件统一使用普通占位外观", ()
 		layout: "linear-vertical",
 		name: "Progress1",
 		path: "/属性/定义[1]/定义[1]",
-		textComponent: false,
 		type: "水平进度条",
 		visual: true
 	};
 	const classes = componentPresentation(node, undefined, "control").classes;
-	assert.ok(classes.includes("designer-placeholder-control"));
+	assert.ok(classes.includes("visual-control"));
 	assert.ok(classes.includes("designer-empty-content"));
 });
 
@@ -797,7 +794,6 @@ test("设计期固定尺寸严格保持声明值且不被最小交互区域放�
 		layout: "grid",
 		name: "面板1",
 		path: "/属性/定义[1]/定义[1]",
-		textComponent: false,
 		type: "面板",
 		visual: true,
 		width: { kind: "fixed", value: 1 }
@@ -823,7 +819,6 @@ test("没有运行内容的适应内容组件只使用最小交互尺寸", () =>
 		layout: "linear-vertical",
 		name: "很长的设计期组件名称",
 		path: "/属性/定义[1]/定义[1]",
-		textComponent: true,
 		type: "按钮",
 		visual: true,
 		width: { kind: "content" }
@@ -851,7 +846,6 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 		layout: "linear-vertical",
 		name: "面板1",
 		path: "/属性/定义[1]/定义[1]",
-		textComponent: false,
 		type: "面板",
 		visual: true,
 		width: { kind: "content" }
@@ -867,7 +861,6 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 		container: false,
 		name: "标签1",
 		path: node.path + "/定义[1]",
-		textComponent: true,
 		type: "标签"
 	};
 	assert.equal(componentPresentation({ ...node, children: [child] }, undefined, "container")
@@ -875,7 +868,7 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 });
 
 test("真实滚动框窗口内的空面板不会让适应内容高度塌缩，且不改写 XML", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	for (const direction of ["水平", "垂直"]) {
 		const source = await fs.readFile(testFixturePath("simple", "tests", "simple", "runtime",
 			"DeviceTests", "SmokeTests", "src", "simple", "runtime", "smoketests", "containers",
@@ -905,7 +898,7 @@ test("嵌套空容器逐方向补足交互尺寸，实际文本和固定内容�
 	const child: DesignerComponentNode = {
 		children: [], container: true, displayText: "", displayTextPlaceholder: true,
 		height: { kind: "parent" }, layout: "frame", name: "空面板", path: "/child",
-		textComponent: false, type: "面板", visual: true, width: { kind: "parent" }
+		type: "面板", visual: true, width: { kind: "parent" }
 	};
 	const parent: DesignerComponentNode = {
 		...child, children: [child], height: { kind: "content" }, name: "父容器", path: "/parent",
@@ -948,7 +941,7 @@ test("匹配父级组件区分已解析的外边距与内填充", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const scroll = findComponent(model.root, "Scroll1");
 	assert.ok(scroll);
@@ -989,7 +982,7 @@ test("单帧布局子组件未设置宽高时匹配父级", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const defaultButton = findComponent(model.root, "DefaultButton");
 	const contentButton = findComponent(model.root, "ContentButton");
@@ -1037,7 +1030,7 @@ test("绝对布局按左边和顶边投影子组件且缺省宽高适应内容",
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const button = findComponent(model.root, "Button1");
 	const secondButton = findComponent(model.root, "Button2");
@@ -1091,7 +1084,7 @@ test("文本组件使用 SDK 继承缺省值并保留完整二维对齐", async 
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const label = findComponent(model.root, "Label1");
 	const edit = findComponent(model.root, "Edit1");
@@ -1116,7 +1109,7 @@ test("文本组件使用 SDK 继承缺省值并保留完整二维对齐", async 
 	assert.deepEqual(edit?.contentAlignment, { horizontal: "left", vertical: "top" });
 	assert.deepEqual(button?.contentAlignment, { horizontal: "center", vertical: "center" });
 	for (const component of [label, edit, button, password, radio, checkbox, mail]) {
-		assert.ok(componentPresentation(component!, undefined, "control").classes.includes("designer-text-control"));
+		assert.equal(componentPresentation(component!, undefined, "control").style.fontSize, component!.fontSize + "px");
 	}
 
 	const editClasses = componentPresentation(edit!, undefined, "control").classes;
@@ -1141,7 +1134,7 @@ test("颜色投影兼容十六进制常量与十进制 32 位 ARGB 整数", asyn
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const label = findComponent(model.root, "Label1");
 
@@ -1184,7 +1177,7 @@ test("表格布局投影单元格并区分缺失、越界和重复位置", async
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const positioned = findComponent(model.root, "Positioned");
 	const missing = findComponent(model.root, "MissingPosition");

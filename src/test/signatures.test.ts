@@ -16,10 +16,10 @@ import {
 
 test("从 SDK 函数和事件定义生成参数签名", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [
 			{

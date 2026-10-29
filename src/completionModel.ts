@@ -15,6 +15,7 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	isSimpleMemberAccessible,
 	isSimpleAliasName,
 	resolveSimpleDefinitionName,
 	resolveSimpleNamespaceName,
@@ -480,24 +481,27 @@ function variableBindings(
 	return bindings;
 }
 
-/** 在函数式声明行内解析光标指向的正式参数。 */
+/** 按完整逻辑声明解析正式参数；续行替换等长空白，保留声明跳转及重命名所用的物理偏移。 */
 function parameterBindingAtDeclaration(
 	sanitized: string,
 	offset: number,
 	name: string
 ): SimpleBinding | undefined {
-	const lineStart = Math.max(
-		sanitized.lastIndexOf("\n", Math.max(0, offset - 1)),
-		sanitized.lastIndexOf("\r", Math.max(0, offset - 1))
-	) + 1;
-	const lineEndCandidates = [
-		sanitized.indexOf("\n", offset),
-		sanitized.indexOf("\r", offset)
-	].filter((candidate) => candidate >= 0);
-	const lineEnd = lineEndCandidates.length === 0
-		? sanitized.length
-		: Math.min(...lineEndCandidates);
-	const line = sanitized.slice(lineStart, lineEnd);
+	const lineStart = logicalStatementStart(sanitized, offset);
+	let lineEnd = offset;
+	for (; lineEnd < sanitized.length; lineEnd += 1) {
+		const character = sanitized[lineEnd];
+		if (character === "_") {
+			if (sanitized[lineEnd + 1] === "\n") {
+				lineEnd += 1;
+			} else if (sanitized[lineEnd + 1] === "\r" && sanitized[lineEnd + 2] === "\n") {
+				lineEnd += 2;
+			}
+		} else if (character === ":" || character === "\r" || character === "\n") {
+			break;
+		}
+	}
+	const line = normalizeLogicalPrefix(sanitized.slice(lineStart, lineEnd));
 	const header = /^[ \t]*(?:静态[ \t]+)?(?:函数|过程|事件)[ \t]+[^()\r\n]+\((.*)\)/u.exec(line);
 	const parameters = header?.[1];
 	if (parameters === undefined) {
@@ -1011,7 +1015,7 @@ function memberResultDefinition(
 ): LibraryDefinitionReference | undefined {
 	const groups: readonly LibraryMemberGroup[] = resolved.access === "static"
 		? ["constants", "functions", "variables"]
-		: ["properties", "variables", "functions"];
+		: ["constants", "properties", "variables", "functions"];
 
 	for (const group of groups) {
 		const value = getEffectiveMembers(resolved.reference, group, definitions).find(
@@ -1021,10 +1025,7 @@ function memberResultDefinition(
 			continue;
 		}
 
-		const isStatic = group === "constants"
-			|| value.member.global === true
-			|| isStaticProjectMember(value.member);
-		if ((resolved.access === "static") !== isStatic) {
+		if (!isSimpleMemberAccessible(value.member, group, resolved.access)) {
 			continue;
 		}
 
@@ -1159,7 +1160,7 @@ export function resolveSimpleQualifier(
 	);
 }
 
-/** 枚举类型限定名后可访问的静态常量和清单明确标记的静态全局函数。 */
+/** 枚举类型限定名可访问的常量、静态函数及静态变量。 */
 function staticMemberCandidates(
 	reference: LibraryDefinitionReference,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>
@@ -1195,13 +1196,10 @@ function instanceMemberCandidates(
 
 	const groups = eventDeclaration
 		? ["events"] as const
-		: ["properties", "variables", "functions", "events"] as const;
+		: ["constants", "properties", "variables", "functions", "events"] as const;
 	for (const group of groups) {
 		for (const value of getEffectiveMembers(reference, group, definitions)) {
-			if (
-				(group === "functions" && value.member.global === true)
-				|| isStaticProjectMember(value.member)
-			) {
+			if (!isSimpleMemberAccessible(value.member, group, "instance")) {
 				continue;
 			}
 			candidates.push(memberCandidate(

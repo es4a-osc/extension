@@ -25,6 +25,7 @@ import {
 	resolveSimpleDefinitionName,
 	resolveSimpleNamespaceName,
 	isStaticProjectMember,
+	isSimpleMemberAccessible,
 	type SimpleProjectSemanticContext,
 	type SimpleUnitSymbol
 } from "./simpleUnitSymbols";
@@ -899,13 +900,8 @@ function findRuntimeHover(
 		}
 
 		const reference = resolved.reference;
-		const staticFilter = (candidate: LibraryMember, group: LibraryMemberGroup) => group === "constants"
-			|| candidate.global === true
-			|| isStaticProjectMember(candidate);
-		const instanceFilter = (candidate: LibraryMember, group: LibraryMemberGroup) => (
-			(group !== "functions" || candidate.global !== true)
-			&& !isStaticProjectMember(candidate)
-		);
+		const staticFilter = (candidate: LibraryMember, group: LibraryMemberGroup) => isSimpleMemberAccessible(candidate, group, "static");
+		const instanceFilter = (candidate: LibraryMember, group: LibraryMemberGroup) => isSimpleMemberAccessible(candidate, group, "instance");
 		const memberForAccess = resolved.access === "static"
 			? findEffectiveMember(
 				reference,
@@ -917,7 +913,7 @@ function findRuntimeHover(
 			)
 			: findEffectiveMember(
 				reference,
-				["properties", "variables", "functions", "events"],
+				["constants", "properties", "variables", "functions", "events"],
 				range.name,
 				references,
 				instanceFilter,

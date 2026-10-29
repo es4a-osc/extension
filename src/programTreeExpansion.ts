@@ -20,6 +20,8 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 	private expansionRequest = 0;
 	private expansionTask: symbol | undefined;
 	private revealDepth = 0;
+	private revealRequest = 0;
+	private revealSequence = Promise.resolve();
 	private readonly expandListener: vscode.Disposable;
 	private readonly collapseListener: vscode.Disposable;
 	/** 自动定位的选择事件不能冒充用户点击树导致的代码失焦。 */
@@ -65,12 +67,20 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 	/** 统一执行项目树节点定位，避免 reveal 事件与单目录链展开互相抢占。 */
 	private async revealNode(node: ProgramTreeNode): Promise<void> {
 		this.cancel();
-		this.revealDepth += 1;
-		try {
-			await this.view.reveal(node, { focus: false, select: true });
-		} finally {
-			this.revealDepth -= 1;
-		}
+		const request = ++this.revealRequest;
+		/* reveal 已开始后无法取消，串行执行可保证旧请求完成后由最新选择收尾。 */
+		const reveal = async (): Promise<void> => {
+			if (request !== this.revealRequest) return;
+			this.revealDepth += 1;
+			try {
+				await this.view.reveal(node, { focus: false, select: true });
+			} finally {
+				this.revealDepth -= 1;
+			}
+		};
+		const pending = this.revealSequence.then(reveal, reveal);
+		this.revealSequence = pending.catch(() => undefined);
+		await pending;
 	}
 
 	/** 仅单元、资源分组及其真实目录可以启动单目录链展开。 */
@@ -118,6 +128,7 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 	/** 释放项目树展开事件。 */
 	dispose(): void {
 		this.cancel();
+		this.revealRequest += 1;
 		this.expandListener.dispose();
 		this.collapseListener.dispose();
 	}

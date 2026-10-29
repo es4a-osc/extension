@@ -14,7 +14,7 @@ import { testSdkPath } from "../testFixtures";
 suite("清单内容与扩展消费解耦", () => {
 	test("类库树全量消费输入清单的定义成员与图标", async function () {
 		this.timeout(30000);
-		const inputs = [testSdkPath("sdk.json")];
+		const inputs = [testSdkPath()];
 		if (process.env.ES4A_TEST_SDK_PATH !== undefined) inputs.push(process.env.ES4A_TEST_SDK_PATH);
 		for (const input of inputs) {
 			const sdk = await loadCompatibilitySdk(input);

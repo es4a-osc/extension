@@ -63,7 +63,7 @@ button, input, select { color: inherit; font: inherit; }
 .property-choice-menu,
 #component-event-menu-items,
 #enabled-component-event-menu-items,
-.window-layout-surface.window-scrollable,
+.window-layout-surface,
 .container-scroll-vertical { overscroll-behavior-y: contain; }
 /* 属性框占据属性列剩余高度，布局树固定在同一父列底部。 */
 .property-content { background: var(--vscode-sideBar-background); }
@@ -197,8 +197,9 @@ button, input, select { color: inherit; font: inherit; }
 .window-title { flex: 0 0 34px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-titleBar-activeBackground, var(--vscode-editorGroupHeader-tabsBackground)); font-weight: 600; cursor: pointer; }
 .window-content { min-height: 0; flex: 1 1 auto; padding: var(--designer-layout-spacing); overflow: visible; }
 .window-layout-surface, .container-layout-surface { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: visible; }
-.window-layout-surface.window-scrollable { overflow-x: hidden; overflow-y: auto; }
-/* 窗口也可以采用清单的横向滚动投影，方向覆盖既有的纵向滚动样式。 */
+/* 窗口溢出始终可在设计期浏览，运行时“滚动”属性不参与导航。 */
+.window-layout-surface { overflow: auto; }
+/* 窗口显式声明横向投影时，同样遵循清单限定的浏览方向。 */
 .window-layout-surface.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
 .layout-linear-horizontal { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: var(--designer-layout-spacing); }
 .layout-linear-vertical { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
@@ -220,8 +221,15 @@ button, input, select { color: inherit; font: inherit; }
 .layout-absolute > .designer-absolute-positioned { position: absolute; left: calc(var(--designer-absolute-inset-left) + var(--designer-absolute-left)); top: calc(var(--designer-absolute-inset-top) + var(--designer-absolute-top)); }
 .container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
 .container-scroll-vertical { overflow-x: hidden; overflow-y: auto; }
-.container-scrollbar-hidden { scrollbar-width: none; }
-.container-scrollbar-hidden::-webkit-scrollbar { display: none; }
+/* 真实滚动面隐藏原生滚动条；导航滑块由画布顶层覆盖绘制，不预留布局宽高。 */
+.window-layout-surface, .container-layout-surface { scrollbar-width: none; }
+.window-layout-surface::-webkit-scrollbar, .container-layout-surface::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.designer-scrollbar-layer { position: absolute; z-index: 80; inset: 0; pointer-events: none; }
+.designer-scrollbar-viewport { position: absolute; overflow: hidden; pointer-events: none; }
+.designer-scrollbar { position: absolute; padding: 0; border: 0; outline: 0; background: transparent; pointer-events: auto; touch-action: none; cursor: default; }
+.designer-scrollbar-thumb { position: absolute; border: 2px solid transparent; border-radius: 6px; background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, .4)); background-clip: padding-box; }
+.designer-scrollbar:hover .designer-scrollbar-thumb { background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, .7)); }
+.designer-scrollbar:active .designer-scrollbar-thumb { background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, .85)); }
 .visual-node { --designer-margin-top: 0px; --designer-margin-right: 0px; --designer-margin-bottom: 0px; --designer-margin-left: 0px; position: relative; z-index: var(--designer-component-layer); min-width: 0; min-height: 0; flex: 0 0 auto; overflow: hidden; border: var(--designer-component-border-width) dashed var(--vscode-descriptionForeground); background: transparent; cursor: pointer; }
 .visual-node.selected[draggable="true"] { cursor: move; }
 .designer-width-content { width: fit-content; }
@@ -250,7 +258,7 @@ button, input, select { color: inherit; font: inherit; }
 .designer-grid-cell > .designer-height-parent { height: auto; max-height: none; align-self: stretch; }
 .visual-control { display: grid; place-items: center; padding: 0; }
 .visual-control-content { display: block; max-width: 100%; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.visual-control.designer-placeholder-control { color: #000; background: transparent; }
+.visual-control { color: #000; background: transparent; }
 .designer-empty-content.designer-width-content { min-width: var(--designer-empty-content-min-width); }
 .designer-empty-content.designer-height-content { min-height: var(--designer-empty-content-min-height); }
 .visual-control.designer-multiline > .visual-control-content { overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -267,11 +275,11 @@ button, input, select { color: inherit; font: inherit; }
 .visual-control.designer-width-content > .visual-control-content { max-width: none; overflow-wrap: normal; white-space: pre; }
 .container-node { display: grid; overflow: hidden; }
 .container-content { grid-area: 1 / 1; width: 100%; height: 100%; min-height: 0; padding: var(--designer-layout-spacing); overflow: visible; }
-/* 固定或匹配父级的容器会向适应内容子组件提供可用空间上限；明确固定尺寸的子组件仍可保持自身声明尺寸。 */
-.designer-width-fixed > .container-content > .container-layout-surface > .designer-width-content,
-.designer-width-parent > .container-content > .container-layout-surface > .designer-width-content { max-width: 100%; }
-.designer-height-fixed > .container-content > .container-layout-surface > .designer-height-content,
-.designer-height-parent > .container-content > .container-layout-surface > .designer-height-content { max-height: 100%; }
+/* 普通方向限制适应内容子组件的尺寸；滚动方向保留自然长度，避免内容先被裁剪而无法滚动。 */
+.designer-width-fixed > .container-content > .container-layout-surface:not(.container-scroll-horizontal) > .designer-width-content,
+.designer-width-parent > .container-content > .container-layout-surface:not(.container-scroll-horizontal) > .designer-width-content { max-width: 100%; }
+.designer-height-fixed > .container-content > .container-layout-surface:not(.container-scroll-vertical) > .designer-height-content,
+.designer-height-parent > .container-content > .container-layout-surface:not(.container-scroll-vertical) > .designer-height-content { max-height: 100%; }
 .container-layout-surface.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
 .container-layout-surface.container-scroll-vertical { overflow-x: hidden; overflow-y: auto; }
 .container-layout-surface.container-scroll-horizontal > .designer-width-content { max-width: none; }

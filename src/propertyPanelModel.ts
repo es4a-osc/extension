@@ -16,7 +16,7 @@ import {
 	type Sdk
 } from "./sdk";
 import { resolveDefinitionIconPath } from "./componentIcon";
-import { designerLayoutDefinition } from "./designerDefaults";
+import { designerLayoutDefinition, resolveDesignerLayoutDefinition } from "./designerDefaults";
 import {
 	createPropertyXmlAttributePath,
 	findPropertyXmlElementPath,
@@ -148,48 +148,16 @@ function allowsCustomValue(member: LibraryMember): boolean | undefined {
 		: undefined;
 }
 
-/** 返回与布局常量对应的布局定义；simple.layout 约定 布局_线性 对应 线性布局。 */
+/** 属性编辑器和画布共用投影关联，不以候选常量名称拼接布局定义名称。 */
 function resolveLayoutDefinition(
 	layoutMember: LibraryMember | undefined,
 	layoutExpression: string | undefined,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>
 ): LibraryDefinitionReference | undefined {
-	if (layoutMember?.editor !== "simple.layout" || layoutMember.select === undefined) {
+	if (layoutMember?.projection !== "layout") {
 		return undefined;
 	}
-	const resolvedLayoutExpression = resolveSdkConstantValue(layoutExpression, definitions);
-
-	for (const option of layoutMember.select.options) {
-		const reference = option.value;
-		const separator = reference.lastIndexOf(".");
-		const qualified = separator > 0 && separator < reference.length - 1;
-		const constantName = qualified ? reference.slice(separator + 1) : reference;
-		const constant = qualified
-			? definitions.get(reference.slice(0, separator))?.definition.constants
-				?.find((candidate) => candidate.name === constantName)
-			: Array.from(definitions.values())
-				.flatMap((candidate) => candidate.definition.constants ?? [])
-				.find((candidate) => candidate.name === constantName);
-		if (
-			layoutExpression !== reference
-			&& layoutExpression !== constantName
-			&& layoutExpression !== constant?.value
-			&& resolvedLayoutExpression !== constant?.value
-		) {
-			continue;
-		}
-		const layoutPrefix = "布局_";
-		const layoutName = constantName.startsWith(layoutPrefix)
-			? `${constantName.slice(layoutPrefix.length)}布局`
-			: undefined;
-		const layout = layoutName === undefined ? undefined : definitions.get(layoutName);
-
-		if (layout?.definition.kind === "layout") {
-			return layout;
-		}
-	}
-
-	return undefined;
+	return resolveDesignerLayoutDefinition(layoutExpression, definitions);
 }
 
 /** 返回参与属性计算和源码写入的 SDK 缺省表达式。 */
@@ -282,8 +250,8 @@ function parentLayoutContext(
 	if (expression === undefined) {
 		if (!isContainerDefinition(parentDefinition.definition)) return {};
 		/* 固定投影仅用于筛选子组件属性，不给容器虚构可编辑的布局属性。 */
-		const layout = designerLayoutDefinition(parentDefinition.definition.projection?.layout ?? "frame");
-		return { definition: definitions.get(layout?.name ?? ""), expression: layout?.expression };
+		const layout = designerLayoutDefinition(parentDefinition.definition.projection?.layout ?? "frame", definitions);
+		return { definition: layout, expression: layout?.definition.projection?.layoutValue };
 	}
 	return {
 		definition: resolveLayoutDefinition(layoutMember, expression, definitions),
@@ -511,6 +479,8 @@ export function createPropertyPanelModel(
 		]
 	}];
 	const definition = definitions?.get(componentType);
+	const layoutMember = definitions === undefined ? undefined
+		: getEffectivePropertyByProjection(definition, "layout", definitions)?.member;
 	let layoutDefinition: LibraryDefinitionReference | undefined;
 
 	if (definition !== undefined && definitions !== undefined) {
@@ -520,9 +490,6 @@ export function createPropertyPanelModel(
 		const parentLayoutGroupName = "位于" + (parentLayout.definition?.definition.name ?? "布局");
 		const anchorChoices = siblingAnchorChoices(document.root, selectedNode, definitions);
 		const effectiveProperties = getEffectiveMembers(definition, "properties", definitions);
-		const layoutMember = effectiveProperties.find(
-			(effective) => effective.member.projection === "layout"
-		)?.member;
 		for (const effective of effectiveProperties) {
 			const member = effective.member;
 			const assigned = assignedByName.get(member.name);
@@ -578,10 +545,11 @@ export function createPropertyPanelModel(
 	}
 
 	const layoutGroups = new Map<string, PropertyPanelRow[]>();
-	if (layoutDefinition !== undefined && definitions !== undefined) {
+	if (layoutDefinition !== undefined && definitions !== undefined && layoutMember !== undefined) {
 		for (const effective of getEffectiveMembers(layoutDefinition, "properties", definitions)) {
 			const member = effective.member;
-			const name = "布局." + member.name;
+			// 与画布共用真实布局属性名，编辑路径不能另造“布局.”前缀。
+			const name = layoutMember.name + "." + member.name;
 			const assigned = assignedByName.get(name);
 			const expression = assigned === undefined
 				? member.initializer?.value ?? ""
@@ -616,7 +584,7 @@ export function createPropertyPanelModel(
 	);
 	// 不兼容当前布局的旧赋值仍留在 XML 中无损往返，但不能冒充当前布局的可编辑属性。
 	const otherProperties = remainingProperties.filter(
-		(property) => !propertyName(property).startsWith("布局.")
+		(property) => layoutMember === undefined || !propertyName(property).startsWith(layoutMember.name + ".")
 	);
 	for (const [groupName, rows] of layoutGroups) {
 		appendPropertyGroup(groups, groupName, rows);

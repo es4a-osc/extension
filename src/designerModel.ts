@@ -23,7 +23,6 @@ import {
 import { parseSimpleStringLiteral, serializeSimpleStringLiteral } from "./simpleStringLiteral";
 import {
 	buildDefinitionIndex,
-	definitionExtendsType,
 	getEffectiveMembers,
 	getEffectivePropertyByProjection,
 	isComponentDefinition,
@@ -41,6 +40,7 @@ import {
 	designerDefaultLengthKind,
 	designerLayoutDefinition,
 	designerLayoutKind,
+	resolveDesignerLayoutDefinition,
 	type DesignerLayoutKind
 } from "./designerDefaults";
 import { copyNameCandidate } from "./copyName";
@@ -227,12 +227,13 @@ export interface DesignerComponentNode {
 	readonly resizeWidth?: boolean;
 	/** 容器清单声明的直属可视子组件上限，不计非可视组件。 */
 	readonly limit?: number;
-	/** 已合并真实属性与组件级规则的滚动投影方向。 */
+	/** 清单声明的容器滚动投影方向，不受运行时滚动开关影响。 */
 	readonly scroll?: "horizontal" | "vertical";
+	/** 运行时滚动属性的静态值，不控制设计期导航。 */
 	readonly scrollable?: boolean;
+	/** 运行时滚动条属性的静态值，不控制设计期导航滑块。 */
 	readonly scrollbarEnabled?: boolean;
 	readonly singleLine?: boolean;
-	readonly textComponent: boolean;
 	/** SDK 定义声明的完整运行时类型；悬停提示优先显示此值。 */
 	readonly runtimeType?: string;
 	readonly type: string;
@@ -372,22 +373,34 @@ function writeDesignerAbsolutePosition(
 	);
 }
 
-const FRAME_ALIGNMENT_EXPRESSIONS = {
-	"center:bottom": "对齐_中下",
-	"center:center": "对齐_居中",
-	"center:top": "对齐_中上",
-	"left:bottom": "对齐_左下",
-	"left:center": "对齐_左中",
-	"left:top": "对齐_左上",
-	"right:bottom": "对齐_右下",
-	"right:center": "对齐_右中",
-	"right:top": "对齐_右上"
+const FRAME_ALIGNMENT_VALUES = {
+	"center:bottom": "12",
+	"center:center": "11",
+	"center:top": "10",
+	"left:bottom": "9",
+	"left:center": "8",
+	"left:top": "6",
+	"right:bottom": "15",
+	"right:center": "14",
+	"right:top": "13"
 } as const;
+
+/** 写回时优先使用该属性声明的同值候选；没有候选时直接使用语义数值。 */
+function projectedValueExpression(
+	definition: LibraryDefinitionReference | undefined,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
+	projection: LibraryPropertyProjection,
+	value: string
+): string {
+	return projectedProperty(definition, definitions, projection)?.select?.options.find((option) => (
+		resolveSdkConstantValue(option.value, definitions)?.trim() === value
+	))?.value ?? value;
+}
 
 /** 校验单帧布局父级定位，并拒绝无法安全写回的数值。 */
 function validateDesignerFramePlacement(placement: DesignerFramePlacement): void {
-	const key = `${placement.alignment.horizontal}:${placement.alignment.vertical}` as keyof typeof FRAME_ALIGNMENT_EXPRESSIONS;
-	if (FRAME_ALIGNMENT_EXPRESSIONS[key] === undefined) {
+	const key = `${placement.alignment.horizontal}:${placement.alignment.vertical}` as keyof typeof FRAME_ALIGNMENT_VALUES;
+	if (FRAME_ALIGNMENT_VALUES[key] === undefined) {
 		throw new Error("单帧布局对齐方式无效。");
 	}
 	for (const value of Object.values(placement.margin ?? {})) {
@@ -423,14 +436,14 @@ function writeDesignerFramePlacement(
 			),
 			document
 		);
-	const alignmentKey = `${placement.alignment.horizontal}:${placement.alignment.vertical}` as keyof typeof FRAME_ALIGNMENT_EXPRESSIONS;
+	const alignmentKey = `${placement.alignment.horizontal}:${placement.alignment.vertical}` as keyof typeof FRAME_ALIGNMENT_VALUES;
 	updated = writeDesignerProjectedProperty(
 		updated,
 		componentPath,
 		definition,
 		definitions,
 		"layoutGravity",
-		FRAME_ALIGNMENT_EXPRESSIONS[alignmentKey]
+		projectedValueExpression(definition, definitions, "layoutGravity", FRAME_ALIGNMENT_VALUES[alignmentKey])
 	);
 	for (const [side, projection] of [
 		["left", "leftMargin"],
@@ -456,7 +469,7 @@ function writeDesignerFramePlacement(
 			definition,
 			definitions,
 			"width",
-			"长度_适应内容"
+			projectedValueExpression(definition, definitions, "width", "-1")
 		);
 	}
 	if (placement.fitContentHeight === true) {
@@ -466,7 +479,7 @@ function writeDesignerFramePlacement(
 			definition,
 			definitions,
 			"height",
-			"长度_适应内容"
+			projectedValueExpression(definition, definitions, "height", "-1")
 		);
 	}
 	return updated;
@@ -568,8 +581,11 @@ function effectiveProjectedPropertyExpression(
 }
 
 /** 将 Simple 逻辑字面量转换为设计期样式值。 */
-function designerBoolean(expression: string | undefined): boolean | undefined {
-	const value = expression?.trim().toLocaleLowerCase();
+function designerBoolean(
+	expression: string | undefined,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>
+): boolean | undefined {
+	const value = resolveSdkConstantValue(expression, definitions)?.trim().toLocaleLowerCase();
 	if (value === "真" || value === "true") return true;
 	if (value === "假" || value === "false") return false;
 	return undefined;
@@ -701,16 +717,17 @@ function displayExpression(value: string | undefined): string | undefined {
 /** 按 Simple 自身常量解释组件长度；未显式设置时采用父容器的真实初始布局参数。 */
 function designerLength(
 	expression: string | undefined,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	defaultKind: "content" | "parent" = "content"
 ): DesignerLength | undefined {
-	const value = expression?.trim();
+	const value = resolveSdkConstantValue(expression, definitions)?.trim();
 	if (value === undefined) {
 		return { kind: defaultKind };
 	}
-	if (value === "-1" || value !== undefined && /(?:^|\.)长度_适应内容$/u.test(value)) {
+	if (value === "-1") {
 		return { kind: "content" };
 	}
-	if (value === "-2" || value !== undefined && /(?:^|\.)长度_匹配父级$/u.test(value)) {
+	if (value === "-2") {
 		return { kind: "parent" };
 	}
 	const dipValue = designerDipLiteral(value);
@@ -724,15 +741,21 @@ function designerLength(
 /** 读取布局子属性的 XML 显式值；未声明时使用当前 SDK 布局定义的有效初始值。 */
 function effectiveLayoutPropertyExpression(
 	properties: ReadonlyMap<string, string | undefined>,
+	definition: LibraryDefinitionReference | undefined,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	layout: DesignerLayoutKind,
 	projection: LibraryPropertyProjection
 ): string | undefined {
-	const definitionName = designerLayoutDefinition(layout)?.name;
-	const layoutDefinition = definitionName === undefined ? undefined : definitions.get(definitionName);
+	/* 容器属性和布局成员分别按投影角色取名，不能假定真实属性叫“布局”。 */
+	const layoutProperty = projectedProperty(definition, definitions, "layout");
+	if (layoutProperty === undefined) return undefined;
+	const expression = effectiveProjectedPropertyExpression(properties, definition, definitions, "layout");
+	const layoutDefinition = expression === undefined
+		? designerLayoutDefinition(layout, definitions)
+		: resolveDesignerLayoutDefinition(expression, definitions);
 	const property = projectedProperty(layoutDefinition, definitions, projection);
 	if (property === undefined) return undefined;
-	const explicit = directProperty(properties, "布局." + property.name);
+	const explicit = directProperty(properties, layoutProperty.name + "." + property.name);
 	return explicit ?? property.initializer?.value;
 }
 
@@ -744,13 +767,14 @@ function layoutKind(
 ): DesignerLayoutKind {
 	const layoutExpression = effectiveProjectedPropertyExpression(properties, definition, definitions, "layout");
 	/* 没有有效布局属性值时使用固定投影；未知的实际表达式仍保持只读。 */
-	if (layoutExpression === undefined && isContainerDefinition(definition?.definition)) {
-		return definition?.definition.projection?.layout ?? "frame";
+	if (layoutExpression === undefined) {
+		return isContainerDefinition(definition?.definition) ? definition?.definition.projection?.layout ?? "frame" : "frame";
 	}
-	const initialLayout = designerLayoutKind(layoutExpression, undefined);
+	const initialLayout = designerLayoutKind(layoutExpression, undefined, definitions);
 	return designerLayoutKind(
 		layoutExpression,
-		effectiveLayoutPropertyExpression(properties, definitions, initialLayout, "orientation")
+		effectiveLayoutPropertyExpression(properties, definition, definitions, initialLayout, "orientation"),
+		definitions
 	);
 }
 
@@ -760,13 +784,13 @@ function horizontalContentAlignment(expression: string | undefined): DesignerAli
 	if (value === undefined) {
 		return undefined;
 	}
-	if (["0", "6", "8", "9"].includes(value) || /(?:^|\.)对齐_(?:左|左上|左中|左下)$/u.test(value)) {
+	if (["0", "6", "8", "9"].includes(value)) {
 		return "left";
 	}
-	if (["1", "10", "11", "12"].includes(value) || /(?:^|\.)对齐_(?:水平居中|中上|居中|中下)$/u.test(value)) {
+	if (["1", "10", "11", "12"].includes(value)) {
 		return "center";
 	}
-	if (["2", "13", "14", "15"].includes(value) || /(?:^|\.)对齐_(?:右|右上|右中|右下)$/u.test(value)) {
+	if (["2", "13", "14", "15"].includes(value)) {
 		return "right";
 	}
 	return undefined;
@@ -791,7 +815,7 @@ function booleanProperty(
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	projection: LibraryPropertyProjection
 ): boolean | undefined {
-	return designerBoolean(effectiveProjectedPropertyExpression(properties, definition, definitions, projection));
+	return designerBoolean(effectiveProjectedPropertyExpression(properties, definition, definitions, projection), definitions);
 }
 
 /** 读取继承合并后的属性可写性；缺少 SDK 定义或属性时不开放直接画布修改。 */
@@ -915,7 +939,7 @@ function projectRelativeChildren(
 		for (const projection of RELATIVE_PARENT_PROJECTIONS) {
 			const expression = directProjectedProperty(properties, definition, definitions, projection);
 			if (expression === undefined) continue;
-			const enabled = designerBoolean(expression);
+			const enabled = designerBoolean(expression, definitions);
 			if (enabled === true) rules[projection] = true;
 			if (enabled === undefined) issue ??= "unsupported-expression";
 		}
@@ -953,18 +977,13 @@ function createComponentNode(
 	const definitionValue = definition?.definition;
 	const visual = isVisualComponentDefinition(definitionValue);
 	const window = isWindowDefinition(definitionValue);
-	const textComponent = definitionExtendsType(
-		definitionValue,
-		"simple.runtime.components.文本组件"
-	);
 	const layout = layoutKind(properties, definition, definitions);
 	const projection = isContainerDefinition(definitionValue) ? definitionValue?.projection : undefined;
 	const limit = projection?.limit;
 	const scrollable = booleanProperty(properties, definition, definitions, "scrollable");
-	/* 实际滚动开关优先；固定方向只补足组件没有方向属性的投影。 */
-	const scroll = scrollable === false ? undefined
-		: projection?.scroll === "horizontal" ? "horizontal"
-			: projection?.scroll === "vertical" || scrollable === true ? "vertical" : undefined;
+	/* 设计期只消费固定方向；运行时是否滚动不能使编辑中的子组件无法访问。 */
+	const scroll = projection?.scroll === "horizontal" || projection?.scroll === "vertical"
+		? projection.scroll : undefined;
 	/* 自身布局只控制子组件；组件自身是否可操作由所在父布局决定。 */
 	const layoutReadOnly = visual && parentChildrenLayoutReadOnly;
 	const childrenLayoutReadOnly = layoutReadOnly || layout === "unsupported";
@@ -990,12 +1009,12 @@ function createComponentNode(
 	const gridColumn = designerInteger(directProjectedProperty(properties, definition, definitions, "column"), definitions);
 	const gridRow = designerInteger(directProjectedProperty(properties, definition, definitions, "row"), definitions);
 	const layoutColumns = designerInteger(
-		effectiveLayoutPropertyExpression(properties, definitions, layout, "columnCount"),
+		effectiveLayoutPropertyExpression(properties, definition, definitions, layout, "columnCount"),
 		definitions,
 		1
 	);
 	const layoutRows = designerInteger(
-		effectiveLayoutPropertyExpression(properties, definitions, layout, "rowCount"),
+		effectiveLayoutPropertyExpression(properties, definition, definitions, layout, "rowCount"),
 		definitions,
 		1
 	);
@@ -1093,6 +1112,7 @@ function createComponentNode(
 		gridRow,
 		height: designerLength(
 			directProjectedProperty(properties, definition, definitions, "height"),
+			definitions,
 			designerDefaultLengthKind(parentLayout, "height")
 		),
 		icon: resolveDefinitionIconPath(definition),
@@ -1100,28 +1120,31 @@ function createComponentNode(
 		layoutAllColumnsShrinkable: layout === "grid"
 			? designerBoolean(effectiveLayoutPropertyExpression(
 				properties,
+				definition,
 				definitions,
 				layout,
 				"shrinkAllColumns"
-			))
+			), definitions)
 			: undefined,
 		layoutAllColumnsStretchable: layout === "grid"
 			? designerBoolean(effectiveLayoutPropertyExpression(
 				properties,
+				definition,
 				definitions,
 				layout,
 				"stretchAllColumns"
-			))
+			), definitions)
 			: undefined,
 		layoutBaselineAligned: designerBoolean(effectiveLayoutPropertyExpression(
 			properties,
+			definition,
 			definitions,
 			layout,
 			"baselineAligned"
-		)),
+		), definitions),
 		layoutColumns,
 		layoutContentAlignment: designerAlignment(
-			effectiveLayoutPropertyExpression(properties, definitions, layout, "gravity"),
+			effectiveLayoutPropertyExpression(properties, definition, definitions, layout, "gravity"),
 			definitions
 		),
 		layoutGridSizeValid: layout === "grid"
@@ -1130,7 +1153,7 @@ function createComponentNode(
 		layoutReadOnly,
 		layoutRows,
 		layoutWeightSum: designerNumber(
-			effectiveLayoutPropertyExpression(properties, definitions, layout, "weightSum"),
+			effectiveLayoutPropertyExpression(properties, definition, definitions, layout, "weightSum"),
 			definitions
 		),
 		margin: designerBoxSpacing(properties, definition, definitions, {
@@ -1151,7 +1174,6 @@ function createComponentNode(
 		scrollable,
 		scrollbarEnabled: booleanProperty(properties, definition, definitions, "scrollbarEnabled"),
 		singleLine: booleanProperty(properties, definition, definitions, "singleLine"),
-		textComponent,
 		runtimeType: definitionValue?.type?.trim() || type,
 		type,
 		typeName: definitionValue?.name ?? runtimeTypeShortName(type),
@@ -1167,6 +1189,7 @@ function createComponentNode(
 		),
 		width: designerLength(
 			directProjectedProperty(properties, definition, definitions, "width"),
+			definitions,
 			designerDefaultLengthKind(parentLayout, "width")
 		),
 		weight: designerNumber(directProjectedProperty(properties, definition, definitions, "weight"), definitions)
@@ -1826,11 +1849,11 @@ function designerAlignment(
 	if (value === undefined) return undefined;
 	const horizontal = horizontalContentAlignment(value);
 	let vertical: DesignerAlignment["vertical"];
-	if (["3", "6", "10", "13"].includes(value) || /(?:^|\.)对齐_(?:上|左上|中上|右上)$/u.test(value)) {
+	if (["3", "6", "10", "13"].includes(value)) {
 		vertical = "top";
-	} else if (["4", "8", "11", "14"].includes(value) || /(?:^|\.)对齐_(?:垂直居中|左中|居中|右中)$/u.test(value)) {
+	} else if (["4", "8", "11", "14"].includes(value)) {
 		vertical = "center";
-	} else if (["5", "9", "12", "15"].includes(value) || /(?:^|\.)对齐_(?:下|左下|中下|右下)$/u.test(value)) {
+	} else if (["5", "9", "12", "15"].includes(value)) {
 		vertical = "bottom";
 	}
 	return horizontal === undefined && vertical === undefined ? undefined : { horizontal, vertical };

@@ -301,7 +301,7 @@ test("SDK 对象、方法和常量返回所属类库树导航目标", async () =
 	].join("\r\n");
 	const current = parseSimpleUnitSymbols(fullSource, `${SOURCE_ROOT}\\Current.simple`, SOURCE_ROOT);
 	const source = splitSimpleUnitSource(fullSource).userCode;
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const find = (name: string) => findSimpleDefinition(
 		source,
 		source.indexOf(name) + 1,

@@ -15,7 +15,7 @@ import { parseSimpleUnitSymbols, type SimpleProjectSemanticContext } from "../si
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const CURSOR = "¦";
-const sdkPromise = loadSdk(testSdkPath("sdk.json"));
+const sdkPromise = loadSdk(testSdkPath());
 
 /** 在标记位置查询关键字悬停。 */
 async function hover(markedSource: string): Promise<SimpleKeywordHoverInfo | undefined> {

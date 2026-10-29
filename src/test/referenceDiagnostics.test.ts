@@ -16,12 +16,87 @@ import { parseSimpleUnitSymbolsFromModel } from "../simpleUnitSymbols";
 import { simpleTestProjectPath, simpleTestUnitPath } from "./testProjects";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 import { test } from "node:test";
-import { loadSdk } from "../sdk";
+import { loadSdk, type Sdk } from "../sdk";
+import { buildDocumentTokenRules, tokenizeSimpleText } from "../compilerTokens";
 import { analyzeSimpleReferences, analyzeSimpleReferencesAsync } from "../referenceDiagnostics";
 import { refactoringContext, simpleIdentifierSpans, type RefactoringUnit } from "../refactoringModel";
 import { inspectSimplePropertyXml } from "../propertyXml";
 
-const sdkPromise = loadSdk(testSdkPath("sdk.json"));
+const sdkPromise = loadSdk(testSdkPath());
+
+test("静态工具与实例继承常量在诊断、补全、悬停、跳转和着色中使用同一访问规则", async () => {
+	const baseSdk = await sdkPromise;
+	const sdk: Sdk = {
+		...baseSdk,
+		manifests: [...baseSdk.manifests, {
+			name: "访问规则测试库", kind: "library", directory: "C:/diagnostics/sdk/library", filePath: "C:/diagnostics/sdk/library/library.json",
+			categories: [{ name: "测试", definitions: [
+				{ name: "工具", kind: "object", type: "example.工具", functions: [{ name: "取品牌", static: true, return: "文本型" }] },
+				{ name: "基类", kind: "object", type: "example.基类", constants: [{ name: "轮播效果_深度", type: "文本型", value: '"Depth"' }] },
+				{ name: "图片轮播", kind: "object", type: "example.图片轮播", inherits: ["example.基类"], functions: [{ name: "置效果", params: [{ name: "效果", type: "文本型" }] }] }
+			] }]
+		}]
+	};
+	const code = [
+		"变量 轮播 为 example.图片轮播", "过程 Run()",
+		"\texample.工具.取品牌()", "\t轮播.置效果(轮播.轮播效果_深度)",
+		"\t轮播.置效果(example.基类.轮播效果_深度)", "结束 过程", ""
+	].join("\r\n");
+	const unit: RefactoringUnit = { filePath: path.resolve("C:/diagnostics/src/对象1.simple"), sourceRoot: path.resolve("C:/diagnostics/src"), userCode: code, property: inspectSimplePropertyXml("$属性\r\n$资源 $对象\r\n$结束 $属性\r\n") };
+	const context = refactoringContext(unit, [unit]);
+	assert.deepEqual(analyzeSimpleReferences(code, sdk, context), []);
+	for (const [qualifier, name, owner] of [["example.工具", "取品牌", "工具"], ["轮播", "轮播效果_深度", "基类"], ["example.基类", "轮播效果_深度", "基类"]] as const) {
+		const offset = code.indexOf(`${qualifier}.${name}`) + qualifier.length + 1;
+		assert.equal(findSimpleDefinition(code, offset, sdk, context)?.librarySymbol?.definitionName, owner);
+		assert.equal(findSimpleKeywordHover(code, offset, sdk, context)?.name, name);
+		assert.ok(provideSimpleCompletions(code, offset, sdk, context)?.candidates.some((candidate) => candidate.name === name));
+	}
+	const tokens = tokenizeSimpleText(code, buildDocumentTokenRules(code, sdk, context));
+	assert.equal(tokens.filter((token) => token.text === "轮播效果_深度" && token.type === "variable" && token.modifiers.includes("readonly")).length, 2);
+	assert.ok(tokens.some((token) => token.text === "取品牌" && token.type === "method"));
+
+	// 常量例外不放宽其它成员：实例方法不能经类型调用，静态函数也不会变成全局函数。
+	const invalid = code.replace("结束 过程", '\texample.图片轮播.置效果("Depth")\r\n\t取品牌()\r\n\t轮播.不存在\r\n结束 过程');
+	assert.deepEqual(analyzeSimpleReferences(invalid, sdk, refactoringContext({ ...unit, userCode: invalid }, [{ ...unit, userCode: invalid }])).map((issue) => [issue.code, invalid.slice(issue.start, issue.end)]), [
+		["unknownMember", "置效果"], ["unknownName", "取品牌"], ["unknownMember", "不存在"]
+	]);
+});
+
+test("跨物理行的事件、过程及函数参数保留声明位置、传址和作用域", async () => {
+	const sdk = await sdkPromise;
+	for (const eol of ["\r\n", "\n"]) {
+		for (const [declaration, ending] of [["过程 处理", "过程"], ["静态 函数 处理", "函数"], ["事件 传感器.加速度改变", "事件"]]) {
+			const code = [
+				`${declaration}(传值 横向值 为 _`, "\t单精度小数型, 纵向值 为 单精度小数型, _",
+				`\t传址 垂直值 为 单精度小数型)${ending === "函数" ? " 为 单精度小数型" : ""}`,
+				"\t横向值 = 纵向值 + 垂直值", `结束 ${ending}`,
+				"过程 Outside()", "\t横向值 = 1", "结束 过程", ""
+			].join(eol);
+			const property = inspectSimplePropertyXml(["$属性", "$资源 $窗口", "$定义 主窗口 $为 窗口", "$定义 传感器 $为 加速度传感器", "$结束 $定义", "$结束 $定义", "$结束 $属性", ""].join(eol));
+			const unit: RefactoringUnit = { filePath: path.resolve("C:/diagnostics/src/主窗口.simple"), sourceRoot: path.resolve("C:/diagnostics/src"), userCode: code, property };
+			const context = refactoringContext(unit, [unit]);
+			const analysis = createSimpleSourceAnalysis(code, sdk, context);
+			const issues = analyzeSimpleReferences(code, sdk, context, property.document);
+			assert.deepEqual(issues.map((issue) => [issue.code, issue.start]), [["unknownName", code.lastIndexOf("横向值")]], `${declaration} ${JSON.stringify(eol)}`);
+			assert.deepEqual(await analyzeSimpleReferencesAsync(code, sdk, context, property.document), issues);
+			for (const name of ["横向值", "纵向值", "垂直值"]) {
+				const declarationStart = code.indexOf(name);
+				const bodyStart = code.indexOf(name, code.indexOf("\t横向值 ="));
+				for (const offset of [declarationStart, bodyStart]) {
+					const binding = resolveSimpleBinding(code, offset, name, context, analysis);
+					assert.equal(binding?.kind, "parameter");
+					assert.equal(binding?.declarationStart, declarationStart);
+					assert.equal(binding?.passing, name === "垂直值" ? "传址" : name === "横向值" ? "传值" : undefined);
+					assert.deepEqual(binding, resolveSimpleBinding(code, offset, name, context));
+					assert.equal(findSimpleDefinition(code, offset, sdk, context)?.targetOffset, declarationStart);
+					assert.equal(findSimpleKeywordHover(code, offset, sdk, context)?.name, name);
+				}
+			}
+			const candidates = provideSimpleCompletions(code, code.indexOf("\t横向值 =") + 1, sdk, context)?.candidates;
+			assert.ok(["横向值", "纵向值", "垂直值"].every((name) => candidates?.some((candidate) => candidate.name === name)));
+		}
+	}
+});
 
 test("十六进制数字和续行符不是名称，真实同名标识符仍报告诊断", async () => {
 	const sdk = await sdkPromise;

@@ -17,7 +17,7 @@ import { buildSdkSignatures, findCallContext } from "../signatures";
 import { testSdkPath } from "./testFixtures";
 
 test("点号后的匹配是运行库方法，普通表达式中的匹配仍是运算符", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const source = [
 		"过程 Run()",
 		"\t变量 表达式 为 正则表达式",

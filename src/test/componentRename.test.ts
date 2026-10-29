@@ -129,7 +129,7 @@ describe("Simple 组件改名", () => {
 		].join("\r\n");
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const unsynchronized = renameSimpleComponent(splitSimpleUnitSource(source).userCode, document, "/属性/定义[1]/定义[1]/定义[1]", "中心按钮", sdk, false);
 		assert.equal(unsynchronized.userCode, splitSimpleUnitSource(source).userCode);
 		assert.equal(serializeSimplePropertySource(unsynchronized.propertyDocument), splitSimpleUnitSource(source).propertySource.replace("$定义 按钮1 $为", "$定义 中心按钮 $为"));

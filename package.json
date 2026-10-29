@@ -692,7 +692,7 @@
 					"type": "string",
 					"default": "",
 					"scope": "window",
-					"description": "SDK 入口 JSON 文件的完整绝对路径。建议使用“ES4A: 选择 SDK”命令设置。"
+					"description": "SDK 根目录的完整绝对路径。建议使用“ES4A: 选择 SDK”命令设置。"
 				}
 			}
 		},

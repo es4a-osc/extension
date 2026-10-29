@@ -10,6 +10,7 @@ import {
 	type LibraryDefinitionReference,
 	type LibraryManifest,
 	type LibraryMember,
+	type LibraryMemberGroup,
 	type LibraryParameter,
 	type Sdk
 } from "./sdk";
@@ -65,9 +66,19 @@ export interface SimpleProjectSemanticContext {
 	readonly resources?: SimpleProjectResourceIndex;
 }
 
-/** 判断一个成员是否由用户单元声明为静态成员。 */
+/** 判断成员是否显式声明为静态，适用于项目单元和 SDK 清单。 */
 export function isStaticProjectMember(member: LibraryMember): boolean {
 	return member.static === true;
+}
+
+/** 常量可通过类型或实例读取；其它成员仍按声明的静态或实例访问方式解析。 */
+export function isSimpleMemberAccessible(member: LibraryMember, group: LibraryMemberGroup, access: "instance" | "static"): boolean {
+	if (group === "constants") {
+		return true;
+	}
+
+	const staticMember = member.global === true || isStaticProjectMember(member);
+	return (access === "static") === staticMember;
 }
 
 /** 按顶层逗号拆分参数、变量或接口列表。 */

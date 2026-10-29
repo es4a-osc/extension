@@ -964,12 +964,17 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		return noPermissions(uri);
 	}
 
-	/** 从真实单元读取并返回用户代码。 */
+	/** 读取与保存共用同一单元队列，避免文件被截断写入时重新加载为空代码。 */
 	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
 		if (uri.scheme === SIMPLE_REFACTOR_SCHEME) {
 			this.receipt(uri);
 			return new Uint8Array();
 		}
+		return this.enqueuePersistence(uri, () => this.readCodeFileNow(uri));
+	}
+
+	/** 在持久化边界内读取代码及共享 XML 会话，不能穿插到同一单元的写入过程中。 */
+	private async readCodeFileNow(uri: vscode.Uri): Promise<Uint8Array> {
 		const sourceUri = this.requireSourceUri(uri);
 		const sourceBytes = await vscode.workspace.fs.readFile(await this.nativeBackingUri(sourceUri, true));
 		const key = uriKey(uri);

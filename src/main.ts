@@ -12,7 +12,7 @@ import { SimpleRenameProvider } from "./renameProvider";
 import { SimpleDiagnosticProvider } from "./diagnosticProvider";
 import { SimpleDeclarationRenameController } from "./declarationRenameController";
 import { isPathInsideOrEqual, mostSpecificSourceRoot } from "./simpleProjectPaths";
-import { findSdkManifest, loadSdk, type Sdk } from "./sdk";
+import { findSdkDirectory, loadSdk, type Sdk } from "./sdk";
 import {
 	SIMPLE_COMPLETION_TRIGGER_CHARACTERS,
 	SimpleCompletionProvider
@@ -129,25 +129,22 @@ export async function loadConfiguredSdk(): Promise<Sdk | undefined> {
 		return undefined;
 	}
 
-	const sdkFile = await findSdkManifest(configuredPath);
-	return sdkFile === undefined ? undefined : loadSdk(sdkFile);
+	const directory = await findSdkDirectory(configuredPath);
+	return directory === undefined ? undefined : loadSdk(directory);
 }
 
 /**
- * 打开 SDK 入口选择器，并将完整文件路径保存到全局扩展设置。
+ * 打开 SDK 目录选择器，并将完整目录路径保存到全局扩展设置。
  *
- * @returns 用户成功选择本地 JSON 文件时返回 `true`；取消或无效时返回 `false`。
+ * @returns 用户成功选择有效 SDK 根目录时返回 `true`；取消或无效时返回 `false`。
  */
-async function selectSdkManifest(): Promise<boolean> {
+async function selectSdkDirectory(): Promise<boolean> {
 	const selection = await vscode.window.showOpenDialog({
-		canSelectFiles: true,
-		canSelectFolders: false,
+		canSelectFiles: false,
+		canSelectFolders: true,
 		canSelectMany: false,
-		filters: {
-			"SDK 入口文件": ["json"]
-		},
-		openLabel: "选择 SDK 入口",
-		title: "选择 SDK 入口文件"
+		openLabel: "选择 SDK 目录",
+		title: "选择 SDK 目录"
 	});
 	const selected = selection?.[0];
 
@@ -156,13 +153,19 @@ async function selectSdkManifest(): Promise<boolean> {
 	}
 
 	if (selected.scheme !== "file") {
-		await vscode.window.showErrorMessage("请选择本地 SDK 入口文件。");
+		await vscode.window.showErrorMessage("请选择本地 SDK 目录。");
+		return false;
+	}
+
+	const directory = await findSdkDirectory(selected.fsPath);
+	if (directory === undefined) {
+		await vscode.window.showErrorMessage("请选择包含 simple/SimpleCompiler.json 和 simple/SimpleAndroidRuntime.json 的 SDK 根目录。");
 		return false;
 	}
 
 	await vscode.workspace.getConfiguration("es4a").update(
 		"sdk.path",
-		path.resolve(selected.fsPath),
+		directory,
 		vscode.ConfigurationTarget.Global
 	);
 	return true;
@@ -803,7 +806,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		async () => {
 			sdkSelectionInProgress = true;
 			try {
-				if (await selectSdkManifest()) {
+				if (await selectSdkDirectory()) {
 					await reloadSdkAndRefreshLibraries();
 				}
 			} finally {
@@ -1091,10 +1094,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		/* 激活完成后仅提示一次；切换文档和项目不会重复触发。 */
 		if (activeSdk === undefined && !sdkSelectionInProgress) {
 			const action = await vscode.window.showInformationMessage(
-				"尚未加载 SDK，请选择 SDK 入口文件 sdk.json。",
-				"选择 SDK 清单"
+				"尚未加载 SDK，请选择 SDK 目录。",
+				"选择 SDK 目录"
 			);
-			if (action === "选择 SDK 清单" && activeSdk === undefined && !sdkSelectionInProgress) {
+			if (action === "选择 SDK 目录" && activeSdk === undefined && !sdkSelectionInProgress) {
 				await vscode.commands.executeCommand("es4a.selectSdk");
 			}
 		}

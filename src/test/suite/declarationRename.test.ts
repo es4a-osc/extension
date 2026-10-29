@@ -10,7 +10,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { toSimpleCodeUri } from "../../simpleCodeFileSystem";
+import { toSimpleCodeUri, toSimpleSourceUri } from "../../simpleCodeFileSystem";
+import { isPathInsideOrEqual } from "../../simpleProjectPaths";
+import { closeSimpleUnitTabsInDirectories } from "../../simpleUnitTabs";
 import { SimpleCodeFileSystemProvider } from "../../simpleCodeFileSystem";
 import { SimpleDeclarationRenameController } from "../../declarationRenameController";
 import { SimpleProjectRefactoring } from "../../projectRefactoring";
@@ -52,6 +54,14 @@ async function withProject(code: string, run: (editor: vscode.TextEditor, file: 
 		assert.ok(ready);
 		await run(editor, file, directory);
 	} finally {
+		/* 先结束真实文档生命周期，再删除临时项目，避免后续工作区重构保存已不存在的文件。 */
+		for (const document of vscode.workspace.textDocuments) {
+			const source = toSimpleSourceUri(document.uri);
+			if (!document.isClosed && document.isDirty && source !== undefined && isPathInsideOrEqual(directory, source.fsPath)) {
+				assert.ok(await document.save());
+			}
+		}
+		assert.ok(await closeSimpleUnitTabsInDirectories([directory]));
 		await vscode.commands.executeCommand("es4a.internal.removeProject", project);
 		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	}
@@ -69,7 +79,7 @@ suite("声明直接改名", () => {
 	suiteSetup(async () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
-		await configuration.update("sdk.path", testSdkPath("sdk.json"), vscode.ConfigurationTarget.Global);
+		await configuration.update("sdk.path", testSdkPath(), vscode.ConfigurationTarget.Global);
 		await vscode.extensions.getExtension("es4a.es4a")!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
@@ -249,7 +259,7 @@ suite("声明直接改名", () => {
 			const projectFile = path.join(directory, "project.properties");
 			await fs.writeFile(projectFile, "source=./src\r\n");
 			const project = await loadSimpleProject(projectFile);
-			const sdk = await loadSdk(testSdkPath("sdk.json"));
+			const sdk = await loadSdk(testSdkPath());
 			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(file)));
 			const editor = await vscode.window.showTextDocument(document, { preview: false });
 			const errors: string[] = [];
@@ -297,7 +307,7 @@ suite("声明直接改名", () => {
 			const projectFile = path.join(directory, "project.properties");
 			await fs.writeFile(projectFile, "source=./src\r\n");
 			const project = await loadSimpleProject(projectFile);
-			const sdk = await loadSdk(testSdkPath("sdk.json"));
+			const sdk = await loadSdk(testSdkPath());
 			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(file)));
 			const editor = await vscode.window.showTextDocument(document, { preview: false });
 			const errors: string[] = [];

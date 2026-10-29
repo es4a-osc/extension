@@ -13,7 +13,7 @@ import { testSdkPath } from "./testFixtures";
 import { loadCompatibilitySdk, validateSdkCompatibility } from "./sdkCompatibility";
 
 test("固定契约的全部定义成员和图标均被扩展消费", async () => {
-	const coverage = await validateSdkCompatibility(await loadSdk(testSdkPath("sdk.json")));
+	const coverage = await validateSdkCompatibility(await loadSdk(testSdkPath()));
 	assert.ok(coverage.definitions > 0 && coverage.members > 0 && coverage.icons > 0 && coverage.components > 0);
 });
 
@@ -28,19 +28,19 @@ test("附加清单的组件名称参数文案和图标变化无需修改既有�
 				inherits: ["simple.runtime.components.组件"], functions: [{ name: "发送", params: [{ name: parameter, type: "文本型", description: `说明：${name}` }] }]
 			}]
 		}] }), "utf8");
-		const coverage = await validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath("sdk.json"), [manifest]));
-		const base = await validateSdkCompatibility(await loadSdk(testSdkPath("sdk.json")));
+		const coverage = await validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath(), [manifest]));
+		const base = await validateSdkCompatibility(await loadSdk(testSdkPath()));
 		assert.equal(coverage.definitions, base.definitions + 1);
 		assert.equal(coverage.members, base.members + 1);
 		assert.equal(coverage.parameters, base.parameters + 1);
 		assert.equal(coverage.icons, base.icons + 1);
 	}
 	await fs.writeFile(path.join(directory, "second.svg"), '<svg viewBox="0 0 24 24"><script>bad()</script></svg>', "utf8");
-	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath("sdk.json"), [manifest])), /图标无效/u);
+	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath(), [manifest])), /图标无效/u);
 });
 
 for (const omitted of ["定义", "成员"] as const) test(`全量验证能够检出消费结果遗漏${omitted}`, async () => {
-	const original = await loadSdk(testSdkPath("sdk.json"));
+	const original = await loadSdk(testSdkPath());
 	let changed = false;
 	const damaged = {
 		...original,
@@ -69,9 +69,9 @@ test("损坏清单和循环继承仍使全量兼容验证失败", async (context
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
 	const file = path.join(directory, "library.json");
 	await fs.writeFile(file, "{broken", "utf8");
-	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath("sdk.json"), [file])));
+	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath(), [file])));
 	await fs.writeFile(file, JSON.stringify({ name: "循环", kind: "library", categories: [{
 		name: "测试", definitions: [{ name: "测试类型", kind: "object", type: "test.Cycle", inherits: ["test.Cycle"] }]
 	}] }), "utf8");
-	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath("sdk.json"), [file])), /继承.*循环|循环继承/u);
+	await assert.rejects(async () => validateSdkCompatibility(await loadCompatibilitySdk(testSdkPath(), [file])), /继承.*循环|循环继承/u);
 });

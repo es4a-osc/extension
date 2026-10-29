@@ -21,7 +21,7 @@ suite("活动标签 F5", () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-active-tab-debug-"));
 		const projectFile = path.join(directory, "project.properties");
 		const sourceUri = vscode.Uri.file(path.join(directory, "src", "主窗口.simple"));
-		const sdkFile = path.join(directory, "sdk.json");
+		const sdkDirectory = path.join(directory, "sdk");
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		const previousSdk = configuration.inspect<string>("sdk.path")?.globalValue;
 		const completed: vscode.TaskProcessEndEvent[] = [];
@@ -35,14 +35,17 @@ suite("活动标签 F5", () => {
 			await fs.mkdir(path.dirname(sourceUri.fsPath), { recursive: true });
 			await fs.writeFile(sourceUri.fsPath, source);
 			await fs.writeFile(projectFile, "main=主窗口\r\nsource=./src\r\nname=当前标签调试\r\n");
-			await fs.writeFile(path.join(directory, "debug.bat"), "@echo off\r\nexit /b 0\r\n");
-			await fs.writeFile(sdkFile, JSON.stringify({
-				name: "F5 测试 SDK",
-				compiler: testSdkPath("simple/SimpleCompiler.json"),
-				runtime: testSdkPath("simple/SimpleAndroidRuntime.json"),
-				capabilities: { debug: { command: "debug.bat", arguments: ["PROJECT_FILE"] } }
-			}));
-			await configuration.update("sdk.path", sdkFile, vscode.ConfigurationTarget.Global);
+			await fs.mkdir(path.join(sdkDirectory, "utils", "project"), { recursive: true });
+			await fs.cp(testSdkPath("simple"), path.join(sdkDirectory, "simple"), { recursive: true });
+			await fs.writeFile(path.join(sdkDirectory, "utils", "project", "project.ps1"), [
+				"[CmdletBinding()]",
+				"param($Action, $ProjectFile)",
+				"$invocation = @{ action = $Action; project = $ProjectFile } | ConvertTo-Json -Compress",
+				"[IO.File]::WriteAllText((Join-Path (Split-Path -Parent $ProjectFile) 'invocation.json'), $invocation)",
+				"exit 0",
+				""
+			].join("\r\n"));
+			await configuration.update("sdk.path", sdkDirectory, vscode.ConfigurationTarget.Global);
 			await vscode.extensions.getExtension("es4a.es4a")!.activate();
 			await vscode.commands.executeCommand("es4a.refreshLibraries");
 			await vscode.commands.executeCommand("es4a.internal.addProject", projectFile);
@@ -54,6 +57,11 @@ suite("活动标签 F5", () => {
 				assert.equal(completed.length, count + 1, "F5 应进入 ES4A 当前标签调试命令");
 				assert.equal(completed[count]!.exitCode, 0);
 				assert.equal(completed[count]!.execution.task.definition.capability, "debug");
+				// 真实任务只传项目文件；脚本自行定位产物，不接受外部 APK 路径。
+				assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "invocation.json"), "utf8")), {
+					action: "debug",
+					project: projectFile
+				});
 			};
 			for (const preview of [true, false]) {
 				await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(toSimpleCodeUri(sourceUri)), { preview });

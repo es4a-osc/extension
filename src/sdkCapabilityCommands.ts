@@ -1,5 +1,5 @@
 /*
-把 SDK 清单声明的项目能力和工具能力装配为通用 VS Code 命令与任务。
+把 SDK 提供的项目能力和工具能力装配为通用 VS Code 命令与任务。
 xhwsd@qq.com 2026-9-4
 */
 
@@ -54,7 +54,7 @@ export function createSdkCapabilityExecution(
 	args: readonly string[]
 ): vscode.ProcessExecution | vscode.ShellExecution {
 	const cwd = os.homedir();
-	const windowsShell = createWindowsSdkCapabilityShell();
+	const windowsShell = createWindowsSdkCapabilityShell(process.platform, process.env.ComSpec, command);
 	if (windowsShell !== undefined) {
 		return new vscode.ProcessExecution(
 			windowsShell.executable,
@@ -75,7 +75,7 @@ export function createSdkCapabilityExecution(
 	);
 }
 
-/** 按清单顺序让用户选择一个当前 SDK 能力。 */
+/** 按 SDK 能力顺序让用户选择一个当前 SDK 能力。 */
 async function selectCapability(
 	capabilities: readonly SdkCapability[],
 	placeHolder: string
@@ -102,7 +102,7 @@ async function runProjectCapability(
 	}
 	const sdk = getSdk();
 	if (sdk === undefined) {
-		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
+		throw new Error("尚未加载 SDK，请选择 SDK 目录。");
 	}
 	const invocation = createProjectCapabilityInvocation(sdk, capabilityId, project);
 	await ensureCommandFile(invocation.command);
@@ -126,7 +126,7 @@ async function runProjectCapability(
 async function runToolCapability(getSdk: () => Sdk | undefined): Promise<void> {
 	const sdk = getSdk();
 	if (sdk === undefined) {
-		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
+		throw new Error("尚未加载 SDK，请选择 SDK 目录。");
 	}
 	const capability = await selectCapability(sdk.capabilities.tools, "选择要启动的 SDK 工具");
 	if (capability === undefined) {
@@ -142,7 +142,7 @@ async function runToolCapability(getSdk: () => Sdk | undefined): Promise<void> {
 		vscode.TaskScope.Global,
 		capability.name,
 		"ES4A",
-		createSdkCapabilityExecution(capability.command, []),
+		createSdkCapabilityExecution(capability.command, capability.commandArguments ?? []),
 		[]
 	);
 	configureTask(task, capability.description);

@@ -26,6 +26,7 @@ import {
 	type SimpleUnitSymbol
 } from "./simpleUnitSymbols";
 import type { SimplePropertyXmlParseResult } from "./propertyXml";
+import { findProjectForSource } from "./projectCapability";
 
 /** 一个仍在编辑器中打开、可能尚未保存的单元模型。 */
 export interface OpenSimpleUnitSnapshot {
@@ -52,18 +53,34 @@ interface IndexedProject {
 
 /** 一个打开文档版本已经解析出的单元符号。 */
 interface CachedOpenUnitSymbol {
+	readonly filePath: string;
 	readonly projectSnapshotVersion: number;
 	readonly propertyDocument: SimplePropertyXmlParseResult["document"];
 	readonly sourceRoot: string;
 	readonly symbol: SimpleUnitSymbol;
+	readonly userCode: string;
 	readonly version: number;
 }
 
 /** 同一打开文档在当前全局语义代次中的完整上下文。 */
 interface CachedSemanticContext {
 	readonly context: SimpleProjectSemanticContext | undefined;
+	readonly filePath: string;
 	readonly generation: number;
 	readonly projectSnapshotVersion: number;
+	readonly propertyDocument: SimplePropertyXmlParseResult["document"];
+	readonly source: string | undefined;
+	readonly openUnits: readonly OpenSimpleUnitSnapshot[];
+}
+
+/** 设计器的未保存 XML 不触发代码版本变化，跨单元上下文仍须验证这些真实输入。 */
+function sameOpenUnits(left: readonly OpenSimpleUnitSnapshot[], right: readonly OpenSimpleUnitSnapshot[]): boolean {
+	return left.length === right.length && left.every((unit, index) => {
+		const other = right[index];
+		return other !== undefined && filePathKey(unit.filePath) === filePathKey(other.filePath)
+			&& unit.userCode === other.userCode && unit.property.document === other.property.document
+			&& unit.version === other.version;
+	});
 }
 
 /** 读取一个项目的全部单元，单个损坏文件不会阻断其他单元。 */
@@ -136,11 +153,11 @@ export class ProjectSymbolIndex {
 	private unitsByPath = new Map<string, SimpleUnitSymbol>();
 	private updateVersion = 0;
 
-	/** 重新读取当前 ES4A 项目列表中的全部单元。 */
-	async updateProjects(projects: readonly SimpleProjectInfo[]): Promise<void> {
+	/** 重新读取全部单元；重构或关闭期间过期的扫描不能覆盖最后一份完整快照。 */
+	async updateProjects(projects: readonly SimpleProjectInfo[], isCurrent: () => boolean = () => true): Promise<void> {
 		const version = ++this.updateVersion;
 		const indexedProjects = await Promise.all(projects.map(indexProject));
-		if (version === this.updateVersion) {
+		if (version === this.updateVersion && isCurrent()) {
 			this.projects = indexedProjects;
 			this.projectSnapshotVersion += 1;
 			this.unitsByPath = new Map(indexedProjects.flatMap(
@@ -182,10 +199,12 @@ export class ProjectSymbolIndex {
 			const cached = this.openUnitCache.get(identity);
 			if (
 				cached !== undefined
+				&& cached.filePath === filePathKey(snapshot.filePath)
 				&& cached.projectSnapshotVersion === this.projectSnapshotVersion
 				&& cached.propertyDocument === snapshot.property.document
 				&& cached.sourceRoot === sourceRoot
 				&& cached.version === version
+				&& cached.userCode === snapshot.userCode
 			) {
 				return cached.symbol;
 			}
@@ -199,10 +218,12 @@ export class ProjectSymbolIndex {
 		);
 		if (identity !== undefined && version !== undefined) {
 			this.openUnitCache.set(identity, {
+				filePath: filePathKey(snapshot.filePath),
 				projectSnapshotVersion: this.projectSnapshotVersion,
 				propertyDocument: snapshot.property.document,
 				sourceRoot,
 				symbol,
+				userCode: snapshot.userCode,
 				version
 			});
 		}
@@ -222,12 +243,18 @@ export class ProjectSymbolIndex {
 		openUnits: readonly OpenSimpleUnitSnapshot[] = [],
 		cacheKey?: SimpleSemanticContextCacheKey
 	): SimpleProjectSemanticContext | undefined {
+		/* 自动改名会使用编辑前代码建立绑定；同一文档代次不代表分析输入相同。 */
+		const currentFileKey = filePathKey(filePath);
 		if (cacheKey !== undefined) {
 			const cached = this.contextCache.get(cacheKey.identity);
 			if (
 				cached !== undefined
+				&& cached.filePath === currentFileKey
 				&& cached.generation === cacheKey.generation
 				&& cached.projectSnapshotVersion === this.projectSnapshotVersion
+				&& cached.propertyDocument === currentProperty?.document
+				&& cached.source === currentSource
+				&& sameOpenUnits(cached.openUnits, openUnits)
 			) {
 				return cached.context;
 			}
@@ -238,16 +265,19 @@ export class ProjectSymbolIndex {
 			if (cacheKey !== undefined) {
 				this.contextCache.set(cacheKey.identity, {
 					context,
+					filePath: currentFileKey,
 					generation: cacheKey.generation,
-					projectSnapshotVersion: this.projectSnapshotVersion
+					projectSnapshotVersion: this.projectSnapshotVersion,
+					propertyDocument: currentProperty?.document,
+					source: currentSource,
+					openUnits
 				});
 			}
 			return context;
 		};
 		const resolvedFilePath = path.resolve(filePath);
-		const indexed = this.projects.find((entry) => entry.project.sourceDirectories.some(
-			(sourceRoot) => isPathInsideOrEqual(sourceRoot, resolvedFilePath)
-		));
+		const project = findProjectForSource(this.projects.map((entry) => entry.project), resolvedFilePath);
+		const indexed = this.projects.find((entry) => entry.project === project);
 		if (indexed === undefined) {
 			if (currentSource !== undefined && currentProperty !== undefined) {
 				const currentUnit = parseSimpleUnitSymbolsFromModel(
@@ -286,7 +316,6 @@ export class ProjectSymbolIndex {
 				matchingOpenUnit = openUnit;
 			}
 		}
-		const currentFileKey = filePathKey(resolvedFilePath);
 		let currentUnit = unitsByPath.get(currentFileKey);
 		if (currentSource !== undefined) {
 			const sourceRoot = mostSpecificSourceRoot(

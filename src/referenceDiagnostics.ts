@@ -34,7 +34,8 @@ function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, cont
 		?.events?.map((event) => event.name));
 	const knownType = (name: string): boolean => compilerTypes.has(name) || resolveSimpleDefinitionName(name, definitions) !== undefined;
 	const types: Array<{ start: number; end: number }> = [];
-	for (const match of masked.matchAll(/(?:^|[ \t])为[ \t]+([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)/gmu)) {
+	/* 类型前的合法续行属于声明分隔，不能将其下划线误报为类型名称。 */
+	for (const match of masked.matchAll(/(?:^|[ \t])为[ \t]+(?:_\r?\n[ \t]*)*([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)/gmu)) {
 		yield;
 		const name = match[1]!;
 		const start = match.index + match[0].lastIndexOf(name);

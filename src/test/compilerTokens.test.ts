@@ -44,10 +44,10 @@ function documentModel(source: string): {
 
 test("编译器清单动态生成语义着色规则", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [
 			{
@@ -224,10 +224,10 @@ test("变量、常量、参数、属性、事件和组件实例在声明与引�
 
 test("根据 SDK 类型和继承关系着色组件类型及点号成员", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [
 			{
@@ -368,10 +368,10 @@ test("同名重载声明和调用均保持函数着色", () => {
 
 test("完整代码复用用户代码规则并补充属性区名称和对象类名着色", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [
 			{
@@ -451,7 +451,7 @@ test("Tetris 完整代码中的布局限定属性按 SDK 着色", async () => {
 		"Tetris", "src", "simple", "samples", "tetris", "Tetris.simple"
 	);
 	const source = await fs.readFile(filePath, "utf8");
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const project = await loadSimpleProject(simpleTestProjectPath("Tetris", "project.properties"));
 	const index = new ProjectSymbolIndex();
 	await index.updateProjects([project]);
@@ -495,10 +495,10 @@ test("Tetris 完整代码中的布局限定属性按 SDK 着色", async () => {
 
 test("运行库全局名称与静态、实例成员按真实访问方式着色", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [
 			{
@@ -559,10 +559,10 @@ test("运行库全局名称与静态、实例成员按真实访问方式着色",
 
 test("创建初始化器为变量提供组件类型及成员着色", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [{
 			categories: [{
@@ -595,10 +595,10 @@ test("创建初始化器为变量提供组件类型及成员着色", () => {
 
 test("类型别名和变体型创建赋值参与成员链语义着色", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\SDK",
-		filePath: "C:\\SDK\\entry.json",
 		issues: [],
 		manifests: [{
 			categories: [{

@@ -5,13 +5,12 @@ xhwsd@qq.com 2026-10-14
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { createComponentIconSources, resolveDefinitionIconPath } from "../componentIcon";
 import { createSimpleDesignerModel } from "../designerModel";
 import {
 	buildDefinitionIndex, getEffectiveMembers, isComponentDefinition, isWindowDefinition,
-	LIBRARY_MEMBER_GROUPS, loadSdk, type LibraryDefinitionReference, type LibraryMember,
+	LIBRARY_MEMBER_GROUPS, loadSdk, readLibraryManifest, resolveManifestInheritance, type LibraryDefinitionReference, type LibraryMember,
 	type LibraryMemberGroup, type Sdk
 } from "../sdk";
 import { buildSdkSignatures } from "../signatures";
@@ -28,41 +27,14 @@ export interface SdkCompatibilityCoverage {
 	unresolvedParents: readonly string[];
 }
 
-/** 外部入口和附加类库只读加载；临时入口使用原清单基准解析路径，不写 SDK。 */
-export async function loadCompatibilitySdk(entryFile: string, libraries: readonly string[] = []): Promise<Sdk> {
-	const entry = path.resolve(entryFile);
-	if (libraries.length === 0) return loadSdk(entry);
-	const source: unknown = JSON.parse(await fs.readFile(entry, "utf8"));
-	assert.ok(source !== null && typeof source === "object" && !Array.isArray(source));
-	const directory = path.dirname(entry);
-	const rebase = (value: unknown, key?: string): unknown => {
-		if (typeof value === "string" && ["compiler", "runtime", "command", "template"].includes(key ?? "")) {
-			return path.resolve(directory, value);
-		}
-		if (Array.isArray(value)) return value.map((item) => rebase(item));
-		if (value !== null && typeof value === "object") {
-			return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, rebase(item, name)]));
-		}
-		return value;
-	};
-	const rebased = rebase(source) as Record<string, unknown>;
-	const registered = (source as Record<string, unknown>).libraries;
-	assert.ok(registered === undefined || Array.isArray(registered), "libraries 必须是数组");
-	rebased.libraries = [...new Set([
-		...(registered ?? []).map((item: unknown) => {
-			assert.equal(typeof item, "string");
-			return path.resolve(directory, item as string);
-		}),
-		...libraries.map((file) => path.resolve(file))
-	])];
-	const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-compatibility-"));
-	try {
-		const file = path.join(temporary, "entry.json");
-		await fs.writeFile(file, JSON.stringify(rebased), "utf8");
-		return await loadSdk(file);
-	} finally {
-		await fs.rm(temporary, { recursive: true, force: true });
-	}
+/** 只读加载目录 SDK；附加输入仅用于独立兼容验证，不写入或注册到 SDK。 */
+export async function loadCompatibilitySdk(sdkDirectory: string, libraries: readonly string[] = []): Promise<Sdk> {
+	const sdk = await loadSdk(path.resolve(sdkDirectory));
+	if (libraries.length === 0) return sdk;
+	const issues = [...sdk.issues];
+	const manifests = [...sdk.manifests];
+	for (const file of libraries) manifests.push(await readLibraryManifest(path.resolve(file), "library"));
+	return { ...sdk, manifests: resolveManifestInheritance(manifests, issues), issues };
 }
 
 /** 独立计算继承期望；函数保留不同实参数量的重载，其它成员按名称覆盖。 */

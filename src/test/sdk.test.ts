@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { test } from "node:test";
 import {
 	buildDefinitionIndex,
-	findSdkManifest,
+	findSdkDirectory,
 	getEffectiveMembers,
 	getEffectivePropertyByProjection,
 	isComponentDefinition,
@@ -35,231 +35,99 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 	await fs.writeFile(filePath, `${JSON.stringify(value, undefined, 2)}\r\n`, "utf8");
 }
 
-test("加载 SDK 入口及其编译器、运行库和类库清单", async (context) => {
-	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-"));
+/** 创建目录型 SDK 的两份核心清单，不写入任何总清单。 */
+async function writeCore(directory: string): Promise<void> {
+	for (const [file, kind] of [["SimpleCompiler.json", "compiler"], ["SimpleAndroidRuntime.json", "runtime"]] as const) {
+		await writeJson(path.join(directory, "simple", file), { name: kind, kind, categories: [] });
+	}
+}
+
+test("SDK 目录直接加载核心与已安装类库，保留各清单元数据", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-directory-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-
-	await writeJson(path.join(directory, "sdk.json"), {
-		authors: [
-			{ name: "SDK 作者", email: "sdk@example.com" },
-			{ name: "SDK 协作者" }
-		],
-		version: "1.0.0",
-		compiler: "simple/compiler.json",
-		runtime: "simple/runtime.json",
-		capabilities: {
-			projects: [{
-				name: "编译为调试应用",
-				description: "仅编译为调试应用",
-				command: "capabilities/debug.bat",
-				arguments: ["PROJECT_FILE", "APK_FILE"]
-			}],
-			tools: [{
-				name: "启动SDK管理器",
-				command: "manager/manager.exe"
-			}]
-		},
-		templates: {
-			project: {
-				template: "templates/project.properties",
-				variables: ["应用名称"]
-			}
-		},
-		libraries: ["libraries/com.example.demo/library.json"]
+	await writeCore(directory);
+	await writeJson(path.join(directory, "simple", "SimpleCompiler.json"), {
+		name: "编译器", kind: "compiler", authors: [{ name: "编译器作者", email: "compiler@example.com" }], categories: []
 	});
-	await fs.mkdir(path.join(directory, "templates"), { recursive: true });
-	await fs.writeFile(
-		path.join(directory, "templates", "project.properties"),
-		"name={$应用名称}\r\n",
-		"utf8"
-	);
-	await writeJson(path.join(directory, "simple", "compiler.json"), {
-		name: "编译器",
-		authors: [{ name: "编译器作者", email: "compiler@example.com" }],
-		kind: "compiler",
-		categories: [{
-			name: "属性区",
-			definitions: [{
-				name: "$对象",
-				kind: "$type",
-				// 定义级 hidden 属于无效输入，加载后必须丢弃且不能影响类库树可见性。
-				hidden: true,
-				properties: [
-					{ name: "基础对象", type: "对象" },
-					{ name: "实现接口", type: "接口列表" }
-				]
-			}]
-		}]
-	});
-	await writeJson(path.join(directory, "simple", "runtime.json"), {
-		name: "运行库",
-		kind: "runtime",
-		categories: []
-	});
-	await writeJson(path.join(directory, "libraries", "com.example.demo", "library.json"), {
-		name: "演示库",
-		kind: "library",
-		categories: []
-	});
-
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
-
-	assert.equal(sdk.version, "1.0.0");
-	assert.deepEqual(sdk.authors, [
-		{ name: "SDK 作者", email: "sdk@example.com" },
-		{ name: "SDK 协作者" }
-	]);
-	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["编译器", "运行库", "演示库"]);
-	assert.deepEqual(sdk.manifests[0]?.authors, [
-		{ name: "编译器作者", email: "compiler@example.com" }
-	]);
-	assert.deepEqual(sdk.capabilities, {
-		projects: [{
-			arguments: ["PROJECT_FILE", "APK_FILE"],
-			command: path.join(directory, "capabilities", "debug.bat"),
-			description: "仅编译为调试应用",
-			id: "编译为调试应用",
-			name: "编译为调试应用"
-		}],
-		tools: [{
-			command: path.join(directory, "manager", "manager.exe"),
-			description: undefined,
-			id: "启动SDK管理器",
-			name: "启动SDK管理器"
-		}]
-	});
-	assert.equal(
-		renderSdkTemplate(sdk.templates.project!, { "应用名称": "测试应用" }),
-		"name=测试应用\r\n"
-	);
-	const objectUnit = sdk.manifests[0]?.categories[0]?.definitions[0];
-	assert.equal(objectUnit?.name, "$对象");
-	assert.equal(objectUnit === undefined ? true : "hidden" in objectUnit, false);
-	assert.deepEqual(objectUnit?.properties, [
-		{ name: "基础对象", type: "对象" },
-		{ name: "实现接口", type: "接口列表" }
-	]);
-	assert.equal(buildDefinitionIndex(sdk.manifests).get("$对象")?.definition, objectUnit);
+	await writeJson(path.join(directory, "libraries", "demo", "library.json"), { name: "演示库", kind: "library", categories: [] });
+	const sdk = await loadSdk(directory);
+	assert.equal(sdk.directory, directory);
+	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["编译器", "runtime", "演示库"]);
+	assert.deepEqual(sdk.manifests[0]?.authors, [{ name: "编译器作者", email: "compiler@example.com" }]);
 	assert.deepEqual(sdk.issues, []);
+	await assert.rejects(fs.access(path.join(directory, "sdk.json")));
+	await assert.rejects(fs.access(path.join(directory, "sdk.local.json")));
 });
 
-test("SDK 模板变量必须与模板原文完全一致", async (context) => {
+test("项目能力固定调用 project.ps1 并保留子命令和参数顺序", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-command-"));
+	context.after(() => fs.rm(directory, { recursive: true, force: true }));
+	await writeCore(directory);
+	const sdk = await loadSdk(directory);
+	assert.deepEqual(sdk.capabilities.projects.map(({ id, command, commandArguments, arguments: args }) => ({ id, command, commandArguments, args })), [
+		{ id: "compile", command: path.join(directory, "utils/project/project.ps1"), commandArguments: ["compile"], args: ["PROJECT_FILE"] },
+		{ id: "debug", command: path.join(directory, "utils/project/project.ps1"), commandArguments: ["debug"], args: ["PROJECT_FILE"] }
+	]);
+	assert.deepEqual(sdk.capabilities.tools, []);
+});
+
+test("模板从固定文件加载并从原文提取变量", async (context) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-template-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	await writeJson(path.join(directory, "sdk.json"), {
-		templates: {
-			project: {
-				template: "templates/project.properties",
-				variables: ["已声明"]
-			}
-		}
-	});
-	await fs.mkdir(path.join(directory, "templates"), { recursive: true });
-	await fs.writeFile(
-		path.join(directory, "templates", "project.properties"),
-		"name={$未声明}\r\n",
-		"utf8"
-	);
-
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
-	assert.equal(sdk.templates.project, undefined);
-	assert.equal(sdk.issues.some((issue) => /未声明模板变量：未声明/u.test(issue)), true);
-	assert.equal(sdk.issues.some((issue) => /声明了未使用的模板变量：已声明/u.test(issue)), true);
-});
-
-test("清单类型必须与 SDK 入口声明一致", async (context) => {
-	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-kind-"));
-	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-
-	await writeJson(path.join(directory, "sdk.json"), {
-		compiler: "compiler.json",
-		runtime: "runtime.json",
-		libraries: ["libraries/test/library.json"]
-	});
-	await writeJson(path.join(directory, "compiler.json"), {
-		name: "编译器",
-		kind: "compiler",
-		categories: []
-	});
-	await writeJson(path.join(directory, "runtime.json"), {
-		name: "运行库",
-		kind: "runtime",
-		categories: []
-	});
-	await writeJson(path.join(directory, "libraries", "test", "library.json"), {
-		name: "错误类库",
-		kind: "librarie",
-		categories: []
-	});
-
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
-	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["编译器", "运行库"]);
-	assert.deepEqual(sdk.issues, [
-		`${path.join(directory, "libraries", "test", "library.json")} 的 kind 必须是 library`
-	]);
-});
-
-test("libraries 只加载显式注册清单并保持数组顺序", async (context) => {
-	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-libraries-"));
-	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	await writeJson(path.join(directory, "sdk.json"), {
-		compiler: "compiler.json", runtime: "runtime.json",
-		libraries: ["libraries/second/library.json", "libraries/first/library.json", "./libraries/second/library.json"]
-	});
-	for (const kind of ["compiler", "runtime"] as const) {
-		await writeJson(path.join(directory, kind + ".json"), { name: kind, kind, categories: [] });
-	}
-	for (const name of ["first", "second", "unregistered"]) {
-		await writeJson(path.join(directory, "libraries", name, "library.json"), {
-			name, kind: "library",
-			categories: [{
-				name: "Z category",
-				definitions: [
-					{ name: "shared", kind: "object", type: name + ".shared" },
-					{ name: "A object", kind: "object" }
-				]
-			}, { name: "A category", definitions: [] }]
-		});
-	}
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
-	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["compiler", "runtime", "second", "first"]);
-	assert.deepEqual(sdk.manifests[2]?.categories.map((category) => category.name), ["Z category", "A category"]);
-	assert.deepEqual(sdk.manifests[2]?.categories[0]?.definitions.map((definition) => definition.name), ["shared", "A object"]);
-	assert.equal(buildDefinitionIndex(sdk.manifests).get("shared")?.definition.type, "second.shared");
+	await writeCore(directory);
+	await fs.mkdir(path.join(directory, "templates"));
+	await fs.writeFile(path.join(directory, "templates/project.properties"), "name={$应用名称}\r\nmain={$主窗口限定名}\r\nname2={$应用名称}\r\n", "utf8");
+	const sdk = await loadSdk(directory);
+	assert.deepEqual(Object.keys(sdk.templates), ["project"]);
+	assert.deepEqual(sdk.templates.project?.variables, ["应用名称", "主窗口限定名"]);
+	assert.equal(renderSdkTemplate(sdk.templates.project!, { "应用名称": "测试", "主窗口限定名": "app.主窗口" }), "name=测试\r\nmain=app.主窗口\r\nname2=测试\r\n");
+	assert.throws(() => renderSdkTemplate(sdk.templates.project!, { "应用名称": "测试" }), /缺少模板变量/u);
 	assert.deepEqual(sdk.issues, []);
 });
 
-test("libraries 拒绝字符串和通配注册并隔离无效路径", async (context) => {
-	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-registration-"));
+test("一级库目录自动注册并稳定排序，根目录和嵌套清单不参与", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-discovery-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	const entry = { compiler: "compiler.json", runtime: "runtime.json" };
-	for (const kind of ["compiler", "runtime"] as const) {
-		await writeJson(path.join(directory, kind + ".json"), { name: kind, kind, categories: [] });
+	await writeCore(directory);
+	for (const name of ["second", "first", "new-library"]) {
+		await writeJson(path.join(directory, "libraries", name, "library.json"), {
+			name, kind: "library", categories: [{ name: "Z category", definitions: [
+				{ name: "shared", kind: "object", type: name + ".shared" }, { name: "A object", kind: "object" }
+			] }, { name: "A category", definitions: [] }]
+		});
 	}
-	await writeJson(path.join(directory, "valid.json"), { name: "valid", kind: "library", categories: [] });
-	await writeJson(path.join(directory, "sdk.json"), { ...entry, libraries: "valid.json" });
-	const scalarSdk = await loadSdk(path.join(directory, "sdk.json"));
-	assert.deepEqual(scalarSdk.manifests.map((manifest) => manifest.name), ["compiler", "runtime"]);
-	assert.equal(scalarSdk.issues.length, 1);
-	assert.match(scalarSdk.issues[0]!, /libraries 必须是明确的类库清单路径数组/u);
-	await writeJson(path.join(directory, "sdk.json"), {
-		...entry, libraries: ["libraries/*/library.json", "libraries/?/library.json", "  ", 7, "missing.json", "valid.json"]
-	});
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
-	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["compiler", "runtime", "valid"]);
-	assert.equal(sdk.issues.length, 5);
-	assert.match(sdk.issues[0]!, /libraries\[0\] 不支持通配表达式/u);
-	assert.match(sdk.issues[1]!, /libraries\[1\] 不支持通配表达式/u);
-	assert.match(sdk.issues[2]!, /libraries\[2\] 必须是非空路径字符串/u);
-	assert.match(sdk.issues[3]!, /libraries\[3\] 必须是非空路径字符串/u);
-	assert.equal(sdk.issues[4]?.includes("missing.json"), true);
+	await writeJson(path.join(directory, "libraries/library.json"), { name: "root", kind: "library", categories: [] });
+	await writeJson(path.join(directory, "libraries/container/nested/library.json"), { name: "nested", kind: "library", categories: [] });
+	const sdk = await loadSdk(directory);
+	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["compiler", "runtime", "first", "new-library", "second"]);
+	assert.deepEqual(sdk.manifests[2]?.categories.map((category) => category.name), ["Z category", "A category"]);
+	assert.deepEqual(sdk.manifests[2]?.categories[0]?.definitions.map((definition) => definition.name), ["shared", "A object"]);
+	assert.equal(buildDefinitionIndex(sdk.manifests).get("shared")?.definition.type, "first.shared");
+	assert.deepEqual(sdk.issues, []);
+});
+
+test("新增与移除库在刷新时重新发现，损坏清单不阻断其它库", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-refresh-"));
+	context.after(() => fs.rm(directory, { recursive: true, force: true }));
+	await writeCore(directory);
+	assert.equal((await loadSdk(directory)).manifests.length, 2);
+	const library = path.join(directory, "libraries", "good", "library.json");
+	await writeJson(library, { name: "good", kind: "library", categories: [] });
+	await writeJson(path.join(directory, "libraries", "bad-kind", "library.json"), { name: "bad", kind: "runtime", categories: [] });
+	await fs.mkdir(path.join(directory, "libraries", "broken"));
+	await fs.writeFile(path.join(directory, "libraries", "broken", "library.json"), "{broken", "utf8");
+	const sdk = await loadSdk(directory);
+	assert.deepEqual(sdk.manifests.map((manifest) => manifest.name), ["compiler", "runtime", "good"]);
+	assert.equal(sdk.issues.length, 2);
+	assert.ok(sdk.issues.some((issue) => issue.includes("kind 必须是 library")));
+	await fs.unlink(library);
+	assert.deepEqual((await loadSdk(directory)).manifests.map((manifest) => manifest.name), ["compiler", "runtime"]);
 });
 
 test("属性选择项和缺省值支持字符串简写及标签值对象", async (context) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-select-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	await writeJson(path.join(directory, "sdk.json"), { runtime: "runtime.json" });
-	const runtimePath = path.join(directory, "runtime.json");
+	const runtimePath = path.join(directory, "simple", "SimpleAndroidRuntime.json");
 	const runtime = (options: unknown[], initializer: unknown = {
 		label: "默认",
 		value: "缓存模式_默认"
@@ -287,7 +155,7 @@ test("属性选择项和缺省值支持字符串简写及标签值对象", async
 		{ label: "默认", value: "缓存模式_默认" },
 		{ label: "忽略", value: "处理方式_忽略" }
 	], undefined, undefined, "显示"));
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
+	const sdk = await loadSdk(directory);
 	const property = sdk.manifests[0]?.categories[0]?.definitions[0]?.properties?.[0];
 	assert.deepEqual(
 		sdk.manifests[0]?.categories[0]?.definitions[0]?.properties?.[0]?.select?.options,
@@ -303,7 +171,7 @@ test("属性选择项和缺省值支持字符串简写及标签值对象", async
 	assert.equal(property?.group, "显示");
 
 	await writeJson(runtimePath, runtime(["缓存模式_默认"], "缓存模式_默认"));
-	const shorthandSdk = await loadSdk(path.join(directory, "sdk.json"));
+	const shorthandSdk = await loadSdk(directory);
 	const shorthandProperty = shorthandSdk.manifests[0]?.categories[0]
 		?.definitions[0]?.properties?.[0];
 	assert.deepEqual(shorthandProperty?.select?.options, [
@@ -315,28 +183,28 @@ test("属性选择项和缺省值支持字符串简写及标签值对象", async
 	});
 
 	await writeJson(runtimePath, runtime([0]));
-	const invalidOptionSdk = await loadSdk(path.join(directory, "sdk.json"));
+	const invalidOptionSdk = await loadSdk(directory);
 	assert.equal(invalidOptionSdk.manifests.length, 0);
 	assert.equal(invalidOptionSdk.issues.some(
 		(issue) => /select\.options 必须是非空字符串或包含 label 和 value 的对象/u.test(issue)
 	), true);
 
 	await writeJson(runtimePath, runtime([], 0));
-	const invalidInitializerSdk = await loadSdk(path.join(directory, "sdk.json"));
+	const invalidInitializerSdk = await loadSdk(directory);
 	assert.equal(invalidInitializerSdk.manifests.length, 0);
 	assert.equal(invalidInitializerSdk.issues.some(
 		(issue) => /initializer 必须是非空字符串或包含 label 和 value 的对象/u.test(issue)
 	), true);
 
 	await writeJson(runtimePath, runtime([], "缓存模式_默认", ["布局_线性", 1]));
-	const invalidLayoutsSdk = await loadSdk(path.join(directory, "sdk.json"));
+	const invalidLayoutsSdk = await loadSdk(directory);
 	assert.equal(invalidLayoutsSdk.manifests.length, 0);
 	assert.equal(invalidLayoutsSdk.issues.some(
 		(issue) => /layouts 必须是非空字符串数组/u.test(issue)
 	), true);
 
 	await writeJson(runtimePath, runtime([], "缓存模式_默认", undefined, ""));
-	const invalidGroupSdk = await loadSdk(path.join(directory, "sdk.json"));
+	const invalidGroupSdk = await loadSdk(directory);
 	assert.equal(invalidGroupSdk.manifests.length, 0);
 	assert.equal(invalidGroupSdk.issues.some(
 		(issue) => /group 必须是非空字符串/u.test(issue)
@@ -344,48 +212,29 @@ test("属性选择项和缺省值支持字符串简写及标签值对象", async
 
 });
 
-test("当前 SDK 以稳定标识声明项目能力", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
-
-	assert.deepEqual(
-		sdk.capabilities.projects.map((capability) => capability.id),
-		["debug", "compile"]
-	);
-	assert.deepEqual(sdk.capabilities.tools, []);
-	assert.equal(
-		sdk.capabilities.projects[0]?.command,
-		testSdkPath("capabilities", "debug.bat")
-	);
-	assert.deepEqual(sdk.capabilities.projects.map((capability) => capability.arguments), [
-		["PROJECT_FILE", "APK_FILE"],
-		["PROJECT_FILE"]
-	]);
-	assert.deepEqual(Object.keys(sdk.templates), [
-		"project",
-		"main",
-		"window",
-		"object",
-		"interface",
-		"service"
-	]);
+test("固定 SDK 目录提供项目能力和现有模板", async () => {
+	const sdk = await loadSdk(testSdkPath());
+	assert.deepEqual(sdk.capabilities.projects.map((capability) => capability.id), ["compile", "debug"]);
+	assert.ok(sdk.capabilities.projects.every((capability) => capability.command === testSdkPath("utils", "project", "project.ps1")));
+	assert.deepEqual(Object.keys(sdk.templates), ["project", "main", "window", "object", "interface", "service"]);
 	assert.deepEqual(sdk.issues, []);
 });
 
-test("只接受 SDK 入口的完整绝对 JSON 文件路径", async (context) => {
+test("只接受含核心清单的完整 SDK 目录，不接受文件或相对路径", async (context) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-find-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	const sdkFile = path.join(directory, "sdk", "ES4A.json");
-	await writeJson(sdkFile, {});
-
-	assert.equal(await findSdkManifest(sdkFile), sdkFile);
-	assert.equal(await findSdkManifest(path.dirname(sdkFile)), undefined);
-	assert.equal(await findSdkManifest(path.join("sdk", "ES4A.json")), undefined);
-	assert.equal(await findSdkManifest(path.join(directory, "sdk", "ES4A.txt")), undefined);
-	assert.equal(await findSdkManifest(undefined), undefined);
+	assert.equal(await findSdkDirectory(directory), undefined);
+	await writeCore(directory);
+	assert.equal(await findSdkDirectory(directory), directory);
+	assert.equal(await findSdkDirectory(path.join(directory, "simple/SimpleCompiler.json")), undefined);
+	assert.equal(await findSdkDirectory("relative-sdk"), undefined);
+	assert.equal(await findSdkDirectory(undefined), undefined);
+	await fs.unlink(path.join(directory, "simple/SimpleAndroidRuntime.json"));
+	assert.equal(await findSdkDirectory(directory), undefined);
 });
 
 test("运行库将所有组件容器归入独立分类", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const containerCategory = runtime.categories.find((category) => category.name === "组件容器");
@@ -415,7 +264,7 @@ test("运行库将所有组件容器归入独立分类", async () => {
 });
 
 test("运行库按组件体系和用途排列组件定义", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitionNames = (categoryName: string): readonly string[] => (
@@ -442,7 +291,7 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 });
 
 test("新增运行库组件加载中文参数、数组签名及继承成员", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const index = buildDefinitionIndex(sdk.manifests);
@@ -491,7 +340,7 @@ test("新增运行库组件加载中文参数、数组签名及继承成员", as
 });
 
 test("分组列表框作为扩展类库加载并继承运行库成员", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	assert.equal(runtime.categories.flatMap((category) => category.definitions)
@@ -515,7 +364,7 @@ test("分组列表框作为扩展类库加载并继承运行库成员", async ()
 });
 
 test("运行库通过 kind 和 inherits 区分组件角色", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions);
@@ -549,7 +398,7 @@ test("运行库通过 kind 和 inherits 区分组件角色", async () => {
 });
 
 test("可视组件像素属性使用变体输入和像素编辑器", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const visualComponent = runtime.categories
@@ -578,7 +427,7 @@ test("可视组件像素属性使用变体输入和像素编辑器", async () =>
 });
 
 test("可视组件只为受父级布局约束的属性声明适用布局", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const visualComponent = runtime.categories
@@ -655,7 +504,7 @@ test("可视组件只为受父级布局约束的属性声明适用布局", async
 });
 
 test("运行库完整声明 Java 相对布局常量、属性和方法", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions);
@@ -748,10 +597,7 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-inherits-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
 
-	await writeJson(path.join(directory, "sdk.json"), {
-		runtime: "runtime.json"
-	});
-	await writeJson(path.join(directory, "runtime.json"), {
+	await writeJson(path.join(directory, "simple", "SimpleAndroidRuntime.json"), {
 		name: "运行库",
 		kind: "runtime",
 		categories: [{
@@ -779,7 +625,7 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 		}]
 	});
 
-	const sdk = await loadSdk(path.join(directory, "sdk.json"));
+	const sdk = await loadSdk(directory);
 	const runtime = sdk.manifests[0];
 	assert.ok(runtime);
 	const definitions = runtime.categories[0]?.definitions ?? [];
@@ -811,7 +657,7 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 });
 
 test("运行库为全部对象、接口和组件声明完整运行时类型名", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const definitions = runtime.categories.flatMap((category) => category.definitions)
@@ -835,7 +681,7 @@ test("运行库为全部对象、接口和组件声明完整运行时类型名",
 });
 
 test("运行库为全部具体组件声明可复用的 24×24 SVG 图标", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	const components = runtime.categories.flatMap((category) => category.definitions)
@@ -852,7 +698,7 @@ test("运行库为全部具体组件声明可复用的 24×24 SVG 图标", async
 });
 
 test("运行库按对象集和函数集分类", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 	assert.ok(runtime);
 	assert.deepEqual(
@@ -964,15 +810,14 @@ test("函数继承按名称和参数个数保留重载并覆盖对应签名", ()
 test("组件级投影校验布局、方向和数量，不改变属性级投影", async (context) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-container-projection-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
-	await writeJson(path.join(directory, "sdk.json"), { runtime: "runtime.json" });
 	async function readProjection(projection: unknown) {
-		await writeJson(path.join(directory, "runtime.json"), {
+		await writeJson(path.join(directory, "simple", "SimpleAndroidRuntime.json"), {
 			name: "容器规则", kind: "runtime", categories: [{ name: "组件", definitions: [{
 				name: "容器", kind: "component", projection,
 				properties: [{ name: "宽度", projection: "width" }]
 			}]}]
 		});
-		return loadSdk(path.join(directory, "sdk.json"));
+		return loadSdk(directory);
 	}
 	for (const projection of [undefined, {}, { layout: "frame", scroll: "vertical", limit: 1 },
 		{ scroll: "none", limit: 0 }, { layout: "linear-horizontal" }, { layout: "grid" }]) {
@@ -988,5 +833,27 @@ test("组件级投影校验布局、方向和数量，不改变属性级投影",
 		const sdk = await readProjection(projection);
 		assert.equal(sdk.manifests.length, 0);
 		assert.equal(sdk.issues.some((issue) => issue.includes("projection")), true);
+	}
+});
+
+test("布局关联必须声明有效排列和选择值，组件不能声明布局选择值", async (context) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-layout-projection-"));
+	context.after(() => fs.rm(directory, { recursive: true, force: true }));
+	for (const [kind, projection, valid] of [
+		["layout", { layout: "grid", layoutValue: "GridMode" }, true],
+		["layout", { layout: "grid", layoutValue: "42" }, true],
+		["layout", { layout: "grid", layoutValue: 42 }, false],
+		["layout", { layout: "grid", layoutValue: "  " }, false],
+		["layout", { layoutValue: "42" }, false],
+		["component", { layout: "grid", layoutValue: "42" }, false]
+	] as const) {
+		await writeJson(path.join(directory, "simple", "SimpleAndroidRuntime.json"), {
+			name: "布局关联", kind: "runtime", categories: [{ name: "布局", definitions: [{
+				name: "GridMetadata", kind, projection
+			}] }]
+		});
+		const sdk = await loadSdk(directory);
+		assert.equal(sdk.manifests.length, valid ? 1 : 0);
+		assert.equal(sdk.issues.some((issue) => issue.includes("projection.layout")), !valid);
 	}
 });

@@ -11,8 +11,8 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	isSimpleMemberAccessible,
 	resolveSimpleDefinitionName,
-	isStaticProjectMember,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
 import { resolveSimpleQualifier } from "./completionModel";
@@ -649,16 +649,13 @@ export function buildDocumentTokenRules(
 
 		const groups: readonly LibraryMemberGroup[] = symbol.access === "static"
 			? ["constants", "variables", "functions"]
-			: ["variables", "properties", "functions", "events"];
+			: ["constants", "variables", "properties", "functions", "events"];
 
 		for (const group of groups) {
 			const style = memberTokenStyle(group);
 
 			for (const value of getEffectiveMembers(reference, group, definitions)) {
-				const isStaticMember = group === "constants"
-					|| value.member.global === true
-					|| isStaticProjectMember(value.member);
-				if ((symbol.access === "static") !== isStaticMember) {
+				if (!isSimpleMemberAccessible(value.member, group, symbol.access)) {
 					continue;
 				}
 
@@ -692,7 +689,7 @@ export function buildDocumentTokenRules(
 
 		const groups: readonly LibraryMemberGroup[] = resolved.access === "static"
 			? ["constants", "variables", "functions"]
-			: ["variables", "properties", "functions", "events"];
+			: ["constants", "variables", "properties", "functions", "events"];
 		for (const group of groups) {
 			const value = getEffectiveMembers(resolved.reference, group, definitions).find(
 				(candidate) => candidate.member.name === memberName
@@ -700,10 +697,7 @@ export function buildDocumentTokenRules(
 			if (value === undefined) {
 				continue;
 			}
-			const staticMember = group === "constants"
-				|| value.member.global === true
-				|| isStaticProjectMember(value.member);
-			if ((resolved.access === "static") !== staticMember) {
+			if (!isSimpleMemberAccessible(value.member, group, resolved.access)) {
 				continue;
 			}
 			addRule({ ...memberTokenStyle(group), qualifier, text: memberName });

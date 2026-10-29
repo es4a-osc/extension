@@ -18,6 +18,7 @@ import {
 	type SimpleUnitMetadata
 } from "./programResources";
 import type { SimpleUnitType } from "./propertyXml";
+import { findProjectForSource } from "./projectCapability";
 import {
 	PROGRAM_PROJECT_FILES_STATE_KEY,
 	type ProgramProjectState
@@ -461,6 +462,24 @@ export class ProgramTreeProvider implements
 		return this.parents.get(element);
 	}
 
+	/** 同一路径可出现在不同项目、源码根及资源分支中，树项身份必须包含完整显示分支。 */
+	private pathNodeIdentity(element: DirectoryNode | FileNode): string {
+		const branch: string[] = [];
+		let parent = this.parents.get(element);
+		while (parent !== undefined) {
+			if (parent.kind === "directory" || parent.kind === "assets" || parent.kind === "res" || parent.kind === "build") {
+				branch.push(`${parent.kind}:${parent.mode}:${filePathKey(parent.directoryPath)}`);
+			}
+			parent = this.parents.get(parent);
+		}
+		return `es4a.${element.kind}:` + JSON.stringify([
+			element.project === undefined ? undefined : filePathKey(element.project.filePath),
+			branch.reverse(),
+			"mode" in element ? element.mode : element.resourceRoot,
+			filePathKey("directoryPath" in element ? element.directoryPath : element.filePath)
+		]);
+	}
+
 	/**
 	 * 按磁盘路径查找已添加项目中的 Simple 单元。
 	 *
@@ -476,13 +495,12 @@ export class ProgramTreeProvider implements
 
 		const targetPath = filePathKey(filePath);
 		const projects = await this.getChildren();
+		const owner = findProjectForSource(projects.flatMap((node) => node.kind === "project" ? [node.project] : []), filePath);
 
 		for (const projectNode of projects) {
 			if (
 				projectNode.kind !== "project"
-				|| !projectNode.project.sourceDirectories.some(
-					(sourceDirectory) => isPathInside(sourceDirectory, filePath)
-				)
+				|| projectNode.project !== owner
 			) {
 				continue;
 			}
@@ -569,7 +587,7 @@ export class ProgramTreeProvider implements
 				item.tooltip = treeTooltip("资源", [], "项目资产和资源");
 				break;
 			case "build":
-				item.id = `es4a.build:${vscode.Uri.file(element.directoryPath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.iconPath = new vscode.ThemeIcon("package");
 				item.tooltip = treeTooltip("构建", [
 					["路径", element.project?.properties.build ?? "./build"]
@@ -579,21 +597,21 @@ export class ProgramTreeProvider implements
 				}
 				break;
 			case "assets":
-				item.id = `es4a.assets:${vscode.Uri.file(element.directoryPath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.iconPath = new vscode.ThemeIcon("folder-library");
 				item.tooltip = treeTooltip("Assets", [
 					["路径", this.projectForNode(element)?.properties.assets]
 				], "项目资产");
 				break;
 			case "res":
-				item.id = `es4a.res:${vscode.Uri.file(element.directoryPath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.iconPath = new vscode.ThemeIcon("folder-library");
 				item.tooltip = treeTooltip("Res", [
 					["路径", this.projectForNode(element)?.properties.res]
 				], "项目资源");
 				break;
 			case "directory":
-				item.id = `es4a.directory:${vscode.Uri.file(element.directoryPath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.contextValue = element.mode === "units"
 					? "es4a.unitFolder"
 					: element.mode === "build"
@@ -627,7 +645,7 @@ export class ProgramTreeProvider implements
 					: unitType === "对象"
 						? objectUnitContextValue(baseObject, interfaces)
 						: "es4a.unit";
-				item.id = `es4a.unit:${vscode.Uri.file(element.filePath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.iconPath = simpleUnitIcon(unitType);
 				item.tooltip = unitTooltip(
 					unitType,
@@ -645,7 +663,7 @@ export class ProgramTreeProvider implements
 			}
 				break;
 			case "file":
-				item.id = `es4a.file:${vscode.Uri.file(element.filePath).toString()}`;
+				item.id = this.pathNodeIdentity(element);
 				item.contextValue = element.buildOutput
 					? "es4a.buildFile"
 					: element.resourceRoot === "assets"

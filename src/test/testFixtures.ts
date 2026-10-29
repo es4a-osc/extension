@@ -10,7 +10,7 @@ export function testFixturePath(...segments: readonly string[]): string {
 	return path.resolve(__dirname, "../../src/test/fixtures", ...segments);
 }
 
-/** 固定 SDK 仅用于行为回归，真实清单兼容验证使用调用者明确传入的入口。 */
+/** 固定 SDK 仅用于行为回归，真实清单兼容验证使用调用者明确传入的 SDK 目录。 */
 export function testSdkPath(...segments: readonly string[]): string {
 	return testFixturePath("sdk", ...segments);
 }

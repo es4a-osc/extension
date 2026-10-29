@@ -11,6 +11,8 @@ import { ProjectSymbolIndex } from "./projectSymbolIndex";
 export class ProjectSemanticSyncController implements vscode.Disposable {
 	private refreshingTree = false;
 	private batching = 0;
+	private disposed = false;
+	private revision = 0;
 	private sequence = Promise.resolve();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private readonly treeListener: vscode.Disposable;
@@ -24,20 +26,23 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 		this.treeListener = programs.onDidChangeTreeData((node) => this.onTreeChanged(node));
 	}
 
-	wait(): Promise<void> {
-		return this.sequence;
+	async wait(): Promise<void> {
+		/* 用户主动请求定义时，把尚未触发的防抖任务也纳入就绪边界。 */
+		if (this.timer !== undefined) await this.refresh();
+		await this.sequence;
 	}
 
 	/** 重构期间不发布中间快照，事务完成后由调用者统一刷新。 */
 	beginBatch(): vscode.Disposable {
 		this.batching += 1;
+		this.revision += 1;
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.timer = undefined;
 		return new vscode.Disposable(() => { this.batching -= 1; });
 	}
 
 	schedule(): void {
-		if (this.batching > 0) return;
+		if (this.disposed || this.batching > 0) return;
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
 			this.timer = undefined;
@@ -49,7 +54,7 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 	}
 
 	async refresh(): Promise<void> {
-		if (this.batching > 0) return;
+		if (this.disposed || this.batching > 0) return;
 		if (this.timer !== undefined) {
 			clearTimeout(this.timer);
 			this.timer = undefined;
@@ -58,9 +63,14 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 	}
 
 	private async sync(): Promise<void> {
+		const revision = this.revision;
+		const isCurrent = (): boolean => !this.disposed && this.batching === 0 && revision === this.revision;
 		const run = async (): Promise<void> => {
+			if (!isCurrent()) return;
 			const projects = await this.programs.getProjects();
-			await this.symbols.updateProjects(projects);
+			if (!isCurrent()) return;
+			await this.symbols.updateProjects(projects, isCurrent);
+			if (!isCurrent()) return;
 			this.refreshLanguageFeatures();
 			this.refreshingTree = true;
 			try {
@@ -78,6 +88,8 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.disposed = true;
+		this.revision += 1;
 		this.treeListener.dispose();
 		if (this.timer !== undefined) {
 			clearTimeout(this.timer);

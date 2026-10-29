@@ -180,12 +180,14 @@ export function effectiveLibraryMemberKey(
 /** 容器复用的设计器布局；只描述投影，不新增运行时布局属性。 */
 export type LibraryContainerLayout = "absolute" | "frame" | "grid" | "linear-horizontal" | "linear-vertical" | "relative";
 
-/** 容器内部的固定投影规则；实际属性投影优先于这里的缺省配置。 */
+/** 定义级投影规则；容器声明固定排列，布局定义另声明对应的选择值。 */
 export interface LibraryContainerProjection {
 	readonly layout?: LibraryContainerLayout;
+	/** 布局定义对应的源码选择值；仅用于 kind 为 layout 的定义，并与 layout 一起声明。 */
+	readonly layoutValue?: string;
 	/** 直属可视子组件上限，省略表示不限制；非可视组件不计入。 */
 	readonly limit?: number;
-	/** 内容溢出的滚动方向，滚动条显示仍由真实属性投影决定。 */
+	/** 设计期内容溢出的固定滚动方向，不受运行时滚动或滚动条开关影响。 */
 	readonly scroll?: "none" | "horizontal" | "vertical";
 	/** 保留其它元数据，设计器只消费已经声明支持的规则。 */
 	readonly [key: string]: unknown;
@@ -219,7 +221,7 @@ export interface LibraryDefinition {
 	readonly kind?: string;
 	/** Simple 源码中使用的定义名称。 */
 	readonly name: string;
-	/** 容器内部的设计器投影配置，与属性级字符串 projection 分开读取。 */
+	/** 定义级设计器投影配置，与属性级字符串 projection 分开读取。 */
 	readonly projection?: LibraryContainerProjection;
 	/** 定义直接声明的属性。 */
 	readonly properties?: readonly LibraryMember[];
@@ -328,13 +330,15 @@ export interface LibraryManifest {
 
 /** 描述 SDK 对外提供的一项可执行能力。 */
 export interface SdkCapability {
-	/** 按清单顺序保留的能力参数标识。 */
+	/** 项目工具入口要求的参数标识。 */
 	readonly arguments?: readonly string[];
 	/** 已基于 SDK 目录解析的可执行命令绝对路径。 */
 	readonly command: string;
+	/** 置于项目参数之前的固定命令参数，例如共享脚本的子命令。 */
+	readonly commandArguments?: readonly string[];
 	/** 面向调用者的能力说明。 */
 	readonly description?: string;
-	/** SDK 清单中用于稳定调用能力的标识。 */
+	/** 项目操作的稳定能力标识。 */
 	readonly id: string;
 	/** 能力显示名称。 */
 	readonly name: string;
@@ -348,34 +352,28 @@ export interface SdkCapabilities {
 	readonly tools: readonly SdkCapability[];
 }
 
-/** SDK 注册的一份文本模板及其允许使用的模板变量。 */
+/** SDK 约定位置的文本模板及其使用的变量。 */
 export interface SdkTemplate {
 	/** 模板文件的绝对路径。 */
 	readonly filePath: string;
 	/** SDK 加载时读取并校验过的模板原文。 */
 	readonly source: string;
-	/** 模板中按清单顺序声明的变量名称。 */
+	/** 模板中按首次出现顺序提取的变量名称。 */
 	readonly variables: readonly string[];
 }
 
-/** SDK 入口及其已加载清单、能力和非致命问题的内存模型。 */
+/** 用户选择的 SDK 目录及已加载的清单、能力和模板。 */
 export interface Sdk {
-	/** 按清单顺序排列的 SDK 作者。 */
-	readonly authors?: readonly ManifestAuthor[];
-	/** SDK 入口按使用边界声明的能力。 */
+	/** 按 SDK 目录约定生成的项目能力。 */
 	readonly capabilities: SdkCapabilities;
-	/** SDK 入口所在目录的绝对路径。 */
+	/** 用户明确选择的 SDK 根目录。 */
 	readonly directory: string;
-	/** SDK 入口 JSON 的绝对路径。 */
-	readonly filePath: string;
-	/** 不阻断有效清单加载的配置问题。 */
+	/** 不阻断有效清单加载的问题。 */
 	readonly issues: readonly string[];
-	/** 按入口声明顺序加载的类库清单。 */
+	/** 编译器、运行库在前，扩展库按目录名稳定排列。 */
 	readonly manifests: readonly LibraryManifest[];
 	/** 以稳定模板标识为键的 SDK 文本模板。 */
 	readonly templates: Readonly<Record<string, SdkTemplate>>;
-	/** SDK 版本。 */
-	readonly version?: string;
 }
 
 /** 将定义与其所属清单关联，避免跨库索引时丢失来源。 */
@@ -580,7 +578,7 @@ function parseParameter(value: unknown, filePath: string): LibraryParameter {
 	};
 }
 
-/** 校验组件级投影；旧清单可以省略，错误规则不能进入设计器。 */
+/** 校验定义级投影；清单可以省略，错误规则不能进入设计器。 */
 function parseContainerProjection(value: unknown, filePath: string): LibraryContainerProjection {
 	if (!isRecord(value)) {
 		throw new Error(filePath + " 中定义的 projection 必须是对象");
@@ -590,6 +588,11 @@ function parseContainerProjection(value: unknown, filePath: string): LibraryCont
 	];
 	if (value.layout !== undefined && !layouts.some((layout) => layout === value.layout)) {
 		throw new Error(filePath + " 中定义的 projection.layout 不是受支持的布局投影");
+	}
+	if (value.layoutValue !== undefined && (
+		typeof value.layoutValue !== "string" || value.layoutValue.trim().length === 0 || value.layout === undefined
+	)) {
+		throw new Error(filePath + " 中定义的 projection.layoutValue 必须是非空表达式，且同时声明 layout");
 	}
 	if (value.scroll !== undefined && value.scroll !== "none"
 		&& value.scroll !== "horizontal" && value.scroll !== "vertical") {
@@ -628,6 +631,9 @@ function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 		: undefined;
 	const projection = value.projection === undefined
 		? undefined : parseContainerProjection(value.projection, filePath);
+	if (projection?.layoutValue !== undefined && value.kind !== "layout") {
+		throw new Error(filePath + " 中 projection.layoutValue 只允许用于布局定义");
+	}
 	const icon = optionalString(value.icon);
 	const runtimeType = optionalString(value.type) ?? optionalString(value.class);
 	const definition = { ...value };
@@ -693,7 +699,7 @@ async function readJson(filePath: string): Promise<unknown> {
  * @returns 已校验并规范化路径的类库清单。
  * @throws 清单结构无效或必需字段缺失时抛出错误。
  */
-async function readLibraryManifest(
+export async function readLibraryManifest(
 	filePath: string,
 	expectedKind: "compiler" | "runtime" | "library"
 ): Promise<LibraryManifest> {
@@ -750,7 +756,7 @@ function uniqueDefinitionByQualifiedName<T>(
  * 完整运行时类型名优先，短名称只用于兼容既有清单。没有对应定义的父类型仍作为
  * 终点保留，例如未导出为 Simple 对象的组件容器标记接口。
  */
-function resolveManifestInheritance(
+export function resolveManifestInheritance(
 	manifests: readonly LibraryManifest[],
 	issues: string[]
 ): readonly LibraryManifest[] {
@@ -823,143 +829,6 @@ function resolveManifestInheritance(
 	}));
 }
 
-/**
- * 解析一个有序 SDK 能力列表；无效项作为非致命问题收集。
- *
- * @param value 项目能力或工具能力数组。
- * @param group 能力分组名称，用于错误定位。
- * @param filePath SDK 入口文件路径。
- * @param sdkDirectory SDK 入口所在目录，用于解析相对命令路径。
- * @param issues 用于收集非致命清单问题的可变数组。
- * @returns 按清单顺序保留的有效能力。
- */
-function parseCapabilityList(
-	value: unknown,
-	group: "projects" | "tools",
-	filePath: string,
-	sdkDirectory: string,
-	issues: string[]
-): readonly SdkCapability[] {
-	if (value === undefined) {
-		return [];
-	}
-	if (!Array.isArray(value)) {
-		issues.push(filePath + " 中 capabilities." + group + " 必须是数组");
-		return [];
-	}
-
-	const capabilities: SdkCapability[] = [];
-
-	for (const [index, capabilityValue] of value.entries()) {
-		if (!isRecord(capabilityValue)) {
-			issues.push(filePath + " 中 capabilities." + group + "[" + index + "] 不是对象");
-			continue;
-		}
-
-		const command = optionalString(capabilityValue.command);
-		const name = optionalString(capabilityValue.name);
-
-		if (command === undefined || name === undefined) {
-			issues.push(filePath + " 中 capabilities." + group + "[" + index + "] 缺少 name 或 command");
-			continue;
-		}
-		if (capabilityValue.arguments !== undefined && (
-			!Array.isArray(capabilityValue.arguments)
-			|| !capabilityValue.arguments.every((argument) => typeof argument === "string")
-		)) {
-			issues.push(filePath + " 中 capabilities." + group + "[" + index + "].arguments 必须是字符串数组");
-			continue;
-		}
-		const argumentsValue = Array.isArray(capabilityValue.arguments)
-			? capabilityValue.arguments as string[]
-			: undefined;
-		capabilities.push({
-			...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
-			command: path.resolve(sdkDirectory, command),
-			description: optionalString(capabilityValue.description),
-			id: optionalString(capabilityValue.id) ?? name,
-			name
-		});
-	}
-
-	return capabilities;
-}
-
-/** 解析直接以稳定标识为键声明的项目能力。 */
-function parseProjectCapabilityEntries(
-	value: Readonly<Record<string, unknown>>,
-	filePath: string,
-	sdkDirectory: string,
-	issues: string[]
-): readonly SdkCapability[] {
-	const capabilities: SdkCapability[] = [];
-
-	for (const [id, capabilityValue] of Object.entries(value)) {
-		if (id === "projects" || id === "tools") {
-			continue;
-		}
-		const location = filePath + ".capabilities." + id;
-		if (!isRecord(capabilityValue)) {
-			issues.push(location + " 必须是对象");
-			continue;
-		}
-
-		const command = optionalString(capabilityValue.command);
-		if (command === undefined) {
-			issues.push(location + " 缺少 command");
-			continue;
-		}
-		if (capabilityValue.arguments !== undefined && (
-			!Array.isArray(capabilityValue.arguments)
-			|| !capabilityValue.arguments.every((argument) => typeof argument === "string")
-		)) {
-			issues.push(location + ".arguments 必须是字符串数组");
-			continue;
-		}
-		const argumentsValue = Array.isArray(capabilityValue.arguments)
-			? capabilityValue.arguments as string[]
-			: undefined;
-		capabilities.push({
-			...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
-			command: path.resolve(sdkDirectory, command),
-			description: optionalString(capabilityValue.description),
-			id,
-			name: optionalString(capabilityValue.name) ?? id
-		});
-	}
-
-	return capabilities;
-}
-
-/** 解析 SDK 项目能力和独立工具能力分组。 */
-function parseCapabilities(
-	value: unknown,
-	filePath: string,
-	sdkDirectory: string,
-	issues: string[]
-): SdkCapabilities {
-	if (value === undefined) {
-		return { projects: [], tools: [] };
-	}
-	if (!isRecord(value)) {
-		issues.push(filePath + " 中 capabilities 必须是对象");
-		return { projects: [], tools: [] };
-	}
-
-	const projectsById = new Map<string, SdkCapability>();
-	for (const capability of parseCapabilityList(value.projects, "projects", filePath, sdkDirectory, issues)) {
-		projectsById.set(capability.id, capability);
-	}
-	for (const capability of parseProjectCapabilityEntries(value, filePath, sdkDirectory, issues)) {
-		projectsById.set(capability.id, capability);
-	}
-
-	return {
-		projects: [...projectsById.values()],
-		tools: parseCapabilityList(value.tools, "tools", filePath, sdkDirectory, issues)
-	};
-}
-
 /** 返回模板原文中按首次出现顺序排列的模板变量。 */
 function templateVariables(source: string): readonly string[] {
 	const variables = new Set<string>();
@@ -969,75 +838,39 @@ function templateVariables(source: string): readonly string[] {
 	return [...variables];
 }
 
-/** 解析并校验 SDK 注册的文本模板。 */
-async function parseSdkTemplates(
-	value: unknown,
-	filePath: string,
-	sdkDirectory: string,
-	issues: string[]
-): Promise<Readonly<Record<string, SdkTemplate>>> {
-	if (value === undefined) {
-		return {};
+/** SDK 目录约定集中在加载边界，业务模块只消费解析后的能力和模板。 */
+export const SDK_LAYOUT = {
+	compiler: "simple/SimpleCompiler.json",
+	runtime: "simple/SimpleAndroidRuntime.json",
+	libraries: "libraries",
+	projectTool: "utils/project/project.ps1",
+	templates: {
+		project: "templates/project.properties",
+		main: "templates/主窗口.simple",
+		window: "templates/窗口.simple",
+		object: "templates/对象.simple",
+		interface: "templates/接口.simple",
+		service: "templates/服务.simple"
 	}
-	if (!isRecord(value)) {
-		issues.push(filePath + " 中 templates 必须是对象");
-		return {};
-	}
+} as const;
 
+/** 从约定位置读取模板并提取变量；缺少的模板不提供创建能力。 */
+async function loadSdkTemplates(directory: string, issues: string[]): Promise<Readonly<Record<string, SdkTemplate>>> {
 	const templates: Record<string, SdkTemplate> = {};
-	for (const [id, templateValue] of Object.entries(value)) {
-		const location = filePath + ".templates." + id;
-		if (!isRecord(templateValue)) {
-			issues.push(location + " 必须是对象");
-			continue;
+	for (const [id, relativePath] of Object.entries(SDK_LAYOUT.templates)) {
+		const filePath = path.join(directory, relativePath);
+		if (!await isFile(filePath)) continue;
+		try {
+			const source = await fs.readFile(filePath, "utf8");
+			templates[id] = { filePath, source, variables: templateVariables(source) };
+		} catch (error) {
+			issues.push(`无法读取 SDK 模板 ${filePath}：${String(error)}`);
 		}
-
-		const configuredPath = optionalString(templateValue.template);
-		if (configuredPath === undefined) {
-			issues.push(location + ".template 必须是非空路径字符串");
-			continue;
-		}
-		if (!Array.isArray(templateValue.variables)
-			|| !templateValue.variables.every((variable) => (
-				typeof variable === "string" && variable.trim().length > 0
-			))) {
-			issues.push(location + ".variables 必须是非空名称组成的字符串数组");
-			continue;
-		}
-
-		const variables = templateValue.variables as string[];
-		if (new Set(variables).size !== variables.length) {
-			issues.push(location + ".variables 不能包含重复名称");
-			continue;
-		}
-
-		const templateFile = path.resolve(sdkDirectory, configuredPath);
-		if (!await isFile(templateFile)) {
-			issues.push(location + ".template 文件不存在：" + templateFile);
-			continue;
-		}
-
-		const source = await fs.readFile(templateFile, "utf8");
-		const actualVariables = templateVariables(source);
-		const declaredVariables = new Set(variables);
-		const undeclaredVariables = actualVariables.filter((variable) => !declaredVariables.has(variable));
-		const unusedVariables = variables.filter((variable) => !actualVariables.includes(variable));
-		if (undeclaredVariables.length > 0 || unusedVariables.length > 0) {
-			if (undeclaredVariables.length > 0) {
-				issues.push(location + " 未声明模板变量：" + undeclaredVariables.join("、"));
-			}
-			if (unusedVariables.length > 0) {
-				issues.push(location + " 声明了未使用的模板变量：" + unusedVariables.join("、"));
-			}
-			continue;
-		}
-
-		templates[id] = { filePath: templateFile, source, variables };
 	}
 	return templates;
 }
 
-/** 使用清单声明的变量渲染一份 SDK 模板。 */
+/** 使用模板实际包含的变量渲染一份 SDK 模板。 */
 export function renderSdkTemplate(
 	template: SdkTemplate,
 	values: Readonly<Record<string, string>>
@@ -1065,111 +898,86 @@ async function isFile(filePath: string): Promise<boolean> {
 }
 
 /**
- * 加载 SDK 入口及其编译器、运行库和类库清单。
+ * 从用户指定目录加载编译器、运行库和一级扩展库清单。
  *
- * 相对路径始终以声明该路径的清单所在目录为基准。单个类库加载失败会记录
- * 到 `issues`，不会阻止其他有效清单继续使用。
+ * 清单内部的相对路径仍以该清单所在目录为基准。单个清单损坏只记录到
+ * `issues`，不阻断其他有效清单；每次加载重新发现安装内容，不保留注册缓存。
  *
- * @param sdkFilePath SDK 入口 JSON 文件路径。
- * @returns 完整 SDK 内存模型。
- * @throws SDK 入口无法读取或不是有效 JSON 对象时抛出错误。
+ * @param sdkDirectory SDK 根目录。
+ * @returns 清单、项目能力、模板及非致命问题。
+ * @throws 根路径不存在或不是目录时抛出错误。
  */
-export async function loadSdk(sdkFilePath: string): Promise<Sdk> {
-	const filePath = path.resolve(sdkFilePath);
-	const directory = path.dirname(filePath);
-	const value = await readJson(filePath);
-
-	if (!isRecord(value)) {
-		throw new Error(`${filePath} 不是有效的 SDK 清单`);
-	}
-
+export async function loadSdk(sdkDirectory: string): Promise<Sdk> {
+	const directory = path.resolve(sdkDirectory);
+	if (!(await fs.stat(directory)).isDirectory()) throw new Error(`${directory} 不是 SDK 目录`);
 	const issues: string[] = [];
 	const manifestFiles: Array<{
 		readonly filePath: string;
 		readonly kind: "compiler" | "runtime" | "library";
-	}> = [];
+	}> = [
+		{ filePath: path.join(directory, SDK_LAYOUT.compiler), kind: "compiler" },
+		{ filePath: path.join(directory, SDK_LAYOUT.runtime), kind: "runtime" }
+	];
 
-	for (const field of ["compiler", "runtime"] as const) {
-		const configuredPath = optionalString(value[field]);
-
-		if (configuredPath === undefined) {
-			issues.push(`${filePath} 未定义 ${field}`);
-			continue;
+	// 只扫描 libraries 的直接子目录，不把嵌套工程当作安装库。
+	const librariesDirectory = path.join(directory, SDK_LAYOUT.libraries);
+	try {
+		const children = await fs.readdir(librariesDirectory, { withFileTypes: true });
+		children.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+		for (const child of children) {
+			if (!child.isDirectory() && !child.isSymbolicLink()) continue;
+			const filePath = path.join(librariesDirectory, child.name, "library.json");
+			if (await isFile(filePath)) manifestFiles.push({ filePath, kind: "library" });
 		}
-
-		manifestFiles.push({
-			filePath: path.resolve(directory, configuredPath),
-			kind: field
-		});
-	}
-
-	if (Array.isArray(value.libraries)) {
-		const seenLibraryPaths = new Set<string>();
-		for (const [index, configuredValue] of value.libraries.entries()) {
-			const configuredPath = optionalString(configuredValue)?.trim();
-			if (configuredPath === undefined || configuredPath.length === 0) {
-				issues.push(`${filePath} 的 libraries[${index}] 必须是非空路径字符串`);
-				continue;
-			}
-			if (/[*?]/u.test(configuredPath)) {
-				issues.push(`${filePath} 的 libraries[${index}] 不支持通配表达式，请填写明确的类库清单路径`);
-				continue;
-			}
-			const libraryPath = path.resolve(directory, configuredPath);
-			const identity = process.platform === "win32" ? libraryPath.toLowerCase() : libraryPath;
-			if (seenLibraryPaths.has(identity)) continue;
-			seenLibraryPaths.add(identity);
-			manifestFiles.push({ filePath: libraryPath, kind: "library" });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+			issues.push(`无法读取扩展库目录 ${librariesDirectory}：${String(error)}`);
 		}
-	} else if (value.libraries !== undefined) {
-		issues.push(`${filePath} 的 libraries 必须是明确的类库清单路径数组`);
 	}
 
 	const manifests: LibraryManifest[] = [];
-
 	for (const manifestFile of manifestFiles) {
 		try {
 			manifests.push(await readLibraryManifest(manifestFile.filePath, manifestFile.kind));
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			issues.push(message);
+			issues.push(error instanceof Error ? error.message : String(error));
 		}
 	}
 
+	// 共享项目工具入口，项目参数由统一项目模型解析为绝对路径。
+	const command = path.join(directory, SDK_LAYOUT.projectTool);
 	return {
-		authors: parseManifestAuthors(value.authors, filePath),
-		capabilities: parseCapabilities(value.capabilities, filePath, directory, issues),
+		capabilities: {
+			projects: [
+				{ id: "compile", name: "编译应用", command, commandArguments: ["compile"], arguments: ["PROJECT_FILE"] },
+				{ id: "debug", name: "调试应用", command, commandArguments: ["debug"], arguments: ["PROJECT_FILE"] }
+			],
+			tools: []
+		},
 		directory,
-		filePath,
 		issues,
 		manifests: resolveManifestInheritance(manifests, issues),
-		templates: await parseSdkTemplates(value.templates, filePath, directory, issues),
-		version: optionalString(value.version)
+		templates: await loadSdkTemplates(directory, issues)
 	};
 }
 
 /**
- * 校验用户配置的 SDK 入口路径。
+ * 校验用户明确选择的 SDK 目录，不从工作区猜测，也不接受旧入口文件。
  *
- * @param configuredPath 用户配置的完整文件路径。
- * @returns 已存在的绝对 JSON 文件路径；配置无效时返回 `undefined`。
+ * @param configuredPath 用户配置的完整目录路径。
+ * @returns 根目录及两份核心清单存在时返回绝对目录，否则返回 `undefined`。
  */
-export async function findSdkManifest(
-	configuredPath: string | undefined
-): Promise<string | undefined> {
+export async function findSdkDirectory(configuredPath: string | undefined): Promise<string | undefined> {
 	const value = configuredPath?.trim();
-
-	if (
-		value === undefined
-		|| value.length === 0
-		|| !path.isAbsolute(value)
-		|| path.extname(value).toLowerCase() !== ".json"
-	) {
+	if (value === undefined || value.length === 0 || !path.isAbsolute(value)) return undefined;
+	const directory = path.resolve(value);
+	try {
+		if (!(await fs.stat(directory)).isDirectory()) return undefined;
+	} catch {
 		return undefined;
 	}
-
-	const filePath = path.resolve(value);
-	return await isFile(filePath) ? filePath : undefined;
+	return await isFile(path.join(directory, SDK_LAYOUT.compiler))
+		&& await isFile(path.join(directory, SDK_LAYOUT.runtime)) ? directory : undefined;
 }
 
 /**

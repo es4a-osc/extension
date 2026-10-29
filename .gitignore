@@ -1,9 +1,9 @@
 _bak/
 _extras/
 
-/dist
-/node_modules
-/out
 /.vscode-test
+/node_modules
+/dist
+/out
 /*.vsix
 /debug.log

@@ -14,7 +14,7 @@ import { parseSimpleUnitSymbols, type SimpleProjectSemanticContext } from "../si
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const CURSOR = "¦";
-const sdkPromise = loadSdk(testSdkPath("sdk.json"));
+const sdkPromise = loadSdk(testSdkPath());
 
 /** 在标记位置执行补全，并返回候选。 */
 async function completionCandidates(markedSource: string) {

@@ -4,7 +4,6 @@ xhwsd@qq.com 2026-9-4
 */
 
 import * as assert from "node:assert/strict";
-import * as path from "node:path";
 import { test } from "node:test";
 import type { SimpleProjectInfo } from "../project";
 import {
@@ -37,7 +36,7 @@ const sdk: Sdk = {
 	capabilities: {
 		projects: [
 			{
-				arguments: ["PROJECT_FILE", "APK_FILE"],
+				arguments: ["PROJECT_FILE"],
 				command: "E:\\SDK\\capabilities\\debug.bat",
 				description: "编译、安装并启动应用",
 				id: "debug",
@@ -54,7 +53,6 @@ const sdk: Sdk = {
 		tools: []
 	},
 	directory: "E:\\SDK",
-	filePath: "E:\\SDK\\sdk.json",
 	issues: [],
 	manifests: [],
 	templates: {}
@@ -63,11 +61,9 @@ const sdk: Sdk = {
 test("项目能力按清单顺序把参数标识转换为实际值", () => {
 	assert.deepEqual(createProjectCapabilityArguments(project), []);
 	assert.deepEqual(createProjectCapabilityArguments(project, [
-		"PROJECT_FILE",
-		"APK_FILE"
+		"PROJECT_FILE"
 	]), [
-		project.filePath,
-		path.join(project.buildDirectory, "deploy", "Demo.apk")
+		project.filePath
 	]);
 	assert.deepEqual(createProjectCapabilityInvocation(sdk, "compile", project), {
 		args: [project.filePath],
@@ -77,7 +73,7 @@ test("项目能力按清单顺序把参数标识转换为实际值", () => {
 		name: "编译应用"
 	});
 	assert.deepEqual(createProjectCapabilityInvocation(sdk, "debug", project), {
-		args: [project.filePath, path.join(project.buildDirectory, "deploy", "Demo.apk")],
+		args: [project.filePath],
 		command: "E:\\SDK\\capabilities\\debug.bat",
 		description: "编译、安装并启动应用",
 		id: "debug",
@@ -115,10 +111,9 @@ test("项目参数使用项目模型已经解析的缺省值", () => {
 	};
 	assert.deepEqual(
 		createProjectCapabilityArguments(projectWithoutConfiguration, [
-			"PROJECT_FILE",
-			"APK_FILE"
+			"PROJECT_FILE"
 		]),
-		[project.filePath, path.join(project.buildDirectory, "deploy", "Demo.apk")]
+		[project.filePath]
 	);
 });
 
@@ -127,15 +122,38 @@ test("拒绝 SDK 声明未知的项目参数标识", () => {
 		() => createProjectCapabilityArguments(project, ["UNKNOWN"]),
 		/当前 SDK 声明了未知的项目参数“UNKNOWN”/u
 	);
+	assert.throws(
+		() => createProjectCapabilityArguments(project, ["APK_FILE"]),
+		/当前 SDK 声明了未知的项目参数“APK_FILE”/u
+	);
 });
 
 test("拒绝调用当前 SDK 未声明的项目能力", () => {
 	assert.throws(
 		() => createProjectCapabilityInvocation(sdk, "PublishProject", project),
-		/当前 SDK 未声明项目能力“PublishProject”/u
+		/当前 SDK 不提供项目能力“PublishProject”/u
 	);
 	assert.throws(
 		() => createProjectCapabilityInvocation(undefined, "compile", project),
-		/尚未加载 SDK，请选择 SDK 入口文件 sdk\.json。/u
+		/尚未加载 SDK，请选择 SDK 目录。/u
 	);
+});
+
+test("共享脚本先传固定子命令，再按清单顺序传项目参数", () => {
+	const sharedSdk: Sdk = {
+		...sdk,
+		capabilities: {
+			projects: [{
+				id: "debug",
+				name: "调试应用",
+				command: "E:\\SDK\\utils\\project\\project.ps1",
+				commandArguments: ["debug"],
+				arguments: ["PROJECT_FILE"]
+			}],
+			tools: []
+		}
+	};
+	assert.deepEqual(createProjectCapabilityInvocation(sharedSdk, "debug", project).args, [
+		"debug", project.filePath
+	]);
 });

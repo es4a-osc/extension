@@ -14,7 +14,9 @@ import { SimpleDiagnosticProvider } from "../../diagnosticProvider";
 import { SimpleRenameProvider } from "../../renameProvider";
 import { SimpleReferenceProvider } from "../../referenceProvider";
 import { SimpleProjectRefactoring } from "../../projectRefactoring";
-import { SimpleCodeFileSystemProvider, SIMPLE_CODE_SCHEME, toSimpleCodeUri, toSimpleDesignerUri } from "../../simpleCodeFileSystem";
+import { SimpleCodeFileSystemProvider, SIMPLE_CODE_SCHEME, toSimpleCodeUri, toSimpleDesignerUri, toSimpleSourceUri } from "../../simpleCodeFileSystem";
+import { isPathInsideOrEqual } from "../../simpleProjectPaths";
+import { closeSimpleUnitTabsInDirectories } from "../../simpleUnitTabs";
 import { loadSimpleProject } from "../../programResources";
 import { loadSdk } from "../../sdk";
 import type { SimpleProjectInfo } from "../../project";
@@ -58,7 +60,12 @@ async function withProject(action: (value: {
 		await vscode.window.showTextDocument(caller, { preview: false });
 		await action({ directory, project, ownerFile, callerFile, owner, caller, documents, refactoring });
 	} finally {
-		for (const document of vscode.workspace.textDocuments) if (!document.isClosed && document.isDirty && document.uri.fsPath.startsWith(directory + path.sep)) await document.save();
+		/* Windows URI 的盘符大小写不固定，清理与项目归属使用同一套路径规则。 */
+		for (const document of vscode.workspace.textDocuments) {
+			const source = toSimpleSourceUri(document.uri) ?? document.uri;
+			if (!document.isClosed && document.isDirty && isPathInsideOrEqual(directory, source.fsPath)) assert.ok(await document.save());
+		}
+		assert.ok(await closeSimpleUnitTabsInDirectories([directory]));
 		refactoring.dispose(); documents.dispose();
 		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	}
@@ -243,7 +250,7 @@ suite("重构异步一致性", () => {
 
 	for (const kind of ["SDK", "继承"] as const) test(`F2 拒绝${kind}名称捕获，不改代码、XML 或磁盘`, async () => {
 		await withProject(async ({ project, owner, caller, ownerFile, callerFile, documents, refactoring }) => {
-			const sdk = await loadSdk(testSdkPath("sdk.json"));
+			const sdk = await loadSdk(testSdkPath());
 			const programs = { getProjects: async () => [project] } as unknown as ProgramTreeProvider;
 			const renames = new SimpleRenameProvider(programs, refactoring, documents, () => sdk);
 			const cancellation = new vscode.CancellationTokenSource();
@@ -360,7 +367,7 @@ suite("重构异步一致性", () => {
 			const otherDocument = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(otherUnit)));
 			const edit = new vscode.WorkspaceEdit(); edit.insert(owner.uri, new vscode.Position(0, 0), "未声明原值 = 1\r\n");
 			assert.ok(await vscode.workspace.applyEdit(edit));
-			const sdk = await loadSdk(testSdkPath("sdk.json"));
+			const sdk = await loadSdk(testSdkPath());
 			const errors: string[] = [];
 			const programs = { getProjects: async () => [project, other] } as unknown as ProgramTreeProvider;
 			const diagnostics = new SimpleDiagnosticProvider(programs, refactoring, documents, { contextForFile: () => undefined } as unknown as ProjectSymbolIndex, () => sdk, () => undefined, (message) => errors.push(message));

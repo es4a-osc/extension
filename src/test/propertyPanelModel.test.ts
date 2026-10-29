@@ -66,7 +66,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		), "utf8");
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const component = getPropertyXmlChildren(document.root, "定义")[0];
 		assert.ok(component);
 		const model = createPropertyPanelModel(document, component, sdk);
@@ -167,7 +167,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	test("扩展类库组件属性框顶部显示定义短名称", async () => {
 		const source = fs.readFileSync(testFixturePath("library-test", "com.example.demo", "src", "com", "example", "demo", "test", "主窗口.simple"), "utf8");
 		const document = parseSimplePropertyXml(source);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		assert.ok(document);
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const component = window === undefined ? undefined : getPropertyXmlChildren(window, "定义")[0];
@@ -232,10 +232,9 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		].join("\r\n"));
 		assert.ok(document);
 		const sdk: Sdk = {
-			capabilities: { projects: [], tools: [] },
+			capabilities: { projects: [], tools: [] },
 			templates: {},
 			directory: "C:\\sdk",
-			filePath: "C:\\sdk\\sdk.json",
 			issues: [],
 			manifests: [{
 				categories: [{
@@ -374,7 +373,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		), "utf8");
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const component = getPropertyXmlChildren(document.root, "定义")[0];
 		assert.ok(component);
 		const updated = updatePropertyPanelValue(
@@ -428,7 +427,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		].join("\r\n");
 		const property = inspectSimplePropertyXml(source);
 		assert.ok(property.document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const filePath = path.join(ROOT_DIRECTORY, "fixtures", "测试窗口.simple");
 		const currentUnit = parseSimpleUnitSymbolsFromModel("", property, filePath, path.dirname(filePath));
 		const semanticContext: SimpleProjectSemanticContext = {
@@ -486,7 +485,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const updated = updatePropertyPanelValue(
 			"",
 			document,
@@ -528,7 +527,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const player = window === undefined ? undefined : getPropertyXmlChildren(window, "定义")[0];
 		assert.ok(player);
@@ -564,7 +563,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		);
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const button = window === undefined ? undefined : getPropertyXmlChildren(window, "定义")[0];
 		assert.ok(button);
@@ -580,10 +579,9 @@ describe("单元与组件属性框 XML 路径模型", () => {
 
 	test("simple.color 保留源码表达式并提供颜色选择器投影", () => {
 		const sdk: Sdk = {
-			capabilities: { projects: [], tools: [] },
+			capabilities: { projects: [], tools: [] },
 			templates: {},
 			directory: "C:\\sdk",
-			filePath: "C:\\sdk\\sdk.json",
 			issues: [],
 			manifests: [{
 				categories: [{
@@ -652,7 +650,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		assert.ok(window);
 		const layoutRows = createPropertyPanelModel(document, window, sdk).groups
@@ -673,7 +671,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	});
 
 	test("布局设置只显示当前布局声明的属性", async () => {
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		for (const [layout, groupName, expectedRows] of [
 			["布局_表格", "表格布局", ["布局.行数", "布局.列数", "布局.内容对齐", "布局.所有列可收缩", "布局.所有列可拉伸"]],
 			["布局_单帧", "单帧布局", []],
@@ -705,7 +703,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	});
 
 	test("组件属性按直接父容器布局过滤并支持 SDK 自定义子分组", async () => {
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const relativeComponentRows = [
 			"位于左边", "位于顶边", "位于右边", "位于底边", "位于开始", "位于结束",
 			"对齐左边", "对齐顶边", "对齐右边", "对齐底边",
@@ -770,7 +768,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 	});
 
 	test("group 不依赖 layouts 并追加在属性原有归属分组后", async () => {
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 		const visualComponent = runtime?.categories
 			.flatMap((category) => category.definitions)
@@ -808,7 +806,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		);
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const panel = window === undefined ? undefined : getPropertyXmlChildren(window, "定义")[0];
 		const button = panel === undefined
@@ -880,7 +878,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const current = window === undefined
 			? undefined
@@ -931,7 +929,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		);
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const window = getPropertyXmlChildren(document.root, "定义")[0];
 		const boldButton = window === undefined
 			? undefined
@@ -958,7 +956,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 		), "utf8");
 		const document = parseSimplePropertyXml(source);
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const windowComponent = getPropertyXmlChildren(document.root, "定义")[0];
 		const radioButton = windowComponent === undefined
 			? undefined
@@ -1017,7 +1015,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const model = createPropertyPanelModel(document, document.root, sdk, "DerivedObject");
 
 		assert.deepEqual(model.groups[1]?.rows.map((row) => [
@@ -1047,7 +1045,7 @@ describe("单元与组件属性框 XML 路径模型", () => {
 			"$结束 $属性"
 		].join("\r\n"));
 		assert.ok(document);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const model = createPropertyPanelModel(document, document.root, sdk, "EmptyObject");
 		assert.deepEqual(model.groups[1]?.rows.map((row) => [row.name, row.value]), [
 			["基础对象", ""],

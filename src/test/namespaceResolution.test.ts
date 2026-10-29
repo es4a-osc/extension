@@ -23,7 +23,7 @@ import { simpleTestProjectPath, simpleTestUnitPath } from "./testProjects";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 
 const root = path.resolve("C:/namespace-resolution/src");
-const sdkPromise = loadSdk(testSdkPath("sdk.json"));
+const sdkPromise = loadSdk(testSdkPath());
 function unit(name: string, code = ""): RefactoringUnit {
 	return { filePath: path.join(root, name.replaceAll(".", "/") + ".simple"), sourceRoot: root, userCode: code,
 		property: inspectSimplePropertyXml("$属性\r\n$资源 $对象\r\n$结束 $属性\r\n") };

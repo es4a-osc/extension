@@ -113,7 +113,7 @@ suite("设计器满尺寸组件拖放", () => {
 			this.timeout(30000);
 			const extension = vscode.extensions.getExtension("es4a.es4a")!;
 			await extension.activate();
-			const sdk = await loadSdk(testSdkPath("sdk.json"));
+			const sdk = await loadSdk(testSdkPath());
 			const source = await fs.readFile(testFixturePath("library-test/simple.library.wsd.grouplist/src/simple/library/wsd/grouplist/test/主窗口.simple"), "utf8");
 			const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-designer-drop-"));
 			const sourceFile = path.join(directory, "主窗口.simple");

@@ -2386,6 +2386,10 @@
 					"name": "线性布局",
 					"description": "用于水平或垂直放置组件的线性布局。\n通过设置重总和和子组件权重可以按比例摆放\n也兼容单选分组框的功能",
 					"kind": "layout",
+					"projection": {
+						"layout": "linear-vertical",
+						"layoutValue": "布局_线性"
+					},
 					"inherits": [
 						"simple.runtime.components.布局"
 					],
@@ -2503,6 +2507,10 @@
 					"name": "表格布局",
 					"description": "按行和列将一个子组件放入表格单元格。\n子组件未设置宽度和高度时，宽度匹配父级，高度适应内容。",
 					"kind": "layout",
+					"projection": {
+						"layout": "grid",
+						"layoutValue": "布局_表格"
+					},
 					"inherits": [
 						"simple.runtime.components.布局"
 					],
@@ -2700,6 +2708,10 @@
 					"name": "单帧布局",
 					"description": "将子组件叠放在同一区域，后添加的子组件位于上层。\n子组件未设置宽度和高度时，均匹配父级。",
 					"kind": "layout",
+					"projection": {
+						"layout": "frame",
+						"layoutValue": "布局_单帧"
+					},
 					"inherits": [
 						"simple.runtime.components.布局"
 					],
@@ -2721,6 +2733,10 @@
 					"name": "相对布局",
 					"description": "用于相对同级或父级组件放置组件的相对布局。\n在相对布局中，边距不一定是离父级多远。组件相对谁摆放，边距就以谁为准；可以是父级，也可以是旁边的组件。\n子组件未设置宽度和高度时，均适应内容。",
 					"kind": "layout",
+					"projection": {
+						"layout": "relative",
+						"layoutValue": "布局_相对"
+					},
 					"inherits": [
 						"simple.runtime.components.布局"
 					]
@@ -2729,6 +2745,10 @@
 					"name": "绝对布局",
 					"description": "按左边和顶边坐标定位子组件。\n子组件未设置宽度和高度时，均适应内容。\n该布局用于兼容固定坐标界面。",
 					"kind": "layout",
+					"projection": {
+						"layout": "absolute",
+						"layoutValue": "布局_绝对"
+					},
 					"inherits": [
 						"simple.runtime.components.布局"
 					]

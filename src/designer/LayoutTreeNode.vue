@@ -26,7 +26,7 @@ xhwsd@qq.com 2026-8-30
 			:title="componentHoverHint(node)"
 			@click="$emit('select', node.path)"
 		>
-			<ComponentIcon modifier="component-icon-tree" :source="node.icon" :type="node.typeName ?? node.type" />
+			<ComponentIcon modifier="component-icon-tree" :source="node.icon" />
 			<span class="tree-name">{{ namePreview?.xmlPath === node.path ? namePreview.newName : node.name }}</span>
 			<span class="tree-type">{{ node.typeName ?? node.type }}</span>
 		</button>

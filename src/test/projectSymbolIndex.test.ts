@@ -235,3 +235,66 @@ test("同一文档语义代次复用完整上下文并在代次变化后失效",
 		await fs.rm(directory, { force: true, recursive: true });
 	}
 });
+
+test("同一文档身份和代次的分析不能复用另一份代码、XML 或文件路径", async () => {
+	const index = new ProjectSymbolIndex();
+	const identity = {};
+	const cache = { generation: 1, identity };
+	const file = path.resolve("standalone", "First.simple");
+	const property = inspectSimplePropertyXml("$属性\r\n$资源 $对象\r\n$结束 $属性\r\n");
+	const before = "过程 Before()\r\n结束 过程\r\n";
+	const after = "过程 After()\r\n结束 过程\r\n";
+	const first = index.contextForFile(file, before, property, [], cache);
+	const changed = index.contextForFile(file, after, property, [], cache);
+	assert.deepEqual(changed?.currentUnit?.definition.functions?.map((member) => member.name), ["After"]);
+	assert.notStrictEqual(changed, first);
+	const movedFile = path.resolve("standalone", "Second.simple");
+	const moved = index.contextForFile(movedFile, after, property, [], cache);
+	assert.equal(moved?.currentUnit?.filePath, movedFile);
+	const windowProperty = inspectSimplePropertyXml("$属性\r\n$资源 $窗口\r\n$定义 Second $为 窗口\r\n$结束 $定义\r\n$结束 $属性\r\n");
+	const changedXml = index.contextForFile(movedFile, after, windowProperty, [], cache);
+	assert.equal(changedXml?.currentUnit?.unitType, "窗口");
+});
+
+test("同版本打开文档改变路径或代码后重新派生符号，不能返回旧限定名", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-open-symbol-path-"));
+	const sourceRoot = path.join(directory, "src");
+	const firstFile = path.join(sourceRoot, "First.simple");
+	const secondFile = path.join(sourceRoot, "nested", "Second.simple");
+	const propertySource = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const before = "过程 Before()\r\n结束 过程\r\n";
+	try {
+		await fs.mkdir(sourceRoot, { recursive: true });
+		await fs.writeFile(firstFile, before + propertySource, "utf8");
+		const index = new ProjectSymbolIndex();
+		const project: SimpleProjectInfo = {
+			directory, filePath: path.join(directory, "project.properties"), name: "路径缓存验证", properties: {},
+			sourceDirectories: [sourceRoot], assetsDirectory: path.join(directory, "assets"),
+			buildDirectory: path.join(directory, "build"), resourceDirectory: path.join(directory, "res")
+		};
+		await index.updateProjects([project]);
+		const snapshot = { cacheIdentity: {}, version: 1, filePath: firstFile, userCode: before, property: inspectSimplePropertyXml(propertySource) };
+		index.contextForFile(firstFile, before, snapshot.property, [snapshot]);
+		const moved = { ...snapshot, filePath: secondFile };
+		const changedPath = index.contextForFile(secondFile, before, snapshot.property, [moved]);
+		assert.equal(changedPath?.currentUnit?.filePath, secondFile);
+		assert.equal(changedPath?.currentUnit?.definition.name, "nested.Second");
+		const after = "过程 After()\r\n结束 过程\r\n";
+		const changedCode = index.contextForFile(secondFile, after, snapshot.property, [{ ...moved, userCode: after }]);
+		assert.deepEqual(changedCode?.currentUnit?.definition.functions?.map((member) => member.name), ["After"]);
+		const cache = { identity: {}, generation: 1 };
+		const caller = index.contextForFile(firstFile, before, snapshot.property, [snapshot, moved], cache);
+		assert.equal(caller?.units?.find((unit) => unit.filePath === secondFile)?.definition.functions?.[0]?.name, "Before");
+		const otherChanged = index.contextForFile(firstFile, before, snapshot.property, [snapshot, { ...moved, userCode: after }], cache);
+		assert.equal(otherChanged?.units?.find((unit) => unit.filePath === secondFile)?.definition.functions?.[0]?.name, "After");
+		const changedProperty = inspectSimplePropertyXml("$属性\r\n$资源 $窗口\r\n$定义 Second $为 窗口\r\n$结束 $定义\r\n$结束 $属性\r\n");
+		const otherXml = index.contextForFile(firstFile, before, snapshot.property, [snapshot, { ...moved, userCode: after, property: changedProperty }], cache);
+		assert.equal(otherXml?.units?.find((unit) => unit.filePath === secondFile)?.unitType, "窗口");
+		/* 同一文件同时属于外层与内层项目时，语言分析必须与编译、重构选择同一个项目。 */
+		const inner = { ...project, name: "内层项目", filePath: path.join(sourceRoot, "nested", "project.properties"), sourceDirectories: [path.dirname(secondFile)] };
+		await index.updateProjects([project, inner]);
+		assert.equal(index.contextForFile(secondFile, before, snapshot.property)?.currentUnit?.definition.name, "Second");
+	} finally {
+		await fs.rm(directory, { recursive: true, force: true });
+	}
+});

@@ -21,7 +21,7 @@ import {
 	type SimpleTestProjectName
 } from "./testProjects";
 
-const SDK = loadSdk(testSdkPath("sdk.json"));
+const SDK = loadSdk(testSdkPath());
 
 /** 返回测试样例目录中的绝对路径。 */
 function fixture(project: SimpleTestProjectName, ...segments: string[]): string {

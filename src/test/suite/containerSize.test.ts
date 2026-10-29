@@ -1,5 +1,5 @@
 /*
-在真实 Webview 中验证嵌套空面板的滚动框尺寸，防止 CSS 测量将可选外框压成细线。
+在真实 Webview 中验证滚动容器的尺寸与内容溢出，保持空容器可操作和滚动方向可浏览。
 xhwsd@qq.com 2026-10-8
 */
 
@@ -9,7 +9,7 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { createSimpleDesignerModel } from "../../designerModel";
+import { createSimpleDesignerModel, type DesignerComponentNode } from "../../designerModel";
 import { componentPresentation, containerStyle, designerLayoutClass, findDesignerComponentNode } from "../../designer/designerView";
 import { parseSimplePropertyXml } from "../../propertyXml";
 import { loadSdk } from "../../sdk";
@@ -20,7 +20,7 @@ suite("嵌套空容器尺寸投影", () => {
 		this.timeout(15000);
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const sourcePath = await simpleTestUnitPath("SmokeTests", "测试水平滚动框");
 		const source = await fs.readFile(sourcePath, "utf8");
 		const document = parseSimplePropertyXml(source);
@@ -87,6 +87,98 @@ suite("嵌套空容器尺寸投影", () => {
 				}
 			}
 			assert.equal(await fs.readFile(sourcePath, "utf8"), source);
+		} finally {
+			panel.dispose();
+		}
+	});
+});
+
+
+suite("滚动容器内容范围", () => {
+	test("固定与匹配父级的容器只在滚动方向放开适应内容尺寸", async function () {
+		this.timeout(30000);
+		const extension = vscode.extensions.getExtension("es4a.es4a");
+		assert.ok(extension);
+		const sdk = await loadSdk(testSdkPath());
+		const css = await fs.readFile(path.join(extension.extensionPath, "dist", "designer", "designer.css"), "utf8");
+		const panel = vscode.window.createWebviewPanel("es4a.scrollExtentTest", "滚动范围回归",
+			vscode.ViewColumn.Active, { enableScripts: true });
+		try {
+			for (const direction of ["horizontal", "vertical"] as const) {
+				const name = direction === "horizontal" ? "水平" : "垂直";
+				const sourcePath = await simpleTestUnitPath("SmokeTests", `测试${name}滚动框`);
+				const source = await fs.readFile(sourcePath, "utf8");
+				const document = parseSimplePropertyXml(source);
+				assert.ok(document);
+				const sample = createSimpleDesignerModel(document, sdk).root?.children.find(node => node.name === `${name}滚动框1`);
+				assert.ok(sample);
+				const sampleChild = sample.children.find(node => node.name === "面板2");
+				assert.ok(sampleChild);
+				for (const size of ["fixed", "parent"] as const) for (const enabled of [false, true]) {
+					// 仅调整内存投影，复用真实滚动框、面板及生产 DOM 层次，不改写样例 XML。
+					const node: DesignerComponentNode = {
+						...sample,
+						scroll: enabled ? direction : undefined,
+						width: size === "fixed" ? { kind: "fixed", value: 240 } : { kind: "parent" },
+						height: size === "fixed" ? { kind: "fixed", value: 160 } : { kind: "parent" }
+					};
+					const child: DesignerComponentNode = { ...sampleChild, width: { kind: "content" }, height: { kind: "content" } };
+					const outer = componentPresentation(node, undefined, "container");
+					const inner = componentPresentation(child, undefined, "container");
+					const measured = new Promise<{ offset: number; delta: number; extent: number; viewport: number; content: number; crossContent: number; crossViewport: number }>((resolve, reject) => {
+						const timer = setTimeout(() => { listener.dispose(); reject(new Error("滚动范围测量超时")); }, 10000);
+						const listener = panel.webview.onDidReceiveMessage(message => { clearTimeout(timer); listener.dispose(); resolve(message); });
+					});
+					panel.webview.html = `<!doctype html><html><head><style>${css}</style></head><body>
+						<div style="width:320px;height:220px" class="layout-frame">
+							<div id="scroll" class="${outer.classes.join(" ")}"><div class="container-content">
+								<div id="surface" class="container-layout-surface ${designerLayoutClass(node)}">
+									<div id="child" class="${inner.classes.join(" ")}"><div class="container-content">
+										<div id="inner" class="container-layout-surface ${designerLayoutClass(child)}">
+											<div style="width:900px;height:900px;flex:none">超出视口的内容</div>
+										</div>
+									</div></div>
+								</div>
+							</div></div>
+						</div><script>
+						const api = acquireVsCodeApi();
+						const styles = ${JSON.stringify({ scroll: outer.style, surface: containerStyle(node), child: inner.style, inner: containerStyle(child) })};
+						for (const [id, style] of Object.entries(styles)) for (const [key, value] of Object.entries(style)) {
+							document.getElementById(id).style.setProperty(key.startsWith('--') ? key : key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase()), value);
+						}
+						requestAnimationFrame(() => requestAnimationFrame(() => {
+							const surface = document.getElementById('surface');
+							const child = document.getElementById('child');
+							const horizontal = ${direction === "horizontal"};
+							const before = child.getBoundingClientRect();
+							if (horizontal) surface.scrollLeft = surface.scrollWidth;
+							else surface.scrollTop = surface.scrollHeight;
+							const after = child.getBoundingClientRect();
+							api.postMessage({
+								offset: horizontal ? surface.scrollLeft : surface.scrollTop,
+								delta: horizontal ? before.left - after.left : before.top - after.top,
+								extent: horizontal ? surface.scrollWidth : surface.scrollHeight,
+								viewport: horizontal ? surface.clientWidth : surface.clientHeight,
+								content: horizontal ? after.width : after.height,
+								crossContent: horizontal ? after.height : after.width,
+								crossViewport: horizontal ? surface.clientHeight : surface.clientWidth
+							});
+						}));
+						</script></body></html>`;
+					const result = await measured;
+					const description = `${direction}/${size}/${enabled}`;
+					assert.ok(result.viewport > 0, description);
+					assert.ok(result.crossContent <= result.crossViewport + 1, `非滚动方向仍应受视口约束：${description}`);
+					if (enabled) {
+						assert.ok(result.extent > result.viewport + 100, `内容应超出视口：${description}`);
+						assert.ok(result.offset > 100, `滚动方向应可浏览内容：${description}`);
+						assert.ok(Math.abs(result.delta - result.offset) < 1, `内容矩形应跟随滚动：${description}`);
+					} else {
+						assert.ok(result.content <= result.viewport + 1, `普通容器仍应限制适应内容尺寸：${description}`);
+					}
+				}
+				assert.equal(await fs.readFile(sourcePath, "utf8"), source);
+			}
 		} finally {
 			panel.dispose();
 		}

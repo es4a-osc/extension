@@ -17,10 +17,10 @@ import {
 } from "./sdk";
 import {
 	buildSemanticDefinitionIndex,
+	isSimpleMemberAccessible,
 	isSimpleAliasName,
 	resolveSimpleDefinitionName,
 	resolveSimpleNamespaceName,
-	isStaticProjectMember,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
 import {
@@ -179,13 +179,8 @@ function effectiveMemberTarget(
 		if (value === undefined) {
 			continue;
 		}
-		if (access !== undefined) {
-			const staticMember = group === "constants"
-				|| value.member.global === true
-				|| isStaticProjectMember(value.member);
-			if ((access === "static") !== staticMember) {
-				continue;
-			}
+		if (access !== undefined && !isSimpleMemberAccessible(value.member, group, access)) {
+			continue;
 		}
 		return memberTarget(value.member, value.owner, group, origin);
 	}
@@ -268,7 +263,7 @@ export function findSimpleDefinition(
 				resolved.reference,
 				resolved.access === "static"
 					? ["constants", "variables", "functions"]
-					: ["variables", "properties", "functions", "events"],
+					: ["constants", "variables", "properties", "functions", "events"],
 				range.name,
 				definitions,
 				range,

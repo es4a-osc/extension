@@ -37,7 +37,7 @@ xhwsd@qq.com 2026-8-30
 			@pointerenter="$emit('hover', component.path)"
 			@pointerleave="$emit('hover', undefined)"
 		>
-			<ComponentIcon modifier="component-icon-enabled" :source="component.icon" :type="component.type" />
+			<ComponentIcon modifier="component-icon-enabled" :source="component.icon" />
 		</button>
 	</div>
 </template>

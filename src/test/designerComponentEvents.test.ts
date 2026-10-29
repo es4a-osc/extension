@@ -36,10 +36,10 @@ function createDocument(): SimplePropertyXmlDocument {
 /** 创建由编译器声明对象事件、运行库声明组件事件的最小 SDK 模型。 */
 function createSdk(): Sdk {
 	return {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "C:\\sdk",
-		filePath: "C:\\sdk\\sdk.json",
 		issues: [],
 		manifests: [{
 			categories: [{
@@ -93,7 +93,6 @@ function createSdk(): Sdk {
 			kind: "runtime",
 			name: "测试运行库"
 		}],
-		version: "test"
 	};
 }
 

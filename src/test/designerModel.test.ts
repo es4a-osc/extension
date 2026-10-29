@@ -31,12 +31,16 @@ import {
 	resolveDesignerPasteTargetPath
 } from "../designer/designerView";
 import {
+	createPropertyXmlAttributePath,
 	getPropertyXmlAttribute,
 	getPropertyXmlChildren,
 	resolvePropertyXmlElement,
-	parseSimplePropertyXml
+	parseSimplePropertyXml,
+	writePropertyXmlValue
 } from "../propertyXml";
 import { loadSdk, type Sdk } from "../sdk";
+import { createPropertyPanelModel, type PropertyPanelRow } from "../propertyPanelModel";
+import { updatePropertyPanelValue } from "../propertyPanel";
 import { simpleTestProjectPath, simpleTestUnitPath } from "./testProjects";
 
 /** 按名称递归查找设计器组件树节点。 */
@@ -61,7 +65,7 @@ function componentPropertyValue(
 }
 
 test("可用组件候选保留 SDK 完整运行时类名", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(undefined, sdk);
 	const button = model.toolbox
 		.find((group) => group.name === "视图组件")
@@ -88,7 +92,7 @@ test("单帧布局内拖动只更新父级对齐和边距并保留层叠顺序",
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const button = findComponent(model.root, "Button1");
 	assert.ok(model.root);
@@ -168,7 +172,7 @@ test("组件拖入和拖出单帧布局时清理来源布局位置", async () =>
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const button = findComponent(model.root, "Button1");
 	assert.ok(model.root);
@@ -218,10 +222,10 @@ test("组件拖入和拖出单帧布局时清理来源布局位置", async () =>
 
 test("可用组件按分类名称合并并保持首次出现顺序", () => {
 	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
+		capabilities: { projects: [], tools: [] },
+
 		templates: {},
 		directory: "",
-		filePath: "",
 		issues: [],
 		manifests: [
 			{
@@ -292,7 +296,7 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 		"TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 
@@ -324,11 +328,11 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 	assert.equal(model.toolbox.filter((group) => group.name === "扩展可视组件").length, 1);
 	assert.deepEqual(
 		model.toolbox.find((group) => group.name === "扩展可视组件")?.items.map((item) => item.name),
-		["演示按钮", "滑动页面框", "分组列表框"]
+		["演示按钮", "分组列表框", "滑动页面框"]
 	);
 	assert.deepEqual(
 		model.toolbox.find((group) => group.name === "扩展组件")?.items.map((item) => item.name),
-		["低功耗蓝牙", "跨程序辅助", "通知管理器", "应用更新"]
+		["跨程序辅助", "低功耗蓝牙", "通知管理器", "应用更新"]
 	);
 	const lowEnergyBluetooth = model.toolbox.find((group) => group.name === "扩展组件")
 		?.items.find((item) => item.name === "低功耗蓝牙");
@@ -491,7 +495,7 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 test("扩展类库组件定义的行尾注释不影响限定名和别名投影", async () => {
 	const source = await fs.readFile(testFixturePath("library-test", "com.example.demo", "src", "com", "example", "demo", "test", "主窗口.simple"), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	assert.deepEqual(
@@ -534,7 +538,7 @@ test("表格布局新增、移动和粘贴组件时写入目标单元格", async
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.throws(
 		() => addSimpleDesignerComponent(document, sdk, "按钮", "/属性/定义[1]", "canvas"),
 		/具体单元格/u
@@ -643,7 +647,7 @@ test("绝对布局鼠标新增和拖动组件时写入 DP 坐标", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const unpositioned = addSimpleDesignerComponent(
 		document,
 		sdk,
@@ -775,7 +779,7 @@ test("画布拖动尺寸只写入变化方向并在绝对布局同步左上坐�
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	assert.equal(model.root?.resizable, false);
 	const button = findComponent(model.root, "按钮1");
@@ -832,7 +836,7 @@ test("水平线性布局未声明基线对齐时使用 SDK 有效初始值并保
 		"Tetris", "src", "simple", "samples", "tetris", "Tetris.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const gamePanel = findComponent(createSimpleDesignerModel(document, sdk).root, "GamePanel");
 
@@ -849,7 +853,7 @@ test("窗口设计器删除可视或非可视组件并选择回到直接父组�
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const previousButton = findComponent(model.root, "PrevButton");
@@ -913,7 +917,7 @@ test("组件脱离父容器时清理失效兄弟锚点并保留同级排序和�
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const leftPanel = findComponent(model.root, "LeftPanel");
 	const rightPanel = findComponent(model.root, "RightPanel");
@@ -978,7 +982,7 @@ test("窗口设计器复制组件只生成剪贴板文本而不修改 XML", asyn
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const topPanel = findComponent(model.root, "TopPanel");
@@ -1008,7 +1012,7 @@ test("窗口设计器键盘粘贴按选中节点确定容器", async () => {
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const root = createSimpleDesignerModel(document, sdk).root;
 	const topPanel = findComponent(root, "TopPanel");
@@ -1028,7 +1032,7 @@ test("可用组件菜单按当前选择加入安全布局位置", async () => {
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const root = model.root;
@@ -1083,7 +1087,7 @@ test("表格格子只在明确选中且为空时作为可用组件加入目标",
 		"\t$结束 $定义",
 		"$结束 $属性"
 	].join("\r\n"));
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const root = createSimpleDesignerModel(document, sdk).root;
 	const button = findComponent(root, "Button1");
@@ -1129,7 +1133,7 @@ test("可用组件菜单在选中容器无法接收时回退到容器后方", as
 		"\t$结束 $定义",
 		"$结束 $属性"
 	].join("\r\n"));
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const root = createSimpleDesignerModel(document, sdk).root;
 	const gridPanel = findComponent(root, "GridPanel");
@@ -1152,7 +1156,7 @@ test("窗口设计器只把剪贴板 XML 子树粘贴到容器并消除组件重
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const root = model.root;
@@ -1263,7 +1267,7 @@ test("窗口设计器只通过 XML 模型前移和后移同级组件", async () 
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const nextButton = findComponent(model.root, "NextButton");
@@ -1316,7 +1320,7 @@ test("窗口设计器按 XML 路径把画布组件移动到其它容器和指定
 		"StartTests", "src", "simple", "runtime", "tests", "TimerTests.simple"
 	), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
 	const topPanel = findComponent(model.root, "TopPanel");
@@ -1412,7 +1416,7 @@ test("窗口设计器按 Simple 长度常量和固定 DIP 投影组件尺寸", a
 	const source = await fs.readFile(simpleTestProjectPath(
 		"Tetris", "src", "simple", "samples", "tetris", "Tetris.simple"
 	), "utf8");
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -1453,7 +1457,7 @@ test("窗口设计器只投影水平进度条的通用组件属性", async () =>
 		await simpleTestUnitPath("SmokeTests", "测试水平进度条"),
 		"utf8"
 	);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -1506,7 +1510,7 @@ test("相对布局拖拽预演与正式写回采用相同的同轴规则和边�
 });
 
 test("窗口设计器递归投影容器布局与子组件布局参数", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const document = parseSimplePropertyXml([
 		"$属性",
 		"\t$资源 $窗口",
@@ -1572,7 +1576,7 @@ test("相对布局只从 XML 属性投影父级规则和同级锚点", async () 
 	);
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const panel = findComponent(model.root, "面板1");
 	const button = findComponent(model.root, "按钮1");
@@ -1795,7 +1799,7 @@ test("相对布局提交同级锚点后按最靠后锚点调整当前组件顺�
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const current = findComponent(model.root, "Current");
 	const earlyAnchor = findComponent(model.root, "EarlyAnchor");
@@ -1853,7 +1857,7 @@ test("相对布局拒绝提交直接或间接循环的同级锚点", async () =>
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const current = findComponent(model.root, "Current");
 	const anchor = findComponent(model.root, "Anchor");
@@ -1887,7 +1891,7 @@ test("相对布局居中规则可被拖拽替换且未改变轴继续保留", as
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const button = findComponent(createSimpleDesignerModel(document, sdk).root, "CenterHorizontalButton");
 	assert.equal(button?.positionDraggable, true);
 	assert.deepEqual(button?.relativeMoveAxes, { horizontal: true, vertical: true });
@@ -1929,7 +1933,7 @@ test("容器自身操作由父布局决定且未适配布局只锁定其可视�
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const unsupportedPanel = findComponent(model.root, "UnsupportedPanel");
 	const childPanel = findComponent(model.root, "ChildPanel");
@@ -2011,7 +2015,7 @@ test("组件优先投影文本，编辑框空文本时投影提示文本", async
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const model = createSimpleDesignerModel(document, sdk);
 	const emptyButton = findComponent(model.root, "EmptyButton");
 	const textButton = findComponent(model.root, "TextButton");
@@ -2041,7 +2045,7 @@ test("组件优先投影文本，编辑框空文本时投影提示文本", async
 test("自定义组件样例中的空编辑框按提示文本投影", async () => {
 	const source = await fs.readFile(await simpleTestUnitPath("SmokeTests", "测试自定义组件"), "utf8");
 	const document = parseSimplePropertyXml(source);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	assert.ok(document);
 	const edit = findComponent(createSimpleDesignerModel(document, sdk).root, "编辑框1");
 
@@ -2068,7 +2072,7 @@ test("滚动框只接受一个直属可视组件", async () => {
 		"$结束 $属性"
 	].join("\r\n"));
 	assert.ok(document);
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const scrollPath = "/属性/定义[1]/定义[1]";
 	const insidePath = scrollPath + "/定义[1]";
 	const outsidePath = "/属性/定义[1]/定义[2]/定义[1]";
@@ -2107,7 +2111,7 @@ test("窗口设计器按 Java 运行库常量投影文本内容水平对齐", as
 	const source = await fs.readFile(simpleTestProjectPath(
 		"StartTests", "src", "simple", "runtime", "tests", "RadioButtonTests.simple"
 	), "utf8");
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -2130,7 +2134,7 @@ test("窗口设计器投影文本组件字体和 ARGB 颜色属性", async () =>
 	const source = await fs.readFile(simpleTestProjectPath(
 		"StartTests", "src", "simple", "runtime", "tests", "RadioButtonTests.simple"
 	), "utf8");
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const document = parseSimplePropertyXml(source);
 	assert.ok(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -2154,4 +2158,74 @@ test("窗口设计器投影文本组件字体和 ARGB 颜色属性", async () =>
 		findComponent(createSimpleDesignerModel(expressionDocument, sdk).root, "RadioButton7")?.fontSize,
 		undefined
 	);
+});
+
+
+test("布局投影通过语义读取改名后的容器属性与布局成员", async () => {
+	const sdk = await loadSdk(testSdkPath());
+	/* 同时改名容器的布局属性和布局定义的成员，证明两层都不依赖中文名称。 */
+	const names = new Map([
+		["layout", "arrangement"], ["orientation", "axis"], ["rowCount", "rows"],
+		["columnCount", "columns"], ["gravity", "alignment"], ["weightSum", "parts"]
+	]);
+	const renamed: Sdk = {
+		...sdk,
+		manifests: sdk.manifests.map(manifest => ({
+			...manifest,
+			categories: manifest.categories.map(category => ({
+				...category,
+				definitions: category.definitions.map(definition => ({
+					...definition,
+					properties: definition.properties?.map(property => ({
+						...property, name: names.get(property.projection ?? "") ?? property.name
+					}))
+				}))
+			}))
+		}))
+	};
+	const source = await fs.readFile(simpleTestProjectPath("Tetris", "src", "simple", "samples", "tetris", "Tetris.simple"), "utf8");
+	const document = parseSimplePropertyXml(source);
+	assert.ok(document);
+	const root = createSimpleDesignerModel(document, renamed).root;
+	assert.ok(root);
+	let changed = document;
+	const setValue = (property: string, value: string): void => {
+		changed = writePropertyXmlValue(changed, createPropertyXmlAttributePath(root.path, "赋值", "属性", property, "值"), value);
+	};
+	setValue("arrangement", "布局_线性");
+	setValue("arrangement.axis", "0");
+	setValue("arrangement.parts", "7");
+	setValue("arrangement.alignment", "对齐_居中");
+	const linear = createSimpleDesignerModel(changed, renamed).root;
+	assert.equal(linear?.layout, "linear-horizontal");
+	assert.equal(linear.layoutWeightSum, 7);
+	assert.deepEqual(linear.layoutContentAlignment, { horizontal: "center", vertical: "center" });
+	const rows = (): readonly PropertyPanelRow[] => createPropertyPanelModel(
+		changed, resolvePropertyXmlElement(changed, root.path), renamed, root.name
+	).groups.flatMap(group => group.rows);
+	const axis = rows().find(row => row.name === "arrangement.axis");
+	assert.equal(axis?.value, "0");
+	/* 从实际属性框许可路径提交，覆盖读取、置值及切换布局的子属性清理。 */
+	const submit = (property: string, value: string): void => {
+		const row = rows().find(candidate => candidate.name === property);
+		assert.ok(row?.editTarget);
+		const result = updatePropertyPanelValue("保留用户代码", changed, renamed, root.name, {
+			contextToken: "projection-regression", renderVersion: 1, type: "updateXmlValue",
+			selectedXmlPath: root.path, selectedComponentName: root.name, xmlPath: row.editTarget.xmlPath,
+			removeElementWhenEmpty: row.editTarget.removeElementWhenEmpty === true, value
+		});
+		assert.equal(result.userCode, "保留用户代码");
+		changed = result.propertyDocument;
+	};
+	submit("arrangement.axis", "布局_方向_垂直");
+	assert.equal(createSimpleDesignerModel(changed, renamed).root?.layout, "linear-vertical");
+	submit("arrangement", "布局_表格");
+	assert.equal(componentPropertyValue(changed, root, "arrangement.axis"), undefined);
+	assert.equal(componentPropertyValue(changed, root, "arrangement.parts"), undefined);
+	setValue("arrangement.rows", "2");
+	setValue("arrangement.columns", "4");
+	const grid = createSimpleDesignerModel(changed, renamed).root;
+	assert.equal(grid?.layout, "grid");
+	assert.equal(grid.layoutRows, 2);
+	assert.equal(grid.layoutColumns, 4);
 });

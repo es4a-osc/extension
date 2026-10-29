@@ -18,7 +18,6 @@ xhwsd@qq.com 2026-8-30
 					v-if="model.component === true"
 					modifier="component-icon-header"
 					:source="model.icon"
-					:type="model.subtitle ?? '组件'"
 				/>
 				<div class="component-name">{{ previewName ?? model.title ?? "当前单元" }}</div>
 				<div class="component-type">{{ model.subtitle ?? "" }}</div>

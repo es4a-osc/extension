@@ -1,5 +1,5 @@
 <!--
-统一呈现 SDK 组件遮罩图标，并在图标缺失时回退到稳定的文本图形。
+统一呈现 SDK 组件遮罩图标，缺失时使用相同占位图形，不从组件名称推断外观。
 xhwsd@qq.com 2026-8-30
 -->
 
@@ -8,15 +8,12 @@ xhwsd@qq.com 2026-8-30
 		aria-hidden="true"
 		:class="['component-icon', modifier, { 'component-icon-fallback': source === undefined }]"
 		:style="source === undefined ? undefined : { '--component-icon-source': `url(&quot;${source}&quot;)` }"
-	>{{ source === undefined ? componentGlyph(type) : '' }}</span>
+	>{{ source === undefined ? '◇' : '' }}</span>
 </template>
 
 <script setup lang="ts">
-import { componentGlyph } from "./designerView";
-
 defineProps<{
 	readonly modifier?: string;
 	readonly source?: string;
-	readonly type: string;
 }>();
 </script>

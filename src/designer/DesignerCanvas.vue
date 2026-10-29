@@ -41,7 +41,7 @@ xhwsd@qq.com 2026-8-30
 			>
 				<div
 					ref="windowLayoutSurface"
-					:class="['window-layout-surface', designerLayoutClass(projection.root), { 'window-scrollable': projection.root.scrollable === true }]"
+					:class="['window-layout-surface', designerLayoutClass(projection.root)]"
 					:style="windowLayoutStyle"
 					:data-layout-surface-path="projection.root.path"
 					:data-drop-target="projection.root.acceptsVisualChild === false ? undefined : projection.root.path"
@@ -175,6 +175,20 @@ xhwsd@qq.com 2026-8-30
 				:style="hoveredNameStyle"
 			><span class="designer-component-name-text">{{ hoveredComponentName }}</span></div>
 		</div>
+		<div class="designer-scrollbar-layer">
+			<div v-if="scrollbars.length > 0" class="designer-scrollbar-viewport" :style="scrollbarViewportStyle">
+				<div
+					v-for="bar in scrollbars" :key="bar.axis"
+					:class="['designer-scrollbar', 'designer-scrollbar-' + bar.axis]" :style="bar.style"
+					role="scrollbar" tabindex="0" :aria-label="bar.axis === 'vertical' ? '纵向滚动' : '横向滚动'"
+					:aria-orientation="bar.axis" :aria-valuemin="0" :aria-valuemax="bar.geometry.range" :aria-valuenow="bar.offset"
+					@pointerdown.stop.prevent="startScroll($event, bar)" @pointermove.stop="moveScroll"
+					@pointerup.stop="finishScroll" @pointercancel="finishScroll" @lostpointercapture="finishScroll"
+					@wheel.stop.prevent="wheelScroll($event, bar)" @keydown.stop="keyScroll($event, bar)"
+					@click.stop @dblclick.stop @dragstart.stop.prevent
+				><div class="designer-scrollbar-thumb" :style="bar.thumbStyle"></div></div>
+			</div>
+		</div>
 		<div class="designer-drag-layer">
 			<template v-if="dragFeedback?.kind === 'grid' && dragFeedback.gridPosition !== undefined">
 				<div class="designer-grid-position-label designer-grid-position-label-feedback" :style="gridPositionLabelStyle">行{{ dragFeedback.gridPosition.row }} 列{{ dragFeedback.gridPosition.column }}</div>
@@ -219,6 +233,7 @@ xhwsd@qq.com 2026-8-30
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from "vue";
+import { useDesignerScrollbars } from "./designerScrollbars";
 import type {
 	DesignerComponentNode,
 	DesignerComponentResize,
@@ -266,6 +281,7 @@ const emit = defineEmits<{
 }>();
 const canvasElement = ref<HTMLElement>();
 const windowLayoutSurface = ref<HTMLElement>();
+const { bars: scrollbars, viewportStyle: scrollbarViewportStyle, startScroll, moveScroll, finishScroll, wheelScroll, keyScroll } = useDesignerScrollbars(canvasElement, () => props.projection);
 const selectedNameElement = ref<HTMLElement>();
 const hoveredNameElement = ref<HTMLElement>();
 const hoveredComponentPath = ref<string>();
@@ -731,6 +747,7 @@ function componentPathFromPointer(event: PointerEvent): string | undefined {
 /** 指针按下立即切换组件；不等待可能被原生拖动取消的 click。 */
 function selectComponentAtPointer(event: PointerEvent): void {
 	if (event.button !== 0 || !(event.target instanceof Element)) return;
+	if (event.target.closest(".designer-scrollbar-layer") !== null) return;
 	const resizeHandle = event.target.closest<HTMLElement>("[data-resize-handle]");
 	if (resizeHandle !== null && canvasElement.value?.contains(resizeHandle)) {
 		const handle = resizeHandle.dataset.resizeHandle;

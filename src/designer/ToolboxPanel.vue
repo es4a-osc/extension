@@ -31,7 +31,7 @@ xhwsd@qq.com 2026-8-30
 					:data-visual="item.visual ? 'true' : 'false'"
 					:title="componentTypeHoverHint(item.name, item.runtimeType, item.description)"
 				>
-					<ComponentIcon modifier="component-icon-toolbox" :source="item.icon" :type="item.name" />
+					<ComponentIcon modifier="component-icon-toolbox" :source="item.icon" />
 					<span class="toolbox-name">{{ item.name }}</span>
 				</div>
 			</div>

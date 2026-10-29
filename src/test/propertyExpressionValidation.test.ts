@@ -53,7 +53,6 @@ const sdk: Sdk = {
 	capabilities: { projects: [], tools: [] },
 	templates: {},
 	directory: "C:\\sdk",
-	filePath: "C:\\sdk\\sdk.json",
 	issues: [],
 	manifests: [runtimeManifest]
 };

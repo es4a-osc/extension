@@ -83,7 +83,7 @@ function find(node: DesignerComponentNode | undefined, name: string): DesignerCo
 }
 
 test("无布局属性的扩展容器缺省单帧且不把投影配置写入 XML", async () => {
-	const sdk = withContainer(await loadSdk(testSdkPath("sdk.json")));
+	const sdk = withContainer(await loadSdk(testSdkPath()));
 	const document = containerDocument();
 	const before = serializePropertyXml(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -105,7 +105,7 @@ test("无布局属性的扩展容器缺省单帧且不把投影配置写入 XML"
 });
 
 test("固定布局复用现有投影且真实布局属性优先，包括自定义属性名", async () => {
-	const base = await loadSdk(testSdkPath("sdk.json"));
+	const base = await loadSdk(testSdkPath());
 	const document = containerDocument();
 	for (const layout of ["absolute", "frame", "grid", "linear-horizontal", "linear-vertical", "relative"] as const) {
 		const model = createSimpleDesignerModel(document, withContainer(base, { layout }));
@@ -140,8 +140,8 @@ test("固定布局复用现有投影且真实布局属性优先，包括自定�
 	assert.equal(fallbackPanel.groups.flatMap((group) => group.rows).some((row) => row.name === "对齐"), true);
 });
 
-test("滚动方向独立于布局，启用滚动条属性及滚动开关仍控制显示", async () => {
-	const base = await loadSdk(testSdkPath("sdk.json"));
+test("固定滚动方向及设计期导航独立于运行时滚动和滚动条开关", async () => {
+	const base = await loadSdk(testSdkPath());
 	const properties: readonly LibraryMember[] = [{
 		name: "显示滚动条", type: "逻辑型", projection: "scrollbarEnabled"
 	}, {
@@ -154,21 +154,21 @@ test("滚动方向独立于布局，启用滚动条属性及滚动开关仍控�
 		assert.ok(box);
 		assert.equal(box.layout, "frame");
 		assert.equal(box.scroll, scroll);
-		assert.equal(designerLayoutClass(box), "layout-frame container-scroll-" + scroll + " container-scrollbar-hidden");
+		assert.equal(designerLayoutClass(box), "layout-frame container-scroll-" + scroll);
 		assert.deepEqual(containerStyle(box), {
 			gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)"
 		});
 		const disabled = find(createSimpleDesignerModel(containerDocument("允许滚动 = 假"), sdk).root, "Box");
 		assert.ok(disabled);
-		assert.equal(disabled.scroll, undefined);
-		assert.equal(designerLayoutClass(disabled), "layout-frame");
+		assert.equal(disabled.scroll, scroll);
+		assert.equal(designerLayoutClass(disabled), "layout-frame container-scroll-" + scroll);
 	}
 	const none = withContainer(base, { scroll: "none" });
 	assert.equal(find(createSimpleDesignerModel(containerDocument(), none).root, "Box")?.scroll, undefined);
 });
 
 test("通用 limit 对新增、粘贴、移动和剪贴板子树一致，非可视组件不计数", async () => {
-	const sdk = withContainer(await loadSdk(testSdkPath("sdk.json")), { limit: 2 });
+	const sdk = withContainer(await loadSdk(testSdkPath()), { limit: 2 });
 	const document = containerDocument();
 	const before = serializePropertyXml(document);
 	const model = createSimpleDesignerModel(document, sdk);
@@ -191,12 +191,12 @@ test("通用 limit 对新增、粘贴、移动和剪贴板子树一致，非可�
 	const narrowed = { ...narrowerSdk, manifests: narrowerSdk.manifests.filter((manifest) => manifest !== sdk.manifests.at(-1)) };
 	assert.throws(() => pasteSimpleDesignerComponent(document, narrowed, rootPath, copiedBox), /剪贴板中的容器最多只能直接包含 1/u);
 	assert.equal(serializePropertyXml(document), before);
-	const zero = withContainer(await loadSdk(testSdkPath("sdk.json")), { limit: 0 });
+	const zero = withContainer(await loadSdk(testSdkPath()), { limit: 0 });
 	assert.equal(find(createSimpleDesignerModel(document, zero).root, "Box")?.acceptsVisualChild, false);
 });
 
 test("真实滑动页面框样例及滚动框清单加载为单帧容器投影", async () => {
-	const sdk = await loadSdk(testSdkPath("sdk.json"));
+	const sdk = await loadSdk(testSdkPath());
 	const file = testFixturePath("library-test", "simple.library.wsd.viewpager", "src", "simple", "library", "wsd", "viewpager", "test", "主窗口.simple");
 	const source = await fs.readFile(file, "utf8");
 	const document = parseSimplePropertyXml(source);

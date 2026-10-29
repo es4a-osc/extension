@@ -292,7 +292,7 @@ suite("ES4A 扩展", () => {
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
 		await configuration.update(
 			"sdk.path",
-			testSdkPath("sdk.json"),
+			testSdkPath(),
 			vscode.ConfigurationTarget.Global
 		);
 		await extension.activate();
@@ -489,7 +489,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -534,7 +534,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -571,7 +571,7 @@ suite("ES4A 扩展", () => {
 	test("参数个数错误时悬停仍显示完整函数签名和参数说明", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const source = "过程 Run()\r\n\t弹出确认框(\"授权结果\")\r\n结束 过程";
 		const document = await vscode.workspace.openTextDocument({ content: source, language: "simple" });
 		const provider = new SimpleHoverProvider(() => source);
@@ -595,7 +595,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -630,7 +630,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -694,7 +694,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -737,7 +737,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -786,7 +786,7 @@ suite("ES4A 扩展", () => {
 		const [project, source, sdk] = await Promise.all([
 			loadSimpleProject(projectFile),
 			fs.readFile(sourceFile, "utf8"),
-			loadSdk(testSdkPath("sdk.json"))
+			loadSdk(testSdkPath())
 		]);
 		const index = new ProjectSymbolIndex();
 		await index.updateProjects([project]);
@@ -1246,7 +1246,7 @@ suite("ES4A 扩展", () => {
 			"samples", "tetris", "Tetris.simple"
 		), "utf8");
 		const result = inspectSimplePropertyXml(source);
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const defaultComponentIconPath = path.resolve(
 			extension.extensionPath,
 			"icons",
@@ -1402,7 +1402,7 @@ suite("ES4A 扩展", () => {
 		assert.doesNotMatch(css, /\.property-choice-option:hover,\s*\.property-choice-option:focus \{[^}]*color:/u);
 		assert.match(
 			css,
-			/\.section-content,\s*\.nonvisual-list,\s*\.property-choice-menu,\s*#component-event-menu-items,\s*#enabled-component-event-menu-items,\s*\.window-layout-surface\.window-scrollable,\s*\.container-scroll-vertical\s*\{\s*overscroll-behavior-y: contain;/u
+			/\.section-content,\s*\.nonvisual-list,\s*\.property-choice-menu,\s*#component-event-menu-items,\s*#enabled-component-event-menu-items,\s*\.window-layout-surface,\s*\.container-scroll-vertical\s*\{\s*overscroll-behavior-y: contain;/u
 		);
 		assert.match(css, /\.property-color-input \{[^}]*position: absolute;[^}]*opacity: 0;/u);
 		assert.match(propertySource, /document\.addEventListener\("scroll", closePropertyChoiceMenuFromScroll, true\)/u);
@@ -1842,8 +1842,8 @@ suite("ES4A 扩展", () => {
 		assert.doesNotMatch(css, /--designer-container-min-(?:width|height)/u);
 		assert.match(css, /\.container-content \{[^}]*width: 100%;[^}]*height: 100%;/u);
 		assert.match(css, /\.window-layout-surface,\s*\.container-layout-surface \{[^}]*width: 100%;[^}]*height: 100%;[^}]*overflow: visible;/u);
-		assert.match(css, /\.designer-width-fixed > \.container-content > \.container-layout-surface > \.designer-width-content,\s*\.designer-width-parent > \.container-content > \.container-layout-surface > \.designer-width-content\s*\{[^}]*max-width:\s*100%;/u);
-		assert.match(css, /\.designer-height-fixed > \.container-content > \.container-layout-surface > \.designer-height-content,\s*\.designer-height-parent > \.container-content > \.container-layout-surface > \.designer-height-content\s*\{[^}]*max-height:\s*100%;/u);
+		assert.match(css, /\.designer-width-fixed > \.container-content > \.container-layout-surface:not\(\.container-scroll-horizontal\) > \.designer-width-content,\s*\.designer-width-parent > \.container-content > \.container-layout-surface:not\(\.container-scroll-horizontal\) > \.designer-width-content\s*\{[^}]*max-width:\s*100%;/u);
+		assert.match(css, /\.designer-height-fixed > \.container-content > \.container-layout-surface:not\(\.container-scroll-vertical\) > \.designer-height-content,\s*\.designer-height-parent > \.container-content > \.container-layout-surface:not\(\.container-scroll-vertical\) > \.designer-height-content\s*\{[^}]*max-height:\s*100%;/u);
 		assert.match(css, /\.layout-grid \{[^}]*align-content: start;[^}]*gap: 0;/u);
 		assert.doesNotMatch(css, /\.layout-grid \{[^}]*border:/u);
 		assert.match(css, /\.designer-grid-cell \{[^}]*position: relative;[^}]*display: grid;[^}]*min-width: 0;[^}]*min-height: 0;[^}]*padding: var\(--designer-layout-spacing\);[^}]*border: 0;[^}]*background: transparent;/u);
@@ -2209,7 +2209,7 @@ suite("ES4A 扩展", () => {
 			}
 		};
 		const provider = new SimpleCompletionProvider(() => source, () => context);
-		provider.updateSdk(await loadSdk(testSdkPath("sdk.json")));
+		provider.updateSdk(await loadSdk(testSdkPath()));
 		const document = await vscode.workspace.openTextDocument({ content: source, language: "simple" });
 		const completions = provider.provideCompletionItems(document, document.positionAt(offset));
 		const alias = completions.items.find((item) => (
@@ -2227,7 +2227,7 @@ suite("ES4A 扩展", () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension);
 		const provider = new SimpleCompletionProvider();
-		provider.updateSdk(await loadSdk(testSdkPath("sdk.json")));
+		provider.updateSdk(await loadSdk(testSdkPath()));
 		for (const [query, filterText] of [
 			["分割", "分割文本"],
 			["fgwb", "fgwb"],
@@ -2320,7 +2320,7 @@ suite("ES4A 扩展", () => {
 	test("方法补全复用光标后已有括号且缺少括号时插入参数片段", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const provide = async (statement: string): Promise<vscode.CompletionItem> => {
 			const markedSource = [
 				"过程 Run()",
@@ -2460,7 +2460,7 @@ suite("ES4A 扩展", () => {
 		const noParameterFunction = (await hoverContents("取现行¦时间()")).join("\n");
 		assert.match(noParameterFunction, /取当前设备的日期时间。\n\n所属库：运行库/u);
 
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const provider = new SimpleHoverProvider();
 		provider.updateSdk(sdk);
 		const source = "文本操作.分割文本(内容, 分隔符, 1)";
@@ -2943,7 +2943,7 @@ ${propertySource}`;
 				{ backupId: undefined, untitledDocumentData: undefined },
 				new vscode.CancellationTokenSource().token
 			);
-			provider.updateSdk(await loadSdk(testSdkPath("sdk.json")));
+			provider.updateSdk(await loadSdk(testSdkPath()));
 			provider.resolveCustomEditor(designerDocument, panel);
 			messageEmitter.fire({ type: "ready" });
 			assert.ok(renderMessage);
@@ -3340,7 +3340,7 @@ ${propertySource}`;
 				}
 			};
 			const provider = new SimpleCompletionProvider(() => document.getText(), () => context);
-			provider.updateSdk(await loadSdk(testSdkPath("sdk.json")));
+			provider.updateSdk(await loadSdk(testSdkPath()));
 			const result = provider.provideCompletionItems(document, position);
 			const labels = result.items.map(
 				(item) => typeof item.label === "string" ? item.label : item.label.label
@@ -6050,7 +6050,7 @@ ${propertySource}`;
 	test("从真实 SimpleCompiler.json 动态生成语义着色", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		let analysisCount = 0;
 		const provider = new SimpleSemanticTokensProvider((document) => {
 			analysisCount += 1;
@@ -6185,7 +6185,7 @@ ${propertySource}`;
 	test("编译器清单将流程控制、声明、修饰符和语法定义分开", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const compiler = sdk.manifests.find((manifest) => manifest.kind === "compiler");
 		assert.ok(compiler, "没有找到编译器清单");
 		const propertyArea = compiler.categories.find((category) => category.name === "属性区");
@@ -6227,7 +6227,7 @@ ${propertySource}`;
 	test("从真实运行库解析组件类型和继承成员着色", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const provider = new SimpleSemanticTokensProvider();
 		const cancellation = new vscode.CancellationTokenSource();
 
@@ -6258,7 +6258,7 @@ ${propertySource}`;
 		}
 	});
 
-	test("未加载 SDK 时类库树提示项可选择 SDK 入口文件", async () => {
+	test("未加载 SDK 时类库树提示项可选择 SDK 目录", async () => {
 		const provider = new LibraryTreeProvider(async () => undefined);
 		try {
 			await provider.refresh();
@@ -6266,8 +6266,8 @@ ${propertySource}`;
 			assert.equal(nodes.length, 1);
 			assert.equal(nodes[0]?.kind, "missing");
 			const item = provider.getTreeItem(nodes[0]!);
-			assert.equal(item.label, "选择 SDK 入口文件 sdk.json");
-			assert.deepEqual(item.command, { command: "es4a.selectSdk", title: "选择 SDK 入口文件" });
+			assert.equal(item.label, "选择 SDK 目录");
+			assert.deepEqual(item.command, { command: "es4a.selectSdk", title: "选择 SDK 目录" });
 		} finally {
 			provider.dispose();
 		}
@@ -6276,7 +6276,7 @@ ${propertySource}`;
 	test("类库树按需加载并解析运行库方法的完整父级路径", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
 		assert.ok(runtime, "没有找到运行库清单");
 		const definition = runtime.categories
@@ -6410,7 +6410,7 @@ ${propertySource}`;
 
 			templates: {},
 			directory: os.tmpdir(),
-			filePath: path.join(os.tmpdir(), "sdk.json"),
+
 			issues: [],
 			manifests: [manifest]
 		}));
@@ -6549,7 +6549,7 @@ ${propertySource}`;
 	test("类库根节点显示清单元数据并提供清单操作上下文", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const provider = new LibraryTreeProvider(async () => sdk);
 		try {
 			await provider.refresh();
@@ -6571,7 +6571,7 @@ ${propertySource}`;
 		}
 	});
 
-	test("类库树保持注册数组及清单分类顺序", async () => {
+	test("类库树保持 SDK 加载顺序及清单分类顺序", async () => {
 		const compiler: LibraryManifest = {
 			categories: [],
 			directory: os.tmpdir(),
@@ -6607,7 +6607,7 @@ ${propertySource}`;
 			capabilities: { projects: [], tools: [] },
 			templates: {},
 			directory: os.tmpdir(),
-			filePath: path.join(os.tmpdir(), "sdk.json"),
+
 			issues: [],
 			manifests: [compiler, runtime, laterLibrary, earlierLibrary]
 		}));
@@ -6636,7 +6636,7 @@ ${propertySource}`;
 	test("类库树使用紧凑签名、继承摘要和分组语义图标", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const provider = new LibraryTreeProvider(async () => sdk);
 
 		try {
@@ -6808,7 +6808,6 @@ ${propertySource}`;
 
 			templates: {},
 			directory: os.tmpdir(),
-			filePath: path.join(os.tmpdir(), "sdk.json"),
 			issues: [],
 			manifests: [manifest]
 		};
@@ -6870,7 +6869,6 @@ ${propertySource}`;
 
 			templates: {},
 			directory: os.tmpdir(),
-			filePath: path.join(os.tmpdir(), "overload-sdk.json"),
 			issues: [],
 			manifests: [manifest]
 		};
@@ -6951,7 +6949,7 @@ ${propertySource}`;
 	test("参数提示按完整限定变量类型列出扩展类库重载", async () => {
 		const extension = vscode.extensions.getExtension("es4a.es4a");
 		assert.ok(extension, "没有找到 ES4A 扩展");
-		const sdk = await loadSdk(testSdkPath("sdk.json"));
+		const sdk = await loadSdk(testSdkPath());
 		const sourceRoot = "C:\\project\\src";
 		const fullSource = [
 			"过程 Run()",

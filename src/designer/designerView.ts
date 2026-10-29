@@ -1171,16 +1171,6 @@ export interface DesignerAddTarget {
 	readonly target: "canvas" | "nonvisual";
 }
 
-/** 从定义类型生成与项目树一致的低保真设计期图形。 */
-export function componentGlyph(type: string): string {
-	if (type.includes("计时")) return "◷";
-	if (type.includes("按钮")) return "▣";
-	if (type.includes("标签") || type.includes("文本")) return "T";
-	if (type.includes("图片")) return "▧";
-	if (type.includes("面板") || type.includes("滚动框")) return "▤";
-	return "◇";
-}
-
 /** 返回组件统一使用的悬停提示。 */
 export function componentHoverHint(node: DesignerComponentNode): string {
 	const summary = node.name + " - " + (node.runtimeType ?? node.type);
@@ -1297,7 +1287,6 @@ export function componentPresentation(
 		}
 	}
 	if (kind === "control") {
-		classes.push(node.textComponent ? "designer-text-control" : "designer-placeholder-control");
 		if (node.displayTextPlaceholder === true) {
 			classes.push("designer-display-placeholder");
 		}
@@ -1542,8 +1531,7 @@ export function appearanceStyle(node: DesignerComponentNode): CSSProperties {
 
 /** 复用已有布局并叠加清单投影的滚动方向，不按组件中文名称分支。 */
 export function designerLayoutClass(node: DesignerComponentNode): string {
-	const hiddenScrollbar = node.scrollbarEnabled === false ? " container-scrollbar-hidden" : "";
-	const scrollClass = node.scroll === undefined ? "" : " container-scroll-" + node.scroll + hiddenScrollbar;
+	const scrollClass = node.scroll === undefined ? "" : " container-scroll-" + node.scroll;
 	return "layout-" + node.layout + scrollClass;
 }
 

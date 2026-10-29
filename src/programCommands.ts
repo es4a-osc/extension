@@ -113,7 +113,7 @@ function requireSdkTemplate(
 ): SdkTemplate {
 	const sdk = getSdk();
 	if (sdk === undefined) {
-		throw new Error("尚未加载 SDK，请选择 SDK 入口文件 sdk.json。");
+		throw new Error("尚未加载 SDK，请选择 SDK 目录。");
 	}
 	const template = sdk.templates[id];
 	if (template === undefined) {
@@ -122,7 +122,7 @@ function requireSdkTemplate(
 	return template;
 }
 
-/** 为可创建单元提供清单声明的模板变量值。 */
+/** 为可创建单元提供模板实际使用的变量值。 */
 function simpleUnitTemplateValues(
 	unitType: SimpleUnitType,
 	unitName: string
