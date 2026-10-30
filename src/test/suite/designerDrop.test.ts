@@ -108,7 +108,7 @@ window.addEventListener("message", async event => {
 `;
 
 suite("设计器满尺寸组件拖放", () => {
-	for (const nested of [false, true]) for (const layout of ["linear-vertical", "linear-horizontal", "frame", "absolute", "relative", "grid"] as const) {
+	for (const nested of [false, true]) for (const layout of ["linearVertical", "linearHorizontal", "frame", "absolute", "relative", "grid"] as const) {
 		test(`${nested ? "嵌套面板" : "窗口"} ${layout}：满尺寸组件本体、名称和尺寸覆盖层保持布局落位规则`, async function () {
 			this.timeout(30000);
 			const extension = vscode.extensions.getExtension("es4a.es4a")!;
@@ -157,7 +157,7 @@ suite("设计器满尺寸组件拖放", () => {
 				};
 				setValue(parentPath, "布局", layout.startsWith("linear") ? "布局_线性" : ({ frame: "布局_单帧", absolute: "布局_绝对", relative: "布局_相对", grid: "布局_表格" } as const)[layout as "frame" | "absolute" | "relative" | "grid"]);
 				if (nested) { setValue(parentPath, "宽度", "长度_匹配父级"); setValue(parentPath, "高度", "长度_匹配父级"); }
-				if (layout.startsWith("linear")) setValue(parentPath, "布局.方向", layout === "linear-horizontal" ? "0" : "1");
+				if (layout.startsWith("linear")) setValue(parentPath, "布局.方向", layout === "linearHorizontal" ? "0" : "1");
 				if (layout === "grid") {
 					// TableRow 按内容收缩；另留一空行验证内部落点，避开外层线性布局的首尾同级插入区。
 					setValue(parentPath, "布局.行数", "2"); setValue(parentPath, "布局.列数", "2");

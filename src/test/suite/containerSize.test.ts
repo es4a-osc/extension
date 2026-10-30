@@ -59,7 +59,7 @@ suite("嵌套空容器尺寸投影", () => {
 					});
 				});
 				panel.webview.html = `<!doctype html><html><head><style>${css}</style></head><body>
-					<div style="width:480px;height:800px" class="layout-linear-vertical">
+					<div style="width:480px;height:800px" class="layout-linearVertical">
 						<div id="scroll" class="${outer.classes.join(" ")}"><div class="container-content">
 							<div id="surface" class="container-layout-surface ${designerLayoutClass(node)}">
 								<div id="child" class="${inner.classes.join(" ")}"><div class="container-content">

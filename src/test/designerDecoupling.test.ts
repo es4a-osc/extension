@@ -22,7 +22,7 @@ test("布局选择值与定义显式关联，不依赖布局名、数值约定�
 	const root = createSimpleDesignerModel(document, sdk).root;
 	const box = root?.children[0];
 	assert.ok(box);
-	assert.equal(box.layout, "linear-horizontal");
+	assert.equal(box.layout, "linearHorizontal");
 	assert.equal(box.layoutWeightSum, 10);
 	assert.equal(box.childrenLayoutReadOnly, false);
 	assert.deepEqual(box.children[0]?.width, { kind: "fixed", value: 104 });
@@ -80,7 +80,7 @@ test("未知及重复的布局值不回退猜测，已知名称缺少关联同�
 	const repeated = { ...sdk, manifests: [...sdk.manifests, {
 		...sdk.manifests.at(-1)!,
 		categories: [{ name: "重复投影", definitions: [{
-			name: "DuplicateLayout", kind: "layout", projection: { layout: "grid" as const, layoutValue: "42" }
+			name: "DuplicateLayout", kind: "layout", projection: { layout: "grid" as const, value: "42" }
 		}] }]
 	}] };
 	assert.equal(resolveDesignerLayoutDefinition("ModeAlias", buildDefinitionIndex(repeated.manifests)), undefined);

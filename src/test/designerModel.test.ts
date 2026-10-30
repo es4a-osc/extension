@@ -304,10 +304,10 @@ test("窗口设计器区分可视组件、非可视组件和 SDK 候选组件", 
 	assert.equal(model.root?.type, "窗口");
 	assert.equal(model.root?.displayText, "测试 - 计时器");
 	assert.equal(path.basename(model.root?.icon ?? ""), "device-screen.svg");
-	assert.equal(model.root?.layout, "linear-vertical");
+	assert.equal(model.root?.layout, "linearVertical");
 	const topPanel = model.root?.children.find((component) => component.name === "TopPanel");
 	assert.equal(topPanel?.container, true);
-	assert.equal(topPanel?.layout, "linear-horizontal");
+	assert.equal(topPanel?.layout, "linearHorizontal");
 	assert.deepEqual(
 		topPanel?.children.map((component) => component.displayText),
 		["上一个", "下一个", "退出"]
@@ -840,7 +840,7 @@ test("水平线性布局未声明基线对齐时使用 SDK 有效初始值并保
 	assert.ok(document);
 	const gamePanel = findComponent(createSimpleDesignerModel(document, sdk).root, "GamePanel");
 
-	assert.equal(gamePanel?.layout, "linear-horizontal");
+	assert.equal(gamePanel?.layout, "linearHorizontal");
 	assert.equal(gamePanel?.layoutBaselineAligned, false);
 	assert.deepEqual(
 		gamePanel?.children.filter((component) => component.visual).map((component) => component.name),
@@ -1583,7 +1583,7 @@ test("相对布局只从 XML 属性投影父级规则和同级锚点", async () 
 	const centerButton = findComponent(model.root, "按钮3");
 	const anchoredButton = findComponent(model.root, "按钮6");
 
-	assert.equal(model.root?.layout, "linear-vertical");
+	assert.equal(model.root?.layout, "linearVertical");
 	assert.deepEqual(model.root?.layoutContentAlignment, { horizontal: "center", vertical: "center" });
 	assert.equal(panel?.layout, "relative");
 	assert.equal(panel?.layoutReadOnly, false);
@@ -2197,7 +2197,7 @@ test("布局投影通过语义读取改名后的容器属性与布局成员", as
 	setValue("arrangement.parts", "7");
 	setValue("arrangement.alignment", "对齐_居中");
 	const linear = createSimpleDesignerModel(changed, renamed).root;
-	assert.equal(linear?.layout, "linear-horizontal");
+	assert.equal(linear?.layout, "linearHorizontal");
 	assert.equal(linear.layoutWeightSum, 7);
 	assert.deepEqual(linear.layoutContentAlignment, { horizontal: "center", vertical: "center" });
 	const rows = (): readonly PropertyPanelRow[] => createPropertyPanelModel(
@@ -2218,7 +2218,7 @@ test("布局投影通过语义读取改名后的容器属性与布局成员", as
 		changed = result.propertyDocument;
 	};
 	submit("arrangement.axis", "布局_方向_垂直");
-	assert.equal(createSimpleDesignerModel(changed, renamed).root?.layout, "linear-vertical");
+	assert.equal(createSimpleDesignerModel(changed, renamed).root?.layout, "linearVertical");
 	submit("arrangement", "布局_表格");
 	assert.equal(componentPropertyValue(changed, root, "arrangement.axis"), undefined);
 	assert.equal(componentPropertyValue(changed, root, "arrangement.parts"), undefined);

@@ -141,7 +141,7 @@ test("相对布局未设置关系时悬停明确说明左上角和边距定位",
 		children: [],
 		container: false,
 		displayText: "按钮1",
-		layout: "linear-vertical",
+		layout: "linearVertical",
 		margin: { bottom: undefined, left: 12, right: undefined, top: 18 },
 		name: "按钮1",
 		path: "/属性/定义[1]/定义[1]",
@@ -175,7 +175,7 @@ test("设计器 SDK 描述悬停保留换行", () => {
 		container: false,
 		description: "第一行。\r\n第二行。\r第三行。",
 		displayText: "按钮1",
-		layout: "linear-vertical",
+		layout: "linearVertical",
 		name: "按钮1",
 		path: "/属性/定义[1]/定义[1]",
 		runtimeType: "simple.runtime.components.按钮",
@@ -209,7 +209,7 @@ test("水平进度条与其它非文本组件统一使用普通占位外观", ()
 		container: false,
 		displayText: "Progress1",
 		displayTextPlaceholder: true,
-		layout: "linear-vertical",
+		layout: "linearVertical",
 		name: "Progress1",
 		path: "/属性/定义[1]/定义[1]",
 		type: "水平进度条",
@@ -816,7 +816,7 @@ test("没有运行内容的适应内容组件只使用最小交互尺寸", () =>
 		displayText: "很长的设计期组件名称",
 		displayTextPlaceholder: true,
 		height: { kind: "content" },
-		layout: "linear-vertical",
+		layout: "linearVertical",
 		name: "很长的设计期组件名称",
 		path: "/属性/定义[1]/定义[1]",
 		type: "按钮",
@@ -843,7 +843,7 @@ test("空容器仅在适应内容方向使用最小交互尺寸", () => {
 		container: true,
 		displayText: "",
 		height: { kind: "fixed", value: 20 },
-		layout: "linear-vertical",
+		layout: "linearVertical",
 		name: "面板1",
 		path: "/属性/定义[1]/定义[1]",
 		type: "面板",
@@ -1095,7 +1095,7 @@ test("文本组件使用 SDK 继承缺省值并保留完整二维对齐", async 
 	const mail = findComponent(model.root, "Mail1");
 
 	assert.equal(model.root?.backgroundColor, "#FFFFFFFF");
-	assert.equal(model.root?.layout, "linear-vertical");
+	assert.equal(model.root?.layout, "linearVertical");
 	assert.deepEqual(model.root?.layoutContentAlignment, { horizontal: "left", vertical: undefined });
 	assert.equal(model.root?.layoutBaselineAligned, false);
 	assert.equal(label?.alignment, undefined);

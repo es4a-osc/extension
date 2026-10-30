@@ -2387,8 +2387,8 @@
 					"description": "用于水平或垂直放置组件的线性布局。\n通过设置重总和和子组件权重可以按比例摆放\n也兼容单选分组框的功能",
 					"kind": "layout",
 					"projection": {
-						"layout": "linear-vertical",
-						"layoutValue": "布局_线性"
+						"layout": "linearVertical",
+						"value": "布局_线性"
 					},
 					"inherits": [
 						"simple.runtime.components.布局"
@@ -2509,7 +2509,7 @@
 					"kind": "layout",
 					"projection": {
 						"layout": "grid",
-						"layoutValue": "布局_表格"
+						"value": "布局_表格"
 					},
 					"inherits": [
 						"simple.runtime.components.布局"
@@ -2710,7 +2710,7 @@
 					"kind": "layout",
 					"projection": {
 						"layout": "frame",
-						"layoutValue": "布局_单帧"
+						"value": "布局_单帧"
 					},
 					"inherits": [
 						"simple.runtime.components.布局"
@@ -2735,7 +2735,7 @@
 					"kind": "layout",
 					"projection": {
 						"layout": "relative",
-						"layoutValue": "布局_相对"
+						"value": "布局_相对"
 					},
 					"inherits": [
 						"simple.runtime.components.布局"
@@ -2747,7 +2747,7 @@
 					"kind": "layout",
 					"projection": {
 						"layout": "absolute",
-						"layoutValue": "布局_绝对"
+						"value": "布局_绝对"
 					},
 					"inherits": [
 						"simple.runtime.components.布局"

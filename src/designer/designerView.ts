@@ -1601,7 +1601,7 @@ export function containerStyle(node: DesignerComponentNode): CSSProperties {
 				? "start"
 				: alignment.vertical === "bottom" ? "end" : "center";
 		}
-	} else if (layout === "linear-horizontal") {
+	} else if (layout === "linearHorizontal") {
 		if (alignment?.horizontal !== undefined) {
 			style.justifyContent = alignment.horizontal === "left"
 				? "flex-start"
@@ -1613,7 +1613,7 @@ export function containerStyle(node: DesignerComponentNode): CSSProperties {
 				: alignment.vertical === "bottom" ? "flex-end" : "center";
 		}
 		if (node.layoutBaselineAligned === true) style.alignItems = "baseline";
-	} else if (layout === "linear-vertical") {
+	} else if (layout === "linearVertical") {
 		if (alignment?.vertical !== undefined) {
 			style.justifyContent = alignment.vertical === "top"
 				? "flex-start"

@@ -1397,7 +1397,7 @@ function insertionLocation(element: HTMLElement, position: "after" | "before"): 
 	const parentXmlPath = element.dataset.insertParent;
 	const referenceXmlPath = element.dataset.insertReference;
 	if (parentXmlPath === undefined || referenceXmlPath === undefined) return undefined;
-	const horizontal = element.parentElement?.classList.contains("layout-linear-horizontal") === true
+	const horizontal = element.parentElement?.classList.contains("layout-linearHorizontal") === true
 		|| element.parentElement?.classList.contains("layout-grid") === true;
 	return {
 		accept: element.dataset.insertAccept === "visual" ? "visual" : "nonvisual",
@@ -1414,11 +1414,11 @@ function insertionLocation(element: HTMLElement, position: "after" | "before"): 
 function insertionPosition(element: HTMLElement, event: DragEvent): "after" | "before" {
 	const parent = element.parentElement;
 	const bounds = element.getBoundingClientRect();
-	if (parent?.classList.contains("layout-linear-horizontal") === true) {
+	if (parent?.classList.contains("layout-linearHorizontal") === true) {
 		return event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
 	}
 	if (
-		parent?.classList.contains("layout-linear-vertical") === true
+		parent?.classList.contains("layout-linearVertical") === true
 		|| parent?.classList.contains("nonvisual-list") === true
 	) {
 		return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
@@ -1435,9 +1435,9 @@ function containerSiblingInsertionLocation(
 	if (!insertion.contains(container) || !pointInsideElement(insertion, event)) return undefined;
 	const parent = insertion.parentElement;
 	const bounds = insertion.getBoundingClientRect();
-	const position = parent?.classList.contains("layout-linear-horizontal") === true
+	const position = parent?.classList.contains("layout-linearHorizontal") === true
 		? componentEdgeInsertionPosition(event.clientX, bounds.left, bounds.width)
-		: parent?.classList.contains("layout-linear-vertical") === true
+		: parent?.classList.contains("layout-linearVertical") === true
 			? componentEdgeInsertionPosition(event.clientY, bounds.top, bounds.height)
 			: undefined;
 	return position === undefined ? undefined : insertionLocation(insertion, position);
@@ -1732,8 +1732,8 @@ function resolveComponentDropLocation(target: Element, event: DragEvent): Compon
 	if (children.length > 0) {
 		const lastChild = children.at(-1);
 		if (lastChild === undefined) return undefined;
-		const horizontal = container.classList.contains("layout-linear-horizontal");
-		const vertical = container.classList.contains("layout-linear-vertical")
+		const horizontal = container.classList.contains("layout-linearHorizontal");
+		const vertical = container.classList.contains("layout-linearVertical")
 			|| container.classList.contains("nonvisual-list");
 		if (!horizontal && !vertical) return insertionLocation(lastChild, "after");
 		const pointer = horizontal ? event.clientX : event.clientY;

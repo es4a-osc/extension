@@ -10,7 +10,7 @@ export type DesignerLayoutKind = LibraryContainerLayout | "unsupported";
 
 /** 横纵线性布局共用一个布局定义，方向由对应属性投影单独确定。 */
 function sameLayoutFamily(left: LibraryContainerLayout | undefined, right: DesignerLayoutKind): boolean {
-	return left === right || left?.startsWith("linear-") === true && right.startsWith("linear-");
+	return left === right || left?.startsWith("linear") === true && right.startsWith("linear");
 }
 
 /** 按固定投影查找清单加载顺序中的首个布局定义，不从中文名称反推类型。 */
@@ -20,7 +20,7 @@ export function designerLayoutDefinition(
 ): LibraryDefinitionReference | undefined {
 	return Array.from(definitions.values()).find((reference) => (
 		reference.definition.kind === "layout"
-		&& reference.definition.projection?.layoutValue !== undefined
+		&& reference.definition.projection?.value !== undefined
 		&& sameLayoutFamily(reference.definition.projection.layout, layout)
 	));
 }
@@ -35,8 +35,8 @@ export function resolveDesignerLayoutDefinition(
 	const candidates = new Set(Array.from(definitions.values()).filter((reference) => (
 		reference.definition.kind === "layout"
 		&& reference.definition.projection?.layout !== undefined
-		&& reference.definition.projection.layoutValue !== undefined
-		&& resolveSdkConstantValue(reference.definition.projection.layoutValue, definitions)?.trim() === value
+		&& reference.definition.projection.value !== undefined
+		&& resolveSdkConstantValue(reference.definition.projection.value, definitions)?.trim() === value
 	)));
 	return candidates.size === 1 ? candidates.values().next().value : undefined;
 }
@@ -52,9 +52,9 @@ export function designerLayoutKind(
 ): DesignerLayoutKind {
 	const layout = resolveDesignerLayoutDefinition(layoutExpression, definitions)?.definition.projection?.layout;
 	if (layout === undefined) return "unsupported";
-	if (!layout.startsWith("linear-") || directionExpression === undefined) return layout;
+	if (!layout.startsWith("linear") || directionExpression === undefined) return layout;
 	const direction = resolveSdkConstantValue(directionExpression, definitions)?.trim();
-	return direction === "0" ? "linear-horizontal" : direction === "1" ? "linear-vertical" : "unsupported";
+	return direction === "0" ? "linearHorizontal" : direction === "1" ? "linearVertical" : "unsupported";
 }
 
 /** 按当前 Android 容器添加子视图时使用的真实初始布局参数返回缺省尺寸。 */

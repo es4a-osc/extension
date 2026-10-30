@@ -201,8 +201,8 @@ button, input, select { color: inherit; font: inherit; }
 .window-layout-surface { overflow: auto; }
 /* 窗口显式声明横向投影时，同样遵循清单限定的浏览方向。 */
 .window-layout-surface.container-scroll-horizontal { overflow-x: auto; overflow-y: hidden; }
-.layout-linear-horizontal { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: var(--designer-layout-spacing); }
-.layout-linear-vertical { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
+.layout-linearHorizontal { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: var(--designer-layout-spacing); }
+.layout-linearVertical { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
 .layout-unsupported { display: flex; flex-direction: column; align-items: stretch; gap: var(--designer-layout-spacing); }
 .designer-unsupported-layout-notice { flex: 0 0 auto; padding: 4px 6px; border: 1px dashed var(--vscode-editorWarning-foreground); color: var(--vscode-editorWarning-foreground); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent); font-size: 12px; line-height: 18px; pointer-events: none; }
 .layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 0; }
@@ -236,17 +236,17 @@ button, input, select { color: inherit; font: inherit; }
 .designer-width-parent { width: calc(100% - var(--designer-margin-left, 0px) - var(--designer-margin-right, 0px)); max-width: 100%; align-self: stretch; }
 .designer-height-content { height: fit-content; }
 .designer-height-parent { height: calc(100% - var(--designer-margin-top, 0px) - var(--designer-margin-bottom, 0px)); max-height: 100%; align-self: stretch; }
-.layout-linear-horizontal > .designer-width-parent { width: auto; min-width: 0; max-width: none; flex: 1 1 0; }
-.layout-linear-vertical > .designer-height-parent { height: auto; min-height: 0; max-height: none; flex: 1 1 0; }
-.layout-linear-horizontal > .designer-weighted { max-width: none; flex-grow: var(--designer-component-weight); }
-.layout-linear-vertical > .designer-weighted { max-height: none; flex-grow: var(--designer-component-weight); }
+.layout-linearHorizontal > .designer-width-parent { width: auto; min-width: 0; max-width: none; flex: 1 1 0; }
+.layout-linearVertical > .designer-height-parent { height: auto; min-height: 0; max-height: none; flex: 1 1 0; }
+.layout-linearHorizontal > .designer-weighted { max-width: none; flex-grow: var(--designer-component-weight); }
+.layout-linearVertical > .designer-weighted { max-height: none; flex-grow: var(--designer-component-weight); }
 .designer-weight-remainder { min-width: 0; min-height: 0; flex: var(--designer-component-weight) 1 0; pointer-events: none; }
-.layout-linear-vertical > .designer-align-horizontal-left { align-self: flex-start; }
-.layout-linear-vertical > .designer-align-horizontal-center { align-self: center; }
-.layout-linear-vertical > .designer-align-horizontal-right { align-self: flex-end; }
-.layout-linear-horizontal > .designer-align-vertical-top { align-self: flex-start; }
-.layout-linear-horizontal > .designer-align-vertical-center { align-self: center; }
-.layout-linear-horizontal > .designer-align-vertical-bottom { align-self: flex-end; }
+.layout-linearVertical > .designer-align-horizontal-left { align-self: flex-start; }
+.layout-linearVertical > .designer-align-horizontal-center { align-self: center; }
+.layout-linearVertical > .designer-align-horizontal-right { align-self: flex-end; }
+.layout-linearHorizontal > .designer-align-vertical-top { align-self: flex-start; }
+.layout-linearHorizontal > .designer-align-vertical-center { align-self: center; }
+.layout-linearHorizontal > .designer-align-vertical-bottom { align-self: flex-end; }
 .designer-grid-cell > .designer-align-horizontal-left, .layout-frame > .designer-align-horizontal-left { justify-self: start; }
 .designer-grid-cell > .designer-align-horizontal-center, .layout-frame > .designer-align-horizontal-center { justify-self: center; }
 .designer-grid-cell > .designer-align-horizontal-right, .layout-frame > .designer-align-horizontal-right { justify-self: end; }

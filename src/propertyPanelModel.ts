@@ -251,7 +251,7 @@ function parentLayoutContext(
 		if (!isContainerDefinition(parentDefinition.definition)) return {};
 		/* 固定投影仅用于筛选子组件属性，不给容器虚构可编辑的布局属性。 */
 		const layout = designerLayoutDefinition(parentDefinition.definition.projection?.layout ?? "frame", definitions);
-		return { definition: layout, expression: layout?.definition.projection?.layoutValue };
+		return { definition: layout, expression: layout?.definition.projection?.value };
 	}
 	return {
 		definition: resolveLayoutDefinition(layoutMember, expression, definitions),

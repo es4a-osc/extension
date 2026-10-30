@@ -107,7 +107,7 @@ test("无布局属性的扩展容器缺省单帧且不把投影配置写入 XML"
 test("固定布局复用现有投影且真实布局属性优先，包括自定义属性名", async () => {
 	const base = await loadSdk(testSdkPath());
 	const document = containerDocument();
-	for (const layout of ["absolute", "frame", "grid", "linear-horizontal", "linear-vertical", "relative"] as const) {
+	for (const layout of ["absolute", "frame", "grid", "linearHorizontal", "linearVertical", "relative"] as const) {
 		const model = createSimpleDesignerModel(document, withContainer(base, { layout }));
 		assert.equal(find(model.root, "Box")?.layout, layout);
 	}
@@ -117,7 +117,7 @@ test("固定布局复用现有投影且真实布局属性优先，包括自定�
 		projection: "layout",
 		initializer: { label: "线性", value: "布局_线性" }
 	}]);
-	assert.equal(find(createSimpleDesignerModel(document, sdk).root, "Box")?.layout, "linear-vertical");
+	assert.equal(find(createSimpleDesignerModel(document, sdk).root, "Box")?.layout, "linearVertical");
 	const explicit = containerDocument("排列 = 布局_相对");
 	const model = createSimpleDesignerModel(explicit, sdk);
 	assert.equal(find(model.root, "Box")?.layout, "relative");

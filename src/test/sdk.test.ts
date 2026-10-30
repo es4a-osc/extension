@@ -820,7 +820,7 @@ test("组件级投影校验布局、方向和数量，不改变属性级投影",
 		return loadSdk(directory);
 	}
 	for (const projection of [undefined, {}, { layout: "frame", scroll: "vertical", limit: 1 },
-		{ scroll: "none", limit: 0 }, { layout: "linear-horizontal" }, { layout: "grid" }]) {
+		{ scroll: "none", limit: 0 }, { layout: "linearHorizontal" }, { layout: "grid" }]) {
 		const sdk = await readProjection(projection);
 		assert.equal(sdk.manifests.length, 1);
 		const definition = sdk.manifests[0]?.categories[0]?.definitions[0];
@@ -840,12 +840,12 @@ test("布局关联必须声明有效排列和选择值，组件不能声明布�
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-layout-projection-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
 	for (const [kind, projection, valid] of [
-		["layout", { layout: "grid", layoutValue: "GridMode" }, true],
-		["layout", { layout: "grid", layoutValue: "42" }, true],
-		["layout", { layout: "grid", layoutValue: 42 }, false],
-		["layout", { layout: "grid", layoutValue: "  " }, false],
-		["layout", { layoutValue: "42" }, false],
-		["component", { layout: "grid", layoutValue: "42" }, false]
+		["layout", { layout: "grid", value: "GridMode" }, true],
+		["layout", { layout: "grid", value: "42" }, true],
+		["layout", { layout: "grid", value: 42 }, false],
+		["layout", { layout: "grid", value: "  " }, false],
+		["layout", { value: "42" }, false],
+		["component", { layout: "grid", value: "42" }, false]
 	] as const) {
 		await writeJson(path.join(directory, "simple", "SimpleAndroidRuntime.json"), {
 			name: "布局关联", kind: "runtime", categories: [{ name: "布局", definitions: [{
@@ -854,6 +854,6 @@ test("布局关联必须声明有效排列和选择值，组件不能声明布�
 		});
 		const sdk = await loadSdk(directory);
 		assert.equal(sdk.manifests.length, valid ? 1 : 0);
-		assert.equal(sdk.issues.some((issue) => issue.includes("projection.layout")), !valid);
+		assert.equal(sdk.issues.some((issue) => issue.includes("projection.value")), !valid);
 	}
 });

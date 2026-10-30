@@ -56,7 +56,7 @@ export function withProjectionContract(sdk: Sdk): Sdk {
 					name: "ArrangementMetadata",
 					kind: "layout",
 					type: "probe.Arrangement",
-					projection: { layout: "linear-vertical", layoutValue: "ModeToken" },
+					projection: { layout: "linearVertical", value: "ModeToken" },
 					constants: [
 						{ name: "ModeToken", type: "整数型", value: "42" },
 						{ name: "ModeAlias", type: "整数型", value: "42" },

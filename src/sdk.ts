@@ -178,13 +178,13 @@ export function effectiveLibraryMemberKey(
 }
 
 /** 容器复用的设计器布局；只描述投影，不新增运行时布局属性。 */
-export type LibraryContainerLayout = "absolute" | "frame" | "grid" | "linear-horizontal" | "linear-vertical" | "relative";
+export type LibraryContainerLayout = "absolute" | "frame" | "grid" | "linearHorizontal" | "linearVertical" | "relative";
 
 /** 定义级投影规则；容器声明固定排列，布局定义另声明对应的选择值。 */
 export interface LibraryContainerProjection {
 	readonly layout?: LibraryContainerLayout;
 	/** 布局定义对应的源码选择值；仅用于 kind 为 layout 的定义，并与 layout 一起声明。 */
-	readonly layoutValue?: string;
+	readonly value?: string;
 	/** 直属可视子组件上限，省略表示不限制；非可视组件不计入。 */
 	readonly limit?: number;
 	/** 设计期内容溢出的固定滚动方向，不受运行时滚动或滚动条开关影响。 */
@@ -584,15 +584,15 @@ function parseContainerProjection(value: unknown, filePath: string): LibraryCont
 		throw new Error(filePath + " 中定义的 projection 必须是对象");
 	}
 	const layouts: readonly LibraryContainerLayout[] = [
-		"absolute", "frame", "grid", "linear-horizontal", "linear-vertical", "relative"
+		"absolute", "frame", "grid", "linearHorizontal", "linearVertical", "relative"
 	];
 	if (value.layout !== undefined && !layouts.some((layout) => layout === value.layout)) {
 		throw new Error(filePath + " 中定义的 projection.layout 不是受支持的布局投影");
 	}
-	if (value.layoutValue !== undefined && (
-		typeof value.layoutValue !== "string" || value.layoutValue.trim().length === 0 || value.layout === undefined
+	if (value.value !== undefined && (
+		typeof value.value !== "string" || value.value.trim().length === 0 || value.layout === undefined
 	)) {
-		throw new Error(filePath + " 中定义的 projection.layoutValue 必须是非空表达式，且同时声明 layout");
+		throw new Error(filePath + " 中定义的 projection.value 必须是非空表达式，且同时声明 layout");
 	}
 	if (value.scroll !== undefined && value.scroll !== "none"
 		&& value.scroll !== "horizontal" && value.scroll !== "vertical") {
@@ -631,8 +631,8 @@ function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 		: undefined;
 	const projection = value.projection === undefined
 		? undefined : parseContainerProjection(value.projection, filePath);
-	if (projection?.layoutValue !== undefined && value.kind !== "layout") {
-		throw new Error(filePath + " 中 projection.layoutValue 只允许用于布局定义");
+	if (projection?.value !== undefined && value.kind !== "layout") {
+		throw new Error(filePath + " 中 projection.value 只允许用于布局定义");
 	}
 	const icon = optionalString(value.icon);
 	const runtimeType = optionalString(value.type) ?? optionalString(value.class);

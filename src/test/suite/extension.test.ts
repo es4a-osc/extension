@@ -1823,8 +1823,8 @@ suite("ES4A 扩展", () => {
 		assert.match(css, /\.layout-section \{[^}]*height: 240px;[^}]*min-height: 240px;[^}]*flex: 0 0 240px;/u);
 		assert.match(css, /\.designer-canvas \{[^}]*width: calc\(var\(--designer-logical-width\) \+ 24px\);[^}]*height: calc\(var\(--designer-logical-height\) \+ 24px\);/u);
 		assert.match(css, /\.window-node \{[^}]*width: var\(--designer-logical-width\);[^}]*height: var\(--designer-logical-height\);/u);
-		assert.match(css, /\.layout-linear-horizontal \{[^}]*flex-flow: row nowrap;[^}]*gap: var\(--designer-layout-spacing\);/u);
-		assert.match(css, /\.layout-linear-vertical \{[^}]*gap: var\(--designer-layout-spacing\);/u);
+		assert.match(css, /\.layout-linearHorizontal \{[^}]*flex-flow: row nowrap;[^}]*gap: var\(--designer-layout-spacing\);/u);
+		assert.match(css, /\.layout-linearVertical \{[^}]*gap: var\(--designer-layout-spacing\);/u);
 		assert.match(css, /:root \{[^}]*--designer-layout-spacing: 0px;[^}]*--designer-empty-content-min-width: 32px;[^}]*--designer-empty-content-min-height: 32px;[^}]*--designer-component-border-width: 1px;[^}]*--designer-component-hover-line-width: 1px;[^}]*--designer-component-selection-line-width: 2px;[^}]*--designer-resize-handle-size: 4px;/u);
 		assert.match(css, /:root \{[^}]*--designer-component-interaction-color: var\(--vscode-focusBorder\);/u);
 		assert.doesNotMatch(css, /--designer-component-(?:hover|selection)-color/u);
