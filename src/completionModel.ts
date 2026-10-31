@@ -19,6 +19,7 @@ import {
 	isSimpleAliasName,
 	resolveSimpleDefinitionName,
 	resolveSimpleNamespaceName,
+	splitSimpleTopLevelDeclarations,
 	isStaticProjectMember,
 	type SimpleAliasSymbol,
 	type SimpleProjectSemanticContext
@@ -451,11 +452,19 @@ function variableBindings(
 ): readonly SimpleBinding[] {
 	const bindings: SimpleBinding[] = [];
 	const pattern = new RegExp(
-		`(?:^|,)[ \\t]*(?:(传值|传址)[ \\t]+)?(${IDENTIFIER})(?:[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:[ \\t]*\\([^)]*\\))?)(?:[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))?|[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))`,
-		"gu"
+		`^[ \\t]*(?:(传值|传址)[ \\t]+)?(${IDENTIFIER})(?:[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:[ \\t]*\\([^)]*\\))?)(?:[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))?|[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))`,
+		"u"
 	);
 
-	for (const match of value.matchAll(pattern)) {
+	// 初值中的调用和字符串也可含逗号，只有顶层逗号才能开始下一个声明。
+	let searchOffset = 0;
+	for (const declaration of splitSimpleTopLevelDeclarations(value)) {
+		const declarationOffset = value.indexOf(declaration, searchOffset);
+		searchOffset = declarationOffset + declaration.length;
+		const match = pattern.exec(declaration);
+		if (match === null) {
+			continue;
+		}
 		const passing = match[1] as "传值" | "传址" | undefined;
 		const name = match[2];
 		const declaredTypeName = match[3];
@@ -464,7 +473,7 @@ function variableBindings(
 			? createdTypeName
 			: declaredTypeName ?? createdTypeName;
 		if (name !== undefined && typeName !== undefined) {
-			const declarationStart = baseOffset + (match.index ?? 0) + match[0].indexOf(name);
+			const declarationStart = baseOffset + declarationOffset + match[0].indexOf(name);
 			bindings.push({
 				declarationStart,
 				declaredTypeName: declaredTypeName === "变体型" && createdTypeName !== undefined

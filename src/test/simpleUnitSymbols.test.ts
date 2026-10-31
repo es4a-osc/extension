@@ -28,6 +28,18 @@ function fixture(project: SimpleTestProjectName, ...segments: string[]): string 
 	return simpleTestProjectPath(project, ...segments);
 }
 
+test("成员初值保留完整表达式且正确区分顶层声明逗号", () => {
+	const source = [
+		'变量 title 为 文本型 = "a,b", total 为 整数型 = Sum(1, 2)',
+		"静态 变量 numbers 为 整数型() = 创建 整数型(3)",
+		"$属性", "$资源 $对象", "$结束 $属性"
+	].join("\n");
+	const unit = parseSimpleUnitSymbols(source, "C:\\project\\src\\Test.simple", "C:\\project\\src");
+	assert.deepEqual(unit.definition.variables?.map((value) => [value.name, value.initializer?.value]), [
+		["title", '"a,b"'], ["total", "Sum(1, 2)"], ["numbers", "创建 整数型(3)"]
+	]);
+});
+
 test("单元符号从属性 XML 读取类型、继承、接口和组件", () => {
 	const sourceRoot = fixture("Tetris", "src");
 	const filePath = fixture("Tetris", "src", "simple", "samples", "tetris", "Tetris.simple");

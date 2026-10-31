@@ -13,6 +13,7 @@ import {
 	buildSemanticDefinitionIndex,
 	isSimpleMemberAccessible,
 	resolveSimpleDefinitionName,
+	splitSimpleTopLevelDeclarations,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
 import { resolveSimpleQualifier } from "./completionModel";
@@ -180,55 +181,6 @@ export function buildCompilerTokenRules(sdk: Sdk | undefined): readonly Compiler
 	}
 
 	return [...rules.values()].sort(compareRules);
-}
-
-/**
- * 移除 Simple 物理行中字符串之外的单引号注释。
- *
- * @param line 待处理的单行源码。
- * @returns 不包含行尾注释的源码部分。
- */
-/**
- * 按顶层逗号拆分声明，忽略字符串及数组维度或调用括号中的逗号。
- *
- * @param source `变量`、`常量`或正式参数后的声明文本。
- * @returns 保持源码顺序的非空声明片段。
- */
-function splitTopLevelDeclarations(source: string): readonly string[] {
-	const result: string[] = [];
-	let depth = 0;
-	let inString = false;
-	let start = 0;
-
-	for (let index = 0; index < source.length; index += 1) {
-		const current = source[index];
-
-		if (current === "\\" && inString) {
-			index += 1;
-			continue;
-		}
-
-		if (current === "\"") {
-			inString = !inString;
-			continue;
-		}
-
-		if (inString) {
-			continue;
-		}
-
-		if (current === "(") {
-			depth += 1;
-		} else if (current === ")") {
-			depth = Math.max(0, depth - 1);
-		} else if (current === "," && depth === 0) {
-			result.push(source.slice(start, index).trim());
-			start = index + 1;
-		}
-	}
-
-	result.push(source.slice(start).trim());
-	return result.filter((value) => value.length > 0);
 }
 
 /**
@@ -463,7 +415,7 @@ export function buildDocumentTokenRules(
 			continue;
 		}
 
-		for (const parameter of splitTopLevelDeclarations(source.slice(openOffset + 1, closeOffset))) {
+		for (const parameter of splitSimpleTopLevelDeclarations(source.slice(openOffset + 1, closeOffset))) {
 			const parameterMatch = new RegExp(
 				`^(?:(?:传值|传址)[ \\t]+)?(${IDENTIFIER})[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER})`,
 				"u"
@@ -502,7 +454,7 @@ export function buildDocumentTokenRules(
 			: undefined;
 		const symbolScope = localScope ?? { end: source.length, start: 0 };
 
-		for (const declaration of splitTopLevelDeclarations(stripSimpleLineComment(declarationSource))) {
+		for (const declaration of splitSimpleTopLevelDeclarations(stripSimpleLineComment(declarationSource))) {
 			const declarationMatch = new RegExp(
 				`^(${IDENTIFIER})(?:[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER})|[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))`,
 				"u"

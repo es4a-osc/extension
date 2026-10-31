@@ -82,7 +82,7 @@ export function isSimpleMemberAccessible(member: LibraryMember, group: LibraryMe
 }
 
 /** 按顶层逗号拆分参数、变量或接口列表。 */
-function splitTopLevel(value: string): readonly string[] {
+export function splitSimpleTopLevelDeclarations(value: string): readonly string[] {
 	const values: string[] = [];
 	let depth = 0;
 	let inString = false;
@@ -115,7 +115,7 @@ function parseParameters(value: string): readonly LibraryParameter[] {
 		"u"
 	);
 
-	return splitTopLevel(value).flatMap((item) => {
+	return splitSimpleTopLevelDeclarations(value).flatMap((item) => {
 		const match = pattern.exec(item);
 		const name = match?.[2];
 		if (name === undefined) {
@@ -202,7 +202,7 @@ function propertyTypeNames(property: SimplePropertyXmlParseResult, name: string)
 
 	return getPropertyXmlChildren(document.root, "赋值").flatMap((element) => (
 		getPropertyXmlAttribute(element, "属性") === name
-			? splitTopLevel(getPropertyXmlAttribute(element, "值") ?? "")
+			? splitSimpleTopLevelDeclarations(getPropertyXmlAttribute(element, "值") ?? "")
 			: []
 	));
 }
@@ -331,7 +331,7 @@ function parseCodeMembers(
 			continue;
 		}
 
-		for (const value of splitTopLevel(stripSimpleLineComment(match[3] ?? ""))) {
+		for (const value of splitSimpleTopLevelDeclarations(stripSimpleLineComment(match[3] ?? ""))) {
 			const valueMatch = declaration.exec(value);
 			const name = valueMatch?.[1];
 			if (name === undefined) {

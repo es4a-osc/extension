@@ -53,6 +53,17 @@ function unit(source: string, kind = "对象"): string {
 	return `${source}\r\n$属性\r\n\t$资源 $${kind}\r\n$结束 $属性\r\n`;
 }
 
+test("声明初值中的字符串和调用逗号不会引入伪变量，后续声明保留类型", async () => {
+	const source = [
+		"过程 Run()",
+		'变量 title 为 文本型 = "a, phantom = 创建 计时器", timer 为 计时器 = 创建 计时器',
+		"timer.jg¦",
+		"结束 过程"
+	].join("\r\n");
+	assert.deepEqual(await complete(unit(source)), ["间隔"]);
+	assert.deepEqual(await complete(unit(source.replace("timer.jg¦", "phantom.jg¦"))), []);
+});
+
 test("将中文候选转换为连续拼音首字母", () => {
 	assert.equal(pinyinInitials("如果"), "rg");
 	assert.equal(pinyinInitials("数组"), "sz");
