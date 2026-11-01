@@ -115,8 +115,21 @@ xhwsd@qq.com 2026-8-30
 						<button
 							class="section-title-action"
 							type="button"
+							data-toolbox-sort-toggle
+							:title="toolboxSorting ? '退出分组排序' : '进入分组排序'"
+							:aria-label="toolboxSorting ? '退出分组排序' : '进入分组排序'"
+							:aria-pressed="toolboxSorting"
+							@click.stop="toolboxSorting = !toolboxSorting"
+							@pointerdown.stop
+						>
+							<span class="codicon codicon-arrow-swap toolbox-sort-icon" aria-hidden="true"></span>
+						</button>
+						<button
+							class="section-title-action"
+							type="button"
 							title="全部折叠"
 							aria-label="全部折叠可用组件"
+							:disabled="toolboxSorting"
 							@click.stop="collapseAllToolboxGroups"
 							@pointerdown.stop
 						>
@@ -127,6 +140,7 @@ xhwsd@qq.com 2026-8-30
 							type="button"
 							title="全部展开"
 							aria-label="全部展开可用组件"
+							:disabled="toolboxSorting"
 							@click.stop="expandAllToolboxGroups"
 							@pointerdown.stop
 						>
@@ -134,7 +148,7 @@ xhwsd@qq.com 2026-8-30
 						</button>
 					</span>
 				</div>
-				<ToolboxPanel :ref="setToolboxPanelRef" :groups="message.projection.toolbox" />
+				<ToolboxPanel :ref="setToolboxPanelRef" :groups="message.projection.toolbox" :sorting="toolboxSorting" @move-category="moveToolboxCategory" />
 			</section>
 			<section v-else-if="columnId === 'projection'" class="section projection-section designer-column" data-designer-column="projection">
 				<div class="section-title designer-column-handle" data-designer-column-handle draggable="true" title="拖动调整设计器区域顺序">
@@ -412,6 +426,7 @@ const handedOffPropertyInputs = new WeakMap<HTMLInputElement, {
 	readonly xmlPath?: string;
 }>();
 const columnOrder = ref<readonly DesignerColumnId[]>(DESIGNER_COLUMN_IDS);
+const toolboxSorting = ref(false);
 const contextMenu = ref<ContextMenuState>();
 const dragFeedback = ref<DesignerDragFeedback>();
 const selectedPlacementFeedback = ref<DesignerDragFeedback>();
@@ -455,6 +470,11 @@ let draggedDesignerColumnId: DesignerColumnId | undefined;
 let designSurfaceFrame: number | undefined;
 let placementFeedbackFrame: number | undefined;
 let componentClipboardRequestId = 0;
+
+/** 分类排序仅提交用户界面偏好，不修改文档或 XML。 */
+function moveToolboxCategory(category: string, reference: string, position: "before" | "after"): void {
+	post({ type: "moveToolboxCategory", contextToken: currentContextToken(), category, reference, position });
+}
 
 /** 所有业务修改都通过类型化消息交还扩展宿主执行。 */
 function post(value: DesignerWebviewMessage): void {
@@ -1965,6 +1985,8 @@ function onDragStart(event: DragEvent): void {
 	const column = columnHandle?.closest<HTMLElement>("[data-designer-column]");
 	const columnId = columnOrder.value.find((candidate) => candidate === column?.dataset.designerColumn);
 	if (column !== null && column !== undefined && columnId !== undefined) {
+		// 列拖动接管操作时只退出分组排序，保留列表当前状态。
+		toolboxSorting.value = false;
 		draggedDesignerColumnId = columnId;
 		draggedComponent = undefined;
 		clearDropTargets();

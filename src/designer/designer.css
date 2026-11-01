@@ -55,6 +55,7 @@ button, input, select { color: inherit; font: inherit; }
 .section-title-actions { display: flex; flex: 0 0 auto; gap: 2px; margin-left: auto; }
 .section-title-action { display: grid; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 3px; place-items: center; color: var(--vscode-foreground); background: transparent; cursor: pointer; }
 .section-title-action:hover, .section-title-action:focus-visible { outline: 0; border-color: var(--vscode-widget-border, var(--vscode-panel-border)); background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.section-title-action:disabled { color: var(--vscode-disabledForeground); background: transparent; border-color: transparent; cursor: default; }
 .section-title-action[aria-pressed="true"] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 .section-content { min-height: 0; flex: 1 1 auto; overflow: auto; }
 /* 各区滚动到边界后停止，不把滚轮继续传递给整个设计器页面。 */
@@ -296,10 +297,17 @@ button, input, select { color: inherit; font: inherit; }
 .drop-insert-after-horizontal::after { top: 0; right: 0; bottom: 0; width: 8px; }
 .drop-insert-before-vertical::after { top: 0; right: 0; left: 0; height: 8px; }
 .drop-insert-after-vertical::after { right: 0; bottom: 0; left: 0; height: 8px; }
+.toolbox-sort-icon { transform: rotate(90deg); }
 .toolbox-list { padding: 4px 0; }
 .toolbox-group + .toolbox-group { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
 .toolbox-group-summary { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 3px; align-items: center; min-height: 30px; padding: 3px 7px; font-weight: 600; cursor: pointer; list-style: none; user-select: none; }
 .toolbox-group-summary::-webkit-details-marker { display: none; }
+.toolbox-list-sorting .toolbox-group-summary { cursor: default; }
+.toolbox-list-sorting .toolbox-group-summary[draggable="true"] { cursor: grab; }
+.toolbox-list-sorting .toolbox-group-summary[draggable="true"]:active { cursor: grabbing; }
+.toolbox-group-source { opacity: .62; }
+.toolbox-group-drop-before > .toolbox-group-summary { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
+.toolbox-group-drop-after > .toolbox-group-summary { box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
 .group-disclosure { display: grid; width: 16px; height: 16px; place-items: center; color: var(--vscode-descriptionForeground); }
 .group-disclosure > .codicon { grid-area: 1 / 1; }
 .group-disclosure > .group-disclosure-open { display: none; }

@@ -71,6 +71,13 @@ export function normalizeDesignerColumnOrder(value: unknown): readonly DesignerC
 	return migrateDesignerColumnOrder(value) ?? [...DESIGNER_COLUMN_IDS];
 }
 
+/** 单元列顺序优先，其次读取用户默认顺序，最后使用内置顺序。 */
+export function resolveDesignerColumnOrder(documentOrder: unknown, userOrder: unknown): readonly DesignerColumnId[] {
+	return isDesignerColumnOrder(documentOrder)
+		? [...documentOrder]
+		: isDesignerColumnOrder(userOrder) ? [...userOrder] : [...DESIGNER_COLUMN_IDS];
+}
+
 /** 把一个顶级区域移动到另一区域之前或之后。 */
 export function moveDesignerColumn(
 	order: readonly DesignerColumnId[],

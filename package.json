@@ -712,6 +712,40 @@
 					"default": "",
 					"scope": "window",
 					"description": "SDK 根目录的完整绝对路径。建议使用“ES4A: 选择 SDK”命令设置。"
+				},
+				"es4a.designer.columnOrder": {
+					"type": "array",
+					"default": [
+						"property",
+						"projection",
+						"enabled",
+						"toolbox"
+					],
+					"scope": "application",
+					"description": "设计器默认列顺序：property（属性与布局）、projection（投影）、enabled（启用）、toolbox（可用）。工作区中窗口单元已保存的列顺序优先于此用户设置。",
+					"minItems": 4,
+					"maxItems": 4,
+					"uniqueItems": true,
+					"items": {
+						"type": "string",
+						"enum": [
+							"property",
+							"projection",
+							"enabled",
+							"toolbox"
+						]
+					}
+				},
+				"es4a.designer.toolboxCategoryOrder": {
+					"type": "array",
+					"default": [],
+					"scope": "application",
+					"description": "可用组件的用户级分组顺序。通过可用标题栏按钮进入分组排序后，拖动任意分组标题自动更新，运行库与扩展库分组可混排；未设置时沿用默认顺序，新分组追加在后，暂不可用分组的顺序保留。所有项目共用。恢复默认请在用户设置中重置本项。",
+					"uniqueItems": true,
+					"items": {
+						"type": "string",
+						"minLength": 1
+					}
 				}
 			}
 		},

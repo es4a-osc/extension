@@ -8,6 +8,16 @@ import test from "node:test";
 import { parseDesignerWebviewMessage } from "../designerProtocol";
 import { isSimpleIgnoredOffset, stripSimpleLineComment } from "../simpleSourceLexical";
 
+test("分类排序消息拒绝无效方向、空名称和自身目标", () => {
+	const move = { type: "moveToolboxCategory", contextToken: "designer", category: "扩展组件", reference: "扩展容器", position: "after" };
+	assert.deepEqual(parseDesignerWebviewMessage(move), move);
+	for (const invalid of [{ position: "above" }, { category: "" }, { reference: " " }, { reference: move.category }, { contextToken: 7 }]) {
+		assert.equal(parseDesignerWebviewMessage({ ...move, ...invalid }), undefined);
+	}
+	const reset = { type: "resetToolboxCategoryOrder", contextToken: "designer" };
+	assert.equal(parseDesignerWebviewMessage(reset), undefined);
+});
+
 test("选择消息可携带同会话同版本的属性编辑，拒绝混入其它会话或旧版本", () => {
 	const edit = {
 		contextToken: "designer", renderVersion: 7, type: "updateXmlValue",

@@ -46,6 +46,8 @@ import {
 	type DesignerDisplayOptions
 } from "./designerLayout";
 import type { DesignerPreferenceState } from "./designerPreferencePersistence";
+import { designerColumnOrder, toolboxCategoryOrder, updateToolboxCategoryOrder } from "./designerUserSettings";
+import { moveToolboxCategory, orderToolboxCategories } from "./designerToolboxOrder";
 import {
 	createDesignerComponentEventGroups,
 	resolveDesignerComponentEventAction
@@ -83,6 +85,7 @@ import {
 	type DesignerWebviewMessage,
 	type DesignerWebviewRenderMessage,
 	type MoveDesignerComponentMessage,
+	type MoveToolboxCategoryMessage,
 	type MoveRelativeDesignerComponentMessage,
 	type DesignerRelativeDockMessage,
 	type DesignerRelativePlacementMessage,
@@ -220,12 +223,14 @@ export function createDesignerWebviewModel(
 	columnOrder: readonly DesignerColumnId[] = DESIGNER_COLUMN_IDS,
 	userCode = "",
 	renderVersion = 0,
-	displayOptions: DesignerDisplayOptions = DEFAULT_DESIGNER_DISPLAY_OPTIONS
+	displayOptions: DesignerDisplayOptions = DEFAULT_DESIGNER_DISPLAY_OPTIONS,
+	categoryOrder: readonly string[] = []
 ): DesignerWebviewRenderMessage {
 	const componentNameIssues = result.document === undefined || result.status === "damaged"
 		? []
 		: inspectDesignerComponentNames(result.document, sdk);
-	const projectedModel = createSimpleDesignerModel(result.document, sdk, selectedXmlPath);
+	const model = createSimpleDesignerModel(result.document, sdk, selectedXmlPath);
+	const projectedModel = { ...model, toolbox: orderToolboxCategories(model.toolbox, categoryOrder) };
 	const rawProjection: SimpleDesignerModel = componentNameIssues.length === 0
 		? projectedModel
 		: {
@@ -280,6 +285,7 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 	private readonly panels = new Set<DesignerPanelState>();
 	private readonly propertyCommits = new Set<SimpleDesignerDocument>();
 	private readonly documentOperations = new KeyedTaskQueue();
+	private readonly userPreferenceOperations = new KeyedTaskQueue();
 	private readonly documentChangeEmitter = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<SimpleDesignerDocument>>();
 	private readonly propertyChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
 	private readonly focusEmitter = new vscode.EventEmitter<void>();
@@ -507,12 +513,10 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		return sourceUri.scheme === "file" ? sourceUri.fsPath : undefined;
 	}
 
-	/** 返回当前文档保存的列顺序；未保存时固定使用产品缺省顺序。 */
+	/** 优先使用项目内当前单元的列顺序，其次使用用户默认，最后使用内置顺序。 */
 	private documentColumnOrder(document: SimpleDesignerDocument): readonly DesignerColumnId[] {
 		const sourceFile = this.documentSourceFile(document);
-		return sourceFile === undefined
-			? DESIGNER_COLUMN_IDS
-			: this.preferenceState.getDocument(sourceFile).columnOrder ?? DESIGNER_COLUMN_IDS;
+		return designerColumnOrder(sourceFile === undefined ? undefined : this.preferenceState.getDocument(sourceFile).columnOrder);
 	}
 
 	/** 返回当前文档保存的三个显示开关；未保存时使用产品缺省值。 */
@@ -562,7 +566,8 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			this.documentColumnOrder(state.document),
 			codeDocument.getText(),
 			state.renderVersion,
-			this.documentDisplayOptions(state.document)
+			this.documentDisplayOptions(state.document),
+			toolboxCategoryOrder()
 		));
 	}
 
@@ -742,6 +747,9 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 				case "updateColumnOrder":
 					await this.updateColumnOrder(state, parsedMessage);
 					break;
+				case "moveToolboxCategory":
+					await this.moveToolboxCategory(parsedMessage);
+					break;
 				case "updateDisplayOption":
 					await this.updateDisplayOption(state, parsedMessage);
 					break;
@@ -855,6 +863,19 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			new vscode.Range(position, position),
 			vscode.TextEditorRevealType.InCenterIfOutsideViewport
 		);
+	}
+
+	/** 按最新 SDK 分类移动，串行更新跨单元共享的用户设置，不接触 XML 或组件实例。 */
+	private async moveToolboxCategory(message: MoveToolboxCategoryMessage): Promise<void> {
+		await this.userPreferenceOperations.run("toolboxCategoryOrder", async () => {
+			const groups = createSimpleDesignerModel(undefined, this.sdk).toolbox;
+			const order = moveToolboxCategory(toolboxCategoryOrder(), groups, message.category, message.reference, message.position);
+			if (order === undefined) {
+				throw new Error("只能在当前可用分组之间调整顺序。");
+			}
+			await updateToolboxCategoryOrder(order);
+		});
+		this.refreshAll();
 	}
 
 	/** 按真实 `.simple` 文档保存列顺序，并只同步该文档的其它设计器标签页。 */

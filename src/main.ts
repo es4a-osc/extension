@@ -1004,6 +1004,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		revealActiveDesignerTab();
 	});
 	const configurationListener = vscode.workspace.onDidChangeConfiguration((event) => {
+		if (event.affectsConfiguration("es4a.designer.columnOrder")
+			|| event.affectsConfiguration("es4a.designer.toolboxCategoryOrder")) {
+			designerProvider.refreshAll();
+		}
 		if (event.affectsConfiguration("es4a.projects")) {
 			try {
 				const projectsChanged = programProvider.reloadProjectConfiguration();

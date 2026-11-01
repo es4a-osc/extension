@@ -12,6 +12,7 @@ import {
 	isDesignerDisplayOptionId,
 	moveDesignerColumn,
 	normalizeDesignerColumnOrder,
+	resolveDesignerColumnOrder,
 	normalizeDesignerDisplayOptions
 } from "../designerLayout";
 
@@ -32,6 +33,17 @@ test("设计器顶栏拖动按参照列前后生成稳定顺序", () => {
 	assert.deepEqual(movedBefore, ["property", "enabled", "projection", "toolbox"]);
 	const movedAfter = moveDesignerColumn(movedBefore, "property", "toolbox", "after");
 	assert.deepEqual(movedAfter, ["enabled", "projection", "toolbox", "property"]);
+});
+
+test("设计器列顺序按单元、用户、内置默认逐层回退", () => {
+	const user = ["toolbox", "property", "enabled", "projection"];
+	const document = ["enabled", "projection", "toolbox", "property"];
+	assert.deepEqual(resolveDesignerColumnOrder(document, user), document);
+	assert.deepEqual(resolveDesignerColumnOrder(undefined, user), user);
+	assert.deepEqual(resolveDesignerColumnOrder(["property"], user), user);
+	assert.deepEqual(resolveDesignerColumnOrder(undefined, undefined), DESIGNER_COLUMN_IDS);
+	assert.deepEqual(resolveDesignerColumnOrder(undefined, ["property", "property", "toolbox", "enabled"]), DESIGNER_COLUMN_IDS);
+	assert.deepEqual(user, ["toolbox", "property", "enabled", "projection"]);
 });
 
 test("设计器三个显示开关按单元恢复并分别回退缺省值", () => {

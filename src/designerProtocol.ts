@@ -120,6 +120,15 @@ export interface UpdateDesignerColumnOrderMessage {
 	readonly type: "updateColumnOrder";
 }
 
+/** 请求调整用户级分组顺序；宿主依据当前分组重新计算，拒绝失效目标。 */
+export interface MoveToolboxCategoryMessage {
+	readonly contextToken: string;
+	readonly category: string;
+	readonly reference: string;
+	readonly position: "before" | "after";
+	readonly type: "moveToolboxCategory";
+}
+
 export interface UpdateDesignerDisplayOptionMessage {
 	readonly contextToken: string;
 	readonly option: DesignerDisplayOptionId;
@@ -227,6 +236,7 @@ export type DesignerWebviewMessage =
 	| CutDesignerComponentMessage
 	| DeleteDesignerComponentMessage
 	| MoveDesignerComponentMessage
+	| MoveToolboxCategoryMessage
 	| MoveRelativeDesignerComponentMessage
 	| NavigateDesignerHistoryMessage
 	| NudgeDesignerComponentMessage
@@ -508,6 +518,12 @@ export function parseDesignerWebviewMessage(message: unknown): DesignerWebviewMe
 		case "updateColumnOrder":
 			return isDesignerColumnOrder(candidate.order)
 				? candidate as unknown as UpdateDesignerColumnOrderMessage : undefined;
+		case "moveToolboxCategory":
+			return typeof candidate.category === "string" && candidate.category.trim().length > 0
+				&& typeof candidate.reference === "string" && candidate.reference.trim().length > 0
+				&& candidate.category !== candidate.reference
+				&& (candidate.position === "before" || candidate.position === "after")
+				? candidate as unknown as MoveToolboxCategoryMessage : undefined;
 		case "updateDisplayOption":
 			return isDesignerDisplayOptionId(candidate.option) && typeof candidate.value === "boolean"
 				? candidate as unknown as UpdateDesignerDisplayOptionMessage : undefined;
