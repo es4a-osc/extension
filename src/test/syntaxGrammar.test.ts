@@ -6,6 +6,7 @@ xhwsd@qq.com 2026-8-27
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 
 /** TextMate 仓库中的最小正则规则结构。 */
@@ -23,6 +24,10 @@ interface Grammar {
 const grammar = JSON.parse(
 	fs.readFileSync(path.resolve("syntaxes", "simple.tmLanguage.json"), "utf8")
 ) as Grammar;
+
+test("TextMate 词表由集中语言事实生成且工作区文件保持同步", () => {
+	execFileSync(process.execPath, ["scripts/generateSyntax.js", "--check"], { cwd: process.cwd(), stdio: "pipe" });
+});
 
 /** 返回仓库分组中指定作用域的匹配表达式。 */
 function pattern(group: string, scope: string): RegExp {

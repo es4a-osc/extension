@@ -1,6 +1,7 @@
 const esbuild = require("esbuild");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { writeGrammar } = require("./scripts/generateSyntax");
 const { compileScript, parse } = require("@vue/compiler-sfc");
 
 const isWatch = process.argv.includes("--watch");
@@ -33,6 +34,12 @@ const extensionBuildOptions = {
 	minify: false,
 	outfile: "dist/extension.js",
 	platform: "node",
+	plugins: [{
+		name: "simple-syntax",
+		setup(build) {
+			build.onStart(() => writeGrammar());
+		}
+	}],
 	sourcemap: true,
 	target: "node22"
 };

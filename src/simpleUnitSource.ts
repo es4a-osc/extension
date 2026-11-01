@@ -47,14 +47,11 @@ export function splitSimpleUnitSource(source: string): SimpleUnitSourceSections 
 /**
  * 返回虚拟编辑器应显示的用户代码。
  *
- * 属性区存在时，紧邻 `$属性` 的最后一个换行只负责分隔两个物理区域，不属于可编辑代码；
- * 隐藏它可避免编辑器在代码末尾显示一个无法删除的空行。更早的换行、空行和空白仍原样保留。
+ * 代码视图与物理用户代码区保持相同的行尾，不再隐去属性区之前的最后一个换行。
+ * 保存时复用已有换行，避免把结构分隔再次写成额外空白行。
  */
 export function getVisibleSimpleUnitUserCode(source: string): string {
-	const sections = splitSimpleUnitSource(source);
-	return sections.propertySource.length === 0
-		? sections.userCode
-		: sections.userCode.replace(/(?:\r\n|\n|\r)$/u, "");
+	return splitSimpleUnitSource(source).userCode;
 }
 
 /** 从原代码区提取最后使用的换行符，无换行时遵循项目的 CRLF 默认。 */
@@ -88,13 +85,14 @@ function preserveByteOrderMark(source: string, userCode: string): string {
 /**
  * 使用指定的用户代码和属性源码重新组装完整 Simple 单元。
  *
- * 用户代码中的换行、空行和空白一律原样保留；非空用户代码与属性区之间始终补一个与
- * 原文件一致的结构换行。该换行不属于虚拟编辑器中的用户代码。
+ * 用户代码中的换行、空行和空白一律原样保留；只有非空代码末尾缺少换行时才补齐
+ * 与属性区的物理行分隔，不重复添加已有换行。
  */
 export function assembleSimpleUnitSource(
 	source: string,
 	userCode: string,
-	propertySource: string
+	propertySource: string,
+	lineEnding?: string
 ): string {
 	const hasPropertySection = propertySource.length > 0;
 	let normalizedUserCode = preserveByteOrderMark(
@@ -108,8 +106,9 @@ export function assembleSimpleUnitSource(
 	if (
 		hasPropertySection
 		&& userCodeContent.length > 0
+		&& !/[\r\n]$/u.test(userCodeContent)
 	) {
-		normalizedUserCode += detectPropertyBoundaryLineEnding(source);
+		normalizedUserCode += lineEnding ?? (/[\r\n]/u.test(userCodeContent) ? detectSimpleLineEnding(userCodeContent) : detectPropertyBoundaryLineEnding(source));
 	}
 
 	return normalizedUserCode + propertySource;

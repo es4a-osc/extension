@@ -3,6 +3,7 @@
 xhwsd@qq.com 2026-8-30
 */
 
+import { analyzeSimpleSourceSyntax } from "./simpleSourceSyntax";
 import {
 	collectPropertyXmlElements,
 	findPropertyXmlElementPath,
@@ -45,31 +46,12 @@ interface SimpleComponentEventHandler {
 	readonly offset: number;
 }
 
-/** 返回事件声明下一行越过现有缩进后的位置，与新建事件的主体光标规则一致。 */
-function eventBodyOffset(userCode: string, declarationOffset: number): number {
-	const lineEnding = /\r\n|\n|\r/u.exec(userCode.slice(declarationOffset));
-	if (lineEnding?.index === undefined) return userCode.length;
-	let offset = declarationOffset + lineEnding.index + lineEnding[0].length;
-	while (userCode[offset] === "\t" || userCode[offset] === " ") offset += 1;
-	return offset;
-}
-
-/** 只识别用户代码行首的组件事件声明，不扫描注释、字符串或原属性代码。 */
+/** 事件菜单与签名、引用共用逻辑语句声明，不以物理行或单独正则判断。 */
 function collectSimpleComponentEventHandlers(userCode: string): readonly SimpleComponentEventHandler[] {
-	const handlers: SimpleComponentEventHandler[] = [];
-	const pattern = /^[\t ]*事件[\t ]+([^\s.()]+)[\t ]*\.[\t ]*([^\s.()]+)[\t ]*\(/gmu;
-	for (const match of userCode.matchAll(pattern)) {
-		const componentName = match[1];
-		const eventName = match[2];
-		if (componentName === undefined || eventName === undefined || match.index === undefined) continue;
-		handlers.push({
-			bodyOffset: eventBodyOffset(userCode, match.index),
-			componentName,
-			eventName,
-			offset: match.index
-		});
-	}
-	return handlers;
+	return analyzeSimpleSourceSyntax(userCode).declarations.flatMap((declaration) => declaration.kind !== "event" || declaration.owner === undefined ? [] : [{
+		bodyOffset: declaration.bodyOffset ?? userCode.length,
+		componentName: declaration.owner, eventName: declaration.name, offset: declaration.statementStart
+	}]);
 }
 
 /** 查找用户代码中组件与事件名称都完全一致的事件处理过程。 */

@@ -30,7 +30,7 @@ import {
 	type Sdk
 } from "./sdk";
 import { filePathKey } from "./simpleProjectPaths";
-import { createSimpleSourceAnalysis, resolveSimpleBinding } from "./completionModel";
+import { createSimpleSourceAnalysis, lookupSimpleBinding } from "./completionModel";
 import { findSimpleDefinition } from "./definitionModel";
 import { refactoringContext, simpleIdentifierSpans, applySimpleCodeChanges, planSimpleSymbolRename, type RefactoringUnit, type SimpleUnitChange } from "./refactoringModel";
 
@@ -188,7 +188,7 @@ export function renameSimpleComponent(
 	const references = simpleIdentifierSpans(userCode).filter((span) => span.name === oldName
 		&& findSimpleDefinition(userCode, span.start, sdk, context, analysis)?.propertySource === true);
 	for (const span of references) {
-		if (resolveSimpleBinding(userCode, span.start, newName, context, analysis) !== undefined) throw new Error("新组件名称会遮蔽已有代码绑定。");
+		if (lookupSimpleBinding(userCode, span.start, newName, context, analysis) !== undefined) throw new Error("新组件名称会遮蔽已有代码绑定。");
 	}
 
 	const anchorUpdatedDocument = renameSiblingAnchorReferences(

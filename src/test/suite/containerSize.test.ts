@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-8
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -18,7 +18,7 @@ import { simpleTestUnitPath } from "../testProjects";
 suite("嵌套空容器尺寸投影", () => {
 	test("真实水平滚动框保留最小交互高度，固定高度仍严格保持", async function () {
 		this.timeout(15000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension);
 		const sdk = await loadSdk(testSdkPath());
 		const sourcePath = await simpleTestUnitPath("SmokeTests", "测试水平滚动框");
@@ -97,7 +97,7 @@ suite("嵌套空容器尺寸投影", () => {
 suite("滚动容器内容范围", () => {
 	test("固定与匹配父级的容器只在滚动方向放开适应内容尺寸", async function () {
 		this.timeout(30000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension);
 		const sdk = await loadSdk(testSdkPath());
 		const css = await fs.readFile(path.join(extension.extensionPath, "dist", "designer", "designer.css"), "utf8");

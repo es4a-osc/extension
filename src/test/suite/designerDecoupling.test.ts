@@ -14,7 +14,7 @@ import type { SimpleDesignerDocument } from "../../designerDocument";
 import { createSimpleDesignerModel } from "../../designerModel";
 import { serializePropertyXml } from "../../propertyXml";
 import { loadSdk } from "../../sdk";
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 import { PROJECTION_CONTRACT_SOURCE, withProjectionContract } from "../designerDecouplingFixture";
 
 /** 只驱动正式 DOM、样式及选择事件，不模拟投影算法或 XML 编辑。 */
@@ -53,7 +53,7 @@ window.addEventListener('message', async event => {
 suite("投影与组件名称解耦", () => {
 	test("自定义关联横向排列且不同基类外观一致，选择不修改 XML", async function () {
 		this.timeout(30000);
-		const extension = vscode.extensions.getExtension("es4a.es4a")!;
+		const extension = vscode.extensions.getExtension(testExtensionId())!;
 		await extension.activate();
 		const sdk = withProjectionContract(await loadSdk(testSdkPath()));
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-decoupling-"));

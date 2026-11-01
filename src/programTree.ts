@@ -3,9 +3,11 @@
 xhwsd@qq.com 2026-8-27
 */
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { ProgramTreeRefreshController } from "./programTreeRefresh";
+import { ProjectFileWatcher } from "./projectFileWatcher";
+import { KeyedTaskQueue } from "./keyedTaskQueue";
 import type { SimpleProjectInfo } from "./project";
 import { toSimpleCodeUri } from "./simpleCodeFileSystem";
 import { filePathKey, isPathInside } from "./simpleProjectPaths";
@@ -233,13 +235,17 @@ export class ProgramTreeProvider implements
 	private readonly changeEmitter = new vscode.EventEmitter<ProgramTreeNode | undefined>();
 	private readonly parents = new WeakMap<ProgramTreeNode, ProgramTreeNode>();
 	private projectFiles: string[];
-	private directoryRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-	private readonly directoryWatchers = new Map<string, vscode.Disposable>();
+	private readonly projectOperations = new KeyedTaskQueue();
+	private readonly projectFilesChanged = new vscode.EventEmitter<void>();
+	private readonly treeRefresh = new ProgramTreeRefreshController((node) => this.changeEmitter.fire(node));
+	private readonly fileWatcher = new ProjectFileWatcher(() => this.projectFilesChanged.fire(), () => this.refresh());
 	private unitMoveHandler?: UnitMoveHandler;
 	private pathMoveHandler?: PathMoveHandler;
 
 	/** 在项目列表变化时通知 VS Code 重新读取树节点。 */
 	readonly onDidChangeTreeData = this.changeEmitter.event;
+	/** 后台语义变化独立于树的可见性与局部显示通知。 */
+	readonly onDidChangeProjectFiles = this.projectFilesChanged.event;
 	readonly dragMimeTypes = [PROJECT_DRAG_MIME];
 	readonly dropMimeTypes = [PROJECT_DRAG_MIME];
 
@@ -259,6 +265,12 @@ export class ProgramTreeProvider implements
 			: [];
 	}
 
+	/** 每次提交以当前工程列表为基线，不能等待延迟的配置事件后才接收外部增删。 */
+	private currentProjectFiles(): readonly string[] {
+		const configured = this.state?.get<unknown>(PROGRAM_PROJECT_FILES_STATE_KEY, this.projectFiles);
+		return Array.isArray(configured) ? configured.filter((file): file is string => typeof file === "string").map((file) => path.resolve(file)) : this.projectFiles;
+	}
+
 	/**
 	 * 将一个本地 `project.properties` 加入当前工作区的项目列表。
 	 *
@@ -266,21 +278,28 @@ export class ProgramTreeProvider implements
 	 * @returns 新增成功时返回 `true`；项目已存在时返回 `false`。
 	 */
 	async addProject(filePath: string): Promise<boolean> {
-		const resolvedPath = path.resolve(filePath);
+		return this.projectOperations.run("projects", async () => {
+			let currentFiles = this.currentProjectFiles();
+			const resolvedPath = path.resolve(filePath);
 
-		if (path.basename(resolvedPath).toLowerCase() !== "project.properties") {
-			throw new Error("请选择名为 project.properties 的 Simple 项目属性文件。");
-		}
+			if (path.basename(resolvedPath).toLowerCase() !== "project.properties") {
+				throw new Error("请选择名为 project.properties 的 Simple 项目属性文件。");
+			}
 
-		if (this.projectFiles.some((candidate) => filePathKey(candidate) === filePathKey(resolvedPath))) {
-			return false;
-		}
+			if (currentFiles.some((candidate) => filePathKey(candidate) === filePathKey(resolvedPath))) {
+				return false;
+			}
 
-		await loadSimpleProject(resolvedPath);
-		this.projectFiles.push(resolvedPath);
-		await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, this.projectFiles);
-		this.refresh();
-		return true;
+			await loadSimpleProject(resolvedPath);
+			// 读取项目期间配置可能被外部更新，提交前重新合并并再次检查重复。
+			currentFiles = this.currentProjectFiles();
+			if (currentFiles.some((candidate) => filePathKey(candidate) === filePathKey(resolvedPath))) return false;
+			const updated = [...currentFiles, resolvedPath];
+			await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, updated, currentFiles);
+			this.projectFiles = this.state === undefined ? updated : [...this.currentProjectFiles()];
+			this.refresh();
+			return true;
+		});
 	}
 
 	/**
@@ -290,61 +309,67 @@ export class ProgramTreeProvider implements
 	 * @returns 找到并移除项目时返回 `true`；项目不在列表中时返回 `false`。
 	 */
 	async removeProject(filePath: string): Promise<boolean> {
-		const targetPath = filePathKey(filePath);
-		const remainingFiles = this.projectFiles.filter(
-			(candidate) => filePathKey(candidate) !== targetPath
-		);
+		return this.projectOperations.run("projects", async () => {
+			const currentFiles = this.currentProjectFiles();
+			const targetPath = filePathKey(filePath);
+			const remainingFiles = currentFiles.filter(
+				(candidate) => filePathKey(candidate) !== targetPath
+			);
 
-		if (remainingFiles.length === this.projectFiles.length) {
-			return false;
-		}
+			if (remainingFiles.length === currentFiles.length) {
+				return false;
+			}
 
-		this.projectFiles = remainingFiles;
-		await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, this.projectFiles);
-		this.refresh();
-		return true;
+			await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, remainingFiles, currentFiles);
+			this.projectFiles = this.state === undefined ? remainingFiles : [...this.currentProjectFiles()];
+			this.refresh();
+			return true;
+		});
 	}
 
 	/** 把拖动的顶层项目移动到目标项目前；目标为空时移动到列表末尾。 */
 	async moveProjects(filePaths: readonly string[], targetFilePath?: string): Promise<boolean> {
-		const sourcePaths = new Set(filePaths.map(filePathKey));
-		const movedFiles = this.projectFiles.filter((candidate) => sourcePaths.has(filePathKey(candidate)));
+		return this.projectOperations.run("projects", async () => {
+			const currentFiles = this.currentProjectFiles();
+			const sourcePaths = new Set(filePaths.map(filePathKey));
+			const movedFiles = currentFiles.filter((candidate) => sourcePaths.has(filePathKey(candidate)));
 
-		if (movedFiles.length === 0) {
-			return false;
-		}
-
-		if (targetFilePath !== undefined && sourcePaths.has(filePathKey(targetFilePath))) {
-			return false;
-		}
-
-		const remainingFiles = this.projectFiles.filter(
-			(candidate) => !sourcePaths.has(filePathKey(candidate))
-		);
-		let targetIndex = remainingFiles.length;
-
-		if (targetFilePath !== undefined) {
-			targetIndex = remainingFiles.findIndex(
-				(candidate) => filePathKey(candidate) === filePathKey(targetFilePath)
-			);
-			if (targetIndex < 0) {
+			if (movedFiles.length === 0) {
 				return false;
 			}
-		}
 
-		const reorderedFiles = [
-			...remainingFiles.slice(0, targetIndex),
-			...movedFiles,
-			...remainingFiles.slice(targetIndex)
-		];
-		if (reorderedFiles.every((filePath, index) => filePath === this.projectFiles[index])) {
-			return false;
-		}
+			if (targetFilePath !== undefined && sourcePaths.has(filePathKey(targetFilePath))) {
+				return false;
+			}
 
-		this.projectFiles = reorderedFiles;
-		await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, this.projectFiles);
-		this.refresh();
-		return true;
+			const remainingFiles = currentFiles.filter(
+				(candidate) => !sourcePaths.has(filePathKey(candidate))
+			);
+			let targetIndex = remainingFiles.length;
+
+			if (targetFilePath !== undefined) {
+				targetIndex = remainingFiles.findIndex(
+					(candidate) => filePathKey(candidate) === filePathKey(targetFilePath)
+				);
+				if (targetIndex < 0) {
+					return false;
+				}
+			}
+
+			const reorderedFiles = [
+				...remainingFiles.slice(0, targetIndex),
+				...movedFiles,
+				...remainingFiles.slice(targetIndex)
+			];
+			if (reorderedFiles.every((filePath, index) => filePath === currentFiles[index])) {
+				return false;
+			}
+
+			await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, reorderedFiles, currentFiles);
+			this.projectFiles = this.state === undefined ? reorderedFiles : [...this.currentProjectFiles()];
+			this.refresh();
+			return true;
+		});
 	}
 
 	/** 设置单元移动事务回调，树 Provider 本身不读取或修改项目文件。 */
@@ -432,9 +457,38 @@ export class ProgramTreeProvider implements
 		await this.moveProjects(filePaths, targetFilePath);
 	}
 
-	/** 请求 VS Code 重新读取全部项目，或只重绘指定节点。 */
+	/** 显式项目操作可以重读项目列表，指定节点只更新实际可见的显示分支。 */
 	refresh(node?: ProgramTreeNode): void {
-		this.changeEmitter.fire(node);
+		if (node === undefined) {
+			this.changeEmitter.fire(undefined);
+		} else {
+			this.treeRefresh.request(node);
+		}
+	}
+
+	/** 将整个项目树的展开状态交给逐层显示监听。 */
+	setTreeExpanded(node: ProgramTreeNode, expanded: boolean): void {
+		this.treeRefresh.setExpanded(node, expanded);
+	}
+
+	/** 隐藏视图暂停显示监听，不暂停后台源码和资源分析。 */
+	setTreeVisible(visible: boolean): void {
+		this.treeRefresh.setVisible(visible);
+	}
+
+	/** 语义索引发布后仅重绘可见单元的图标与关系提示。 */
+	refreshVisibleUnits(): void {
+		this.treeRefresh.refreshVisibleUnits();
+	}
+
+	/** 工程配置被手动修改或同步盘更新后，重新接收项目列表。 */
+	reloadProjectConfiguration(): boolean {
+		const configured = this.state?.get<readonly string[]>(PROGRAM_PROJECT_FILES_STATE_KEY, []);
+		const changed = configured !== undefined && (configured.length !== this.projectFiles.length
+			|| configured.some((file, index) => filePathKey(file) !== filePathKey(this.projectFiles[index]!)));
+		if (configured !== undefined) this.projectFiles = [...configured];
+		this.refresh();
+		return changed;
 	}
 
 	/** 判断真实项目属性文件是否已经加入当前项目树。 */
@@ -454,7 +508,9 @@ export class ProgramTreeProvider implements
 			}
 		}));
 
-		return projects.filter((project): project is SimpleProjectInfo => project !== undefined);
+		const valid = projects.filter((project): project is SimpleProjectInfo => project !== undefined);
+		this.fileWatcher.update(valid, this.projectFiles);
+		return valid;
 	}
 
 	/** 返回当前 Provider 实例生成节点的父级，供 VS Code 自动展开并定位树项。 */
@@ -726,10 +782,10 @@ export class ProgramTreeProvider implements
 					};
 				}
 			}));
-			this.synchronizeDirectoryWatchers(nodes.flatMap((node) => (
+			this.fileWatcher.update(nodes.flatMap((node) => (
 				node.kind === "project" ? [node.project] : []
-			)));
-			return nodes;
+			)), this.projectFiles);
+			return this.treeRefresh.roots(nodes);
 		}
 
 		switch (element.kind) {
@@ -755,19 +811,12 @@ export class ProgramTreeProvider implements
 			case "build":
 			case "directory":
 			case "res":
-				return element.missing
-					? []
-					: this.rememberParent(
-						element,
-						await this.getDirectoryChildren(
-							element.directoryPath,
-							element.mode,
-							element.project,
-							element.kind === "assets" || element.kind === "res"
-								? element.kind
-								: element.resourceRoot
-						)
-					);
+				// 所有真实目录在读取边界重新核对，不使用收起前的存在状态或文件列表。
+				Object.assign(element, { missing: !await programDirectoryExists(element.directoryPath) });
+				return this.rememberParent(element, element.missing ? [] : await this.getDirectoryChildren(
+					element.directoryPath, element.mode, element.project,
+					element.kind === "assets" || element.kind === "res" ? element.kind : element.resourceRoot
+				));
 			case "error":
 			case "file":
 			case "unit":
@@ -911,11 +960,12 @@ export class ProgramTreeProvider implements
 		parent: ProgramTreeNode,
 		children: ProgramTreeNode[]
 	): ProgramTreeNode[] {
-		for (const child of children) {
+		const stable = this.treeRefresh.children(parent, children);
+		for (const child of stable) {
 			this.parents.set(child, parent);
 		}
 
-		return children;
+		return stable;
 	}
 
 	/** 在已经确认包含目标文件的源码分支中递归查找单元节点。 */
@@ -998,69 +1048,6 @@ export class ProgramTreeProvider implements
 		})));
 	}
 
-	/** 监听项目源码、Assets、Res 和 Build 目录的外部变化，使项目树与磁盘保持同步。 */
-	private synchronizeDirectoryWatchers(projects: readonly SimpleProjectInfo[]): void {
-		const desiredDirectories = new Map<string, string>();
-		for (const project of projects) {
-			const directories = [
-				...project.sourceDirectories,
-				project.assetsDirectory,
-				project.resourceDirectory
-			];
-			if (fs.existsSync(project.buildDirectory)) {
-				directories.push(project.buildDirectory);
-			} else if (isPathInside(project.directory, project.buildDirectory)) {
-				// 缺省构建目录通常尚未生成；先监听项目根，才能感知编译器首次创建目录。
-				directories.push(project.directory);
-			}
-			for (const directory of directories) {
-				desiredDirectories.set(filePathKey(directory), directory);
-			}
-		}
-
-		for (const [key, watcher] of this.directoryWatchers) {
-			if (!desiredDirectories.has(key)) {
-				watcher.dispose();
-				this.directoryWatchers.delete(key);
-			}
-		}
-
-		for (const [key, directory] of desiredDirectories) {
-			if (this.directoryWatchers.has(key)) {
-				continue;
-			}
-			try {
-				const watcher = fs.watch(
-					directory,
-					{ persistent: false, recursive: true },
-					() => this.scheduleDirectoryRefresh()
-				);
-				const registration = new vscode.Disposable(() => watcher.close());
-				watcher.on("error", () => {
-					if (this.directoryWatchers.get(key) === registration) {
-						this.directoryWatchers.delete(key);
-					}
-					watcher.close();
-					this.scheduleDirectoryRefresh();
-				});
-				this.directoryWatchers.set(key, registration);
-			} catch {
-				// 目录不可用时由树节点明确展示，后续手动刷新会重新尝试建立监视器。
-			}
-		}
-	}
-
-	/** 合并同步盘和编辑器可能连续产生的多个文件事件。 */
-	private scheduleDirectoryRefresh(): void {
-		if (this.directoryRefreshTimer !== undefined) {
-			clearTimeout(this.directoryRefreshTimer);
-		}
-		this.directoryRefreshTimer = setTimeout(() => {
-			this.directoryRefreshTimer = undefined;
-			this.refresh();
-		}, 100);
-	}
-
 	/** 构造始终显示的 Assets、Res 或 Build 映射根节点。 */
 	private async createMappedDirectory(
 		kind: "assets" | "build" | "res",
@@ -1068,7 +1055,7 @@ export class ProgramTreeProvider implements
 		directoryPath: string,
 		project: SimpleProjectInfo
 	): Promise<DirectoryNode> {
-		return {
+		const node: DirectoryNode = {
 			directoryPath,
 			kind,
 			label,
@@ -1077,6 +1064,7 @@ export class ProgramTreeProvider implements
 			project,
 			resourceRoot: kind === "build" ? undefined : kind
 		};
+		return node;
 	}
 
 	/** 将物理目录的直接子项逐级转换为延迟树节点。 */
@@ -1094,14 +1082,16 @@ export class ProgramTreeProvider implements
 			);
 			return entries.map((entry): ProgramTreeNode => {
 				if (entry.kind === "directory") {
-					return {
+					const node: DirectoryNode = {
 						directoryPath: entry.path,
 						kind: "directory",
 						label: entry.label,
+						missing: false,
 						mode,
 						project,
 						resourceRoot
 					};
+					return node;
 				}
 
 				const node: FileNode = {
@@ -1132,14 +1122,9 @@ export class ProgramTreeProvider implements
 
 	/** 释放树刷新事件资源。 */
 	dispose(): void {
-		if (this.directoryRefreshTimer !== undefined) {
-			clearTimeout(this.directoryRefreshTimer);
-			this.directoryRefreshTimer = undefined;
-		}
-		for (const watcher of this.directoryWatchers.values()) {
-			watcher.dispose();
-		}
-		this.directoryWatchers.clear();
+		this.treeRefresh.dispose();
+		this.fileWatcher.dispose();
+		this.projectFilesChanged.dispose();
 		this.changeEmitter.dispose();
 	}
 }

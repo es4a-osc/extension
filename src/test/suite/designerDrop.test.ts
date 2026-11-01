@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-12
 */
 
-import { testFixturePath, testSdkPath } from "../testFixtures";
+import { testExtensionId, testFixturePath, testSdkPath } from "../testFixtures";
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -111,7 +111,7 @@ suite("设计器满尺寸组件拖放", () => {
 	for (const nested of [false, true]) for (const layout of ["linearVertical", "linearHorizontal", "frame", "absolute", "relative", "grid"] as const) {
 		test(`${nested ? "嵌套面板" : "窗口"} ${layout}：满尺寸组件本体、名称和尺寸覆盖层保持布局落位规则`, async function () {
 			this.timeout(30000);
-			const extension = vscode.extensions.getExtension("es4a.es4a")!;
+			const extension = vscode.extensions.getExtension(testExtensionId())!;
 			await extension.activate();
 			const sdk = await loadSdk(testSdkPath());
 			const source = await fs.readFile(testFixturePath("library-test/simple.library.wsd.grouplist/src/simple/library/wsd/grouplist/test/主窗口.simple"), "utf8");

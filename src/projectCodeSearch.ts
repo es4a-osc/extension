@@ -97,6 +97,7 @@ export function findProjectCodeMatches(
 	}
 
 	const normalizedQuery = query.toLowerCase();
+	const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "iu");
 	const matches: ProjectCodeMatch[] = [];
 	for (const document of documents) {
 		const lines = document.userCode.split(/\r\n|\n|\r/u);
@@ -105,15 +106,33 @@ export function findProjectCodeMatches(
 			if (lineText === undefined) {
 				continue;
 			}
-			const startCharacter = lineText.toLowerCase().indexOf(normalizedQuery);
-			if (startCharacter < 0) {
+			const normalizedStart = lineText.toLowerCase().indexOf(normalizedQuery);
+			// Unicode 简单折叠处理上下文大小写（例如希腊词尾 sigma）；小写匹配保留字符扩展行为。
+			const direct = pattern.exec(lineText);
+			if (normalizedStart < 0 && direct === null) {
 				continue;
 			}
 			if (matches.length >= maxResults) {
 				return { limitHit: true, matches };
 			}
+			// 大小写转换可能扩展字符；将命中范围映射回原文的 UTF-16 偏移。
+			let startCharacter = 0;
+			let endCharacter = 0;
+			let sourceOffset = 0;
+			let normalizedOffset = 0;
+			for (const character of normalizedStart < 0 ? "" : lineText) {
+				const next = normalizedOffset + character.toLowerCase().length;
+				if (normalizedOffset <= normalizedStart && normalizedStart < next) startCharacter = sourceOffset;
+				sourceOffset += character.length;
+				if (next >= normalizedStart + normalizedQuery.length) { endCharacter = sourceOffset; break; }
+				normalizedOffset = next;
+			}
+			if (direct !== null && (normalizedStart < 0 || direct.index <= startCharacter)) {
+				startCharacter = direct.index;
+				endCharacter = direct.index + direct[0].length;
+			}
 			matches.push({
-				endCharacter: startCharacter + query.length,
+				endCharacter,
 				filePath: document.filePath,
 				lineNumber,
 				lineText,

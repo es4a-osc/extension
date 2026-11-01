@@ -44,16 +44,16 @@ test("按编译器的倒数第二个属性标记切分单元", () => {
 	assert.equal(findPropertySectionStart("只有一个 $属性"), "只有一个 $属性".length);
 });
 
-test("用户代码视图不显示属性区前的结构换行", () => {
+test("用户代码视图逐字显示代码区的行尾，不隐藏或增加换行", () => {
 	const propertySource = "$属性\r\n\t$资源 $对象\r\n$结束 $属性\r\n";
 
 	assert.equal(
 		getVisibleSimpleUnitUserCode(`过程 Run()\r\n结束 过程\r\n${propertySource}`),
-		"过程 Run()\r\n结束 过程"
+		"过程 Run()\r\n结束 过程\r\n"
 	);
 	assert.equal(
 		getVisibleSimpleUnitUserCode(`过程 Run()\r\n结束 过程\r\n\r\n${propertySource}`),
-		"过程 Run()\r\n结束 过程\r\n"
+		"过程 Run()\r\n结束 过程\r\n\r\n"
 	);
 });
 
@@ -73,7 +73,7 @@ test("真实 SmokeTest 和 Tetris 单元可无损切分并重组", async () => {
 	}
 });
 
-test("Tetris 用户代码视图隐藏属性区前的结构换行并保留更早的空行", async () => {
+test("Tetris 用户代码视图完整保留属性区之前的源码与空行", async () => {
 	const unitFile = simpleTestProjectPath(
 		"Tetris",
 		"src",
@@ -86,7 +86,7 @@ test("Tetris 用户代码视图隐藏属性区前的结构换行并保留更早�
 	const userCode = getVisibleSimpleUnitUserCode(source);
 	const sourcePrefix = source.slice(0, findPropertySectionStart(source));
 
-	assert.equal(userCode, sourcePrefix.replace(/(?:\r\n|\n|\r)$/u, ""));
+	assert.equal(userCode, sourcePrefix);
 	assert.equal(
 		mergeSimpleUnitUserCode(source, userCode),
 		source
@@ -115,11 +115,11 @@ test("使用 XML 生成的属性源码组装完整单元", () => {
 
 	assert.equal(
 		merged,
-		"\uFEFF过程 After()\r\n结束 过程\r\n\r\n" + generatedPropertySource
+		"\uFEFF过程 After()\r\n结束 过程\r\n" + generatedPropertySource
 	);
 });
 
-test("组装属性区时在非空用户代码后补一个不可见的结构换行", () => {
+test("组装属性区只补缺失的行分隔，已有换行不重复添加", () => {
 	const propertySource = "$属性\n\t$资源 $对象\n$结束 $属性\n";
 
 	assert.equal(
@@ -128,9 +128,11 @@ test("组装属性区时在非空用户代码后补一个不可见的结构换�
 	);
 	assert.equal(
 		assembleSimpleUnitSource(propertySource, "过程 Run()\n结束 过程\n", propertySource),
-		`过程 Run()\n结束 过程\n\n${propertySource}`
+		`过程 Run()\n结束 过程\n${propertySource}`
 	);
 	assert.equal(assembleSimpleUnitSource(propertySource, "", propertySource), propertySource);
+	assert.equal(assembleSimpleUnitSource(propertySource.replace(/\n/gu, "\r\n"), "过程 Run()\n结束 过程", propertySource), `过程 Run()\n结束 过程\n${propertySource}`);
+	assert.equal(assembleSimpleUnitSource(propertySource, "单行代码", propertySource, "\r\n"), `单行代码\r\n${propertySource}`);
 	assert.equal(
 		assembleSimpleUnitSource(`\uFEFF${propertySource}`, "", propertySource),
 		`\uFEFF${propertySource}`
@@ -156,10 +158,9 @@ test("损坏属性区仍与用户代码分离并在保存时原样保留", () =>
 		propertySource: brokenPropertySource,
 		userCode
 	});
-	assert.equal(getVisibleSimpleUnitUserCode(source), "这不是合法的 Simple 代码");
+	assert.equal(getVisibleSimpleUnitUserCode(source), userCode);
 	assert.equal(
 		mergeSimpleUnitUserCode(source, "修改后的错误代码"),
 		"修改后的错误代码\r\n" + brokenPropertySource
 	);
 });
-

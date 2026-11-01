@@ -44,6 +44,7 @@ import {
 	type DesignerLayoutKind
 } from "./designerDefaults";
 import { copyNameCandidate } from "./copyName";
+import { scanSimpleSource } from "./simpleSourceLexical";
 import {
 	collectUnavailableComponentNames,
 	componentNameValidationError
@@ -908,8 +909,8 @@ function projectRelativeChildren(
 		if (value.length === 0) return { issue: "unsupported-expression" };
 		const memberSeparator = value.lastIndexOf(".");
 		if (memberSeparator >= 0) {
-			const referenceName = value.slice(0, memberSeparator).split(".").at(-1) ?? "";
-			const memberName = value.slice(memberSeparator + 1);
+			const referenceName = value.slice(0, memberSeparator).split(".").at(-1)?.trim() ?? "";
+			const memberName = value.slice(memberSeparator + 1).trim();
 			const reference = referencesByName.get(referenceName);
 			if (reference !== undefined && reference.idPropertyName === memberName) {
 				return { path: reference.path };
@@ -1881,7 +1882,8 @@ function preparePastedComponentDefinition(
 	element: PropertyXmlElement,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
 	usedNames: Set<string>,
-	sdk: Sdk | undefined
+	sdk: Sdk | undefined,
+	renamed: Map<string, { readonly name: string; readonly type: string }> = new Map()
 ): PropertyXmlElement {
 	if (element.name !== "定义") {
 		throw new Error("剪贴板内容不是组件定义 XML。");
@@ -1908,8 +1910,10 @@ function preparePastedComponentDefinition(
 		throw new Error("剪贴板组件“" + componentType + "”不能承载子组件。");
 	}
 	const pastedName = uniquePastedComponentName(originalName, usedNames, sdk);
+	if (renamed.has(originalName)) throw new Error("剪贴板组件名称重复，无法确定内部引用目标。");
+	renamed.set(originalName, { name: pastedName, type: componentType });
 	const children = element.children.map((child) => child.nodeType === "element" && child.name === "定义"
-		? preparePastedComponentDefinition(child, definitions, usedNames, sdk)
+		? preparePastedComponentDefinition(child, definitions, usedNames, sdk, renamed)
 		: child);
 	const limit = isContainerDefinition(definition) ? definition?.projection?.limit : undefined;
 	if (limit !== undefined) {
@@ -1932,6 +1936,35 @@ function preparePastedComponentDefinition(
 		children,
 		element.temporary
 	);
+}
+
+/** 只同步复制子树中可证明指向同级组件的锚点，不改普通属性或未知表达式。 */
+function remapPastedAnchors(
+	element: PropertyXmlElement,
+	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
+	renamed: ReadonlyMap<string, { readonly name: string; readonly type: string }>,
+	peers: ReadonlySet<string> = new Set()
+): PropertyXmlElement {
+	const originalNames = new Map([...renamed].map(([before, after]) => [after.name, before]));
+	const childPeers = new Set(getPropertyXmlChildren(element, "定义").map((child) => originalNames.get(getPropertyXmlAttribute(child, "名称") ?? "") ?? ""));
+	const reference = definitions.get(getPropertyXmlAttribute(element, "组件") ?? "");
+	const anchors = new Set(reference === undefined ? [] : getEffectiveMembers(reference, "properties", definitions)
+		.filter(({ member }) => member.editor === "simple.anchor").map(({ member }) => member.name));
+	return createPropertyXmlElement(element.name, element.attributes, element.children.map((child) => {
+		if (child.nodeType !== "element") return child;
+		if (child.name === "定义") return remapPastedAnchors(child, definitions, renamed, childPeers);
+		if (child.name !== "赋值" || !anchors.has(getPropertyXmlAttribute(child, "属性") ?? "")) return child;
+		const value = getPropertyXmlAttribute(child, "值") ?? "";
+		const tokens = scanSimpleSource(value);
+		const selfQualified = tokens.length === 5 && tokens[0]?.text === "本对象" && tokens[1]?.text === ".";
+		if (tokens.length !== 3 && !selfQualified) return child;
+		const ownerIndex = selfQualified ? 2 : 0;
+		const owner = tokens[ownerIndex];
+		const target = owner === undefined || !peers.has(owner.text) ? undefined : renamed.get(owner.text);
+		if (owner?.kind !== "word" || tokens[ownerIndex + 1]?.text !== "." || target === undefined
+			|| getEffectivePropertyByProjection(definitions.get(target.type), "id", definitions)?.member.name !== tokens[ownerIndex + 2]?.text) return child;
+		return createPropertyXmlElement(child.name, { ...child.attributes, "值": value.slice(0, owner.start) + target.name + value.slice(owner.end) }, child.children, child.temporary);
+	}), element.temporary);
 }
 
 /** 剪贴板组件子树不得夹带需要单独落到窗口根节点的嵌套非可视组件。 */
@@ -1993,12 +2026,14 @@ export function pasteSimpleDesignerComponent(
 		...collectUnavailableComponentNames(document),
 		...(unavailableNames ?? [])
 	]);
-	const component = preparePastedComponentDefinition(
+	const renamed = new Map<string, { readonly name: string; readonly type: string }>();
+	const component = remapPastedAnchors(preparePastedComponentDefinition(
 		parsePropertyXmlElement(clipboardText),
 		definitions,
 		usedNames,
-		sdk
-	);
+		sdk,
+		renamed
+	), definitions, renamed);
 	if (hasNestedNonVisualComponent(component, definitions)) {
 		throw new Error("剪贴板中的非可视组件必须直接位于窗口根节点。");
 	}

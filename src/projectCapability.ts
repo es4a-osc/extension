@@ -43,6 +43,22 @@ export function findProjectForSource(
 	return selectedProject;
 }
 
+/** 原生路径操作优先遵循源码归属；资源与资产按最具体映射根选择项目。 */
+export function findProjectForPath(projects: readonly SimpleProjectInfo[], filePath: string): SimpleProjectInfo | undefined {
+	const sourceProject = findProjectForSource(projects, filePath);
+	if (sourceProject !== undefined) return sourceProject;
+	let selected: SimpleProjectInfo | undefined;
+	let length = -1;
+	for (const project of projects) {
+		const root = mostSpecificSourceRoot([project.resourceDirectory, project.assetsDirectory], filePath);
+		if (root !== undefined && path.resolve(root).length > length) {
+			selected = project;
+			length = path.resolve(root).length;
+		}
+	}
+	return selected;
+}
+
 /** 按工具参数顺序把参数标识转换为项目模型已经解析完成的实际值。 */
 export function createProjectCapabilityArguments(
 	project: SimpleProjectInfo,

@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-13
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -46,7 +46,7 @@ suite("活动标签 F5", () => {
 				""
 			].join("\r\n"));
 			await configuration.update("sdk.path", sdkDirectory, vscode.ConfigurationTarget.Global);
-			await vscode.extensions.getExtension("es4a.es4a")!.activate();
+			await vscode.extensions.getExtension(testExtensionId())!.activate();
 			await vscode.commands.executeCommand("es4a.refreshLibraries");
 			await vscode.commands.executeCommand("es4a.internal.addProject", projectFile);
 			driver = await WorkbenchDriver.connect();

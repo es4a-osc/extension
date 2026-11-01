@@ -9,7 +9,7 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import { test } from "node:test";
 import {
-	buildCompilerTokenRules,
+	buildLanguageTokenRules,
 	buildDocumentTokenRules,
 	tokenizeSimpleText
 } from "../compilerTokens";
@@ -42,93 +42,15 @@ function documentModel(source: string): {
 	};
 }
 
-test("编译器清单动态生成语义着色规则", () => {
-	const sdk: Sdk = {
-		capabilities: { projects: [], tools: [] },
-
-		templates: {},
-		directory: "C:\\SDK",
-		issues: [],
-		manifests: [
-			{
-				categories: [
-					{
-						definitions: [
-							{ kind: "declaration", name: "函数" },
-							{ kind: "modifier", name: "静态" },
-							{ kind: "control", name: "如果" },
-							{ kind: "control", name: "结束" },
-							{ kind: "declaration", name: "创建" },
-							{ kind: "operator", name: "为" }
-						],
-						name: "关键字"
-					},
-					{
-						definitions: [
-							{ kind: "type", name: "整数型" },
-							{ kind: "type", name: "对象" }
-						],
-						name: "数据类型"
-					},
-					{
-						definitions: [
-							{ kind: "literal", name: "真" },
-							{ kind: "operator", name: ">=" }
-						],
-						name: "运算符"
-					},
-					{
-						definitions: [
-							{ kind: "$keyword", name: "$资源" },
-							{ kind: "$type", name: "$接口" }
-						],
-						hidden: true,
-						name: "属性区"
-					}
-				],
-				directory: "C:\\SDK\\simple",
-				filePath: "C:\\SDK\\simple\\SimpleCompiler.json",
-				kind: "compiler",
-				name: "编译器"
-			}
-		]
-	};
-
-	const rules = buildCompilerTokenRules(sdk);
-	const source = [
-		"变量 示例 为 对象",
-		"静态 变量 数值 为 整数型",
-		"' 如果 真 >= $窗口",
-		"文本 = \"如果 真\"",
-		"如果 真 >= 数值",
-		"创建 示例",
-		"$资源 $接口",
-		"如果值",
-		"结束 函数",
-		"结束 如果"
-	].join("\n");
-	const tokens = tokenizeSimpleText(source, rules);
-
-	assert.deepEqual(
-		tokens.map((token) => [token.line, token.text, token.type]),
-		[
-			[0, "为", "operator"],
-			[0, "对象", "type"],
-			[1, "静态", "simpleModifier"],
-			[1, "为", "operator"],
-			[1, "整数型", "type"],
-			[4, "如果", "simpleControl"],
-			[4, "真", "enumMember"],
-			[4, ">=", "operator"],
-			[5, "创建", "simpleDeclaration"],
-			[6, "$资源", "keyword"],
-			[6, "$接口", "type"],
-			[8, "结束", "simpleDeclaration"],
-			[8, "函数", "simpleDeclaration"],
-			[9, "结束", "simpleControl"],
-			[9, "如果", "simpleControl"]
-		]
-	);
+test("固定语言规则在未配置 SDK 时独立提供关键字和类型着色", () => {
+	const source = ["静态 变量 数值 为 整数型", "如果 真 则", "结束 如果", "结束 函数", "' 如果", '\"如果\"'].join("\n");
+	const tokens = tokenizeSimpleText(source, buildLanguageTokenRules());
+	assert.deepEqual(tokens.map((token) => [token.line, token.text, token.type]), [
+		[0, "静态", "simpleModifier"], [0, "变量", "simpleDeclaration"], [0, "为", "operator"], [0, "整数型", "type"],
+		[1, "如果", "simpleControl"], [1, "真", "enumMember"], [1, "则", "simpleControl"],
+		[2, "结束", "simpleControl"], [2, "如果", "simpleControl"],
+		[3, "结束", "simpleDeclaration"], [3, "函数", "simpleDeclaration"]
+	]);
 });
 
 test("用户函数和过程的声明及调用使用一致的语义着色", () => {
@@ -154,7 +76,9 @@ test("用户函数和过程的声明及调用使用一致的语义着色", () =>
 		[
 			[0, "TurnRight", "function"],
 			[0, "value", "parameter"],
-			[1, "TurnRight", "function"],
+			[0, "整数型", "type"],
+			[0, "整数型", "type"],
+			[1, "TurnRight", "variable"],
 			[1, "value", "parameter"],
 			[3, "CheckRow", "function"],
 			[4, "TurnRight", "function"],
@@ -199,20 +123,28 @@ test("变量、常量、参数、属性、事件和组件实例在声明与引�
 		tokens.map((token) => [token.line, token.text, token.type, token.modifiers]),
 		[
 			[0, "ROWS", "variable", ["readonly"]],
+			[0, "整数型", "type", []],
 			[1, "NextBrick", "variable", []],
+			[1, "Brick", "type", []],
 			[1, "Orientation", "variable", []],
+			[1, "整数型", "type", []],
 			[2, "Use", "function", []],
 			[2, "brick", "parameter", []],
+			[2, "Brick", "type", []],
 			[3, "row", "variable", []],
+			[3, "整数型", "type", []],
 			[3, "cells", "variable", []],
+			[3, "整数型", "type", []],
 			[4, "NextBrick", "variable", []],
 			[4, "brick", "parameter", []],
 			[5, "row", "variable", []],
 			[5, "ROWS", "variable", ["readonly"]],
 			[6, "Timer", "variable", []],
+			[6, "间隔", "property", []],
 			[6, "ROWS", "variable", ["readonly"]],
 			[8, "Score", "property", []],
-			[10, "Score", "property", []],
+			[8, "整数型", "type", []],
+			[10, "Score", "variable", []],
 			[10, "ROWS", "variable", ["readonly"]],
 			[13, "Timer", "variable", []],
 			[13, "计时", "event", []],
@@ -344,13 +276,13 @@ test("根据 SDK 类型和继承关系着色组件类型及点号成员", () => 
 
 test("同名重载声明和调用均保持函数着色", () => {
 	const source = [
-		"过程 执行()",
+		"过程 运行()",
 		"结束 过程",
-		"过程 执行(value 为 整数型)",
+		"过程 运行(value 为 整数型)",
 		"结束 过程",
 		"过程 Run()",
-		"\t执行()",
-		"\t执行(1)",
+		"\t运行()",
+		"\t运行(1)",
 		"结束 过程",
 		"$属性",
 		"\t$资源 $对象",
@@ -360,7 +292,7 @@ test("同名重载声明和调用均保持函数着色", () => {
 	const tokens = tokenizeSimpleText(
 		model.userCode,
 		buildDocumentTokenRules(model.userCode, undefined, model.context)
-	).filter((token) => token.text === "执行");
+	).filter((token) => token.text === "运行");
 
 	assert.equal(tokens.length, 4);
 	assert.ok(tokens.every((token) => token.type === "function"));
@@ -429,7 +361,7 @@ test("完整代码复用用户代码规则并补充属性区名称和对象类�
 	].join("\n");
 	const model = documentModel(source);
 	const rules = [
-		...buildCompilerTokenRules(sdk),
+		...buildLanguageTokenRules(),
 		...buildDocumentTokenRules(source, sdk, model.context)
 	];
 	const tokens = tokenizeSimpleText(source, rules);
@@ -458,7 +390,7 @@ test("Tetris 完整代码中的布局限定属性按 SDK 着色", async () => {
 	const context = index.contextForFile(filePath, source);
 	assert.ok(context);
 	const tokens = tokenizeSimpleText(source, [
-		...buildCompilerTokenRules(sdk),
+		...buildLanguageTokenRules(),
 		...buildDocumentTokenRules(source, sdk, context)
 	]);
 	const lines = source.split(/\r?\n/u);
@@ -493,7 +425,7 @@ test("Tetris 完整代码中的布局限定属性按 SDK 着色", async () => {
 	)), "布局常量应继续按只读变量着色");
 });
 
-test("运行库全局名称与静态、实例成员按真实访问方式着色", () => {
+test("运行库已知成员按访问方式细化，未知或不可访问成员保留语法底色", () => {
 	const sdk: Sdk = {
 		capabilities: { projects: [], tools: [] },
 
@@ -551,6 +483,8 @@ test("运行库全局名称与静态、实例成员按真实访问方式着色",
 
 	assert.deepEqual(selected, [
 		[2, "加入", "method", []],
+		[3, "类型常量", "property", []],
+		[4, "加入", "method", []],
 		[5, "分割文本", "method", []],
 		[6, "分割文本", "function", []],
 		[7, "全局常量", "variable", ["readonly"]]

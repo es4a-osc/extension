@@ -6,12 +6,18 @@ xhwsd@qq.com 2026-10-7
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
-import { createDesignerPreferenceState } from "../designerPreferencePersistence";
+import { createDesignerPreferenceState as createState } from "../designerPreferencePersistence";
 import type {
 	WorkspaceProjectEntry,
 	WorkspaceProjectRegistry,
 	WorkspaceProjectSettings
 } from "../programProjectPersistence";
+
+import { createProjectInfo } from "../project";
+
+function createDesignerPreferenceState(registry: WorkspaceProjectRegistry) {
+	return createState(registry, (file) => createProjectInfo(file, { source: "." }));
+}
 
 /** 创建可观察项目设置写入的内存工程项目注册表。 */
 function memoryProjectRegistry(
@@ -22,7 +28,8 @@ function memoryProjectRegistry(
 	return {
 		writes,
 		projectEntries: () => entries.map((entry) => ({ ...entry })),
-		updateProjectSettings: async (projectFile, settings) => {
+		updateProjectSettings: async (projectFile, update) => {
+			const settings = update(entries.find((entry) => entry.projectFile === projectFile)?.settings);
 			writes.push({ projectFile, settings });
 			entries = entries.map((entry) => path.resolve(entry.projectFile) === path.resolve(projectFile)
 				? { projectFile: entry.projectFile, settings }
@@ -155,14 +162,14 @@ test("并发修改同一单元的栏目和显示设置不会互相覆盖", async
 	let releaseFirstWrite: (() => void) | undefined;
 	const registry: WorkspaceProjectRegistry = {
 		projectEntries: () => [{ ...entry }],
-		updateProjectSettings: async (_projectFile, settings) => {
+		updateProjectSettings: async (_projectFile, update) => {
 			writeCount += 1;
 			if (writeCount === 1) {
 				await new Promise<void>((resolve) => {
 					releaseFirstWrite = resolve;
 				});
 			}
-			entry = { projectFile, settings };
+			entry = { projectFile, settings: update(entry.settings) };
 		}
 	};
 	const state = createDesignerPreferenceState(registry);

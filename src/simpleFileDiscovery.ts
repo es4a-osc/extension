@@ -6,10 +6,11 @@ xhwsd@qq.com 2026-9-2
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-/** 不跟随符号链接递归枚举 `.simple` 文件；不可读目录只影响自身子树。 */
+/** 不跟随符号链接枚举单元；搜索可跳过不可读子树，重构要求完整扫描。 */
 export async function listSimpleFiles(
 	directoryPath: string,
-	isCancelled: () => boolean = () => false
+	isCancelled: () => boolean = () => false,
+	options: { readonly strict?: boolean } = {}
 ): Promise<readonly string[]> {
 	if (isCancelled()) {
 		return [];
@@ -18,7 +19,8 @@ export async function listSimpleFiles(
 	let entries;
 	try {
 		entries = await fs.readdir(directoryPath, { withFileTypes: true });
-	} catch {
+	} catch (error) {
+		if (options.strict) throw new Error(`无法完整扫描源码目录：${directoryPath}`, { cause: error });
 		return [];
 	}
 	entries.sort((left, right) => left.name.localeCompare(right.name));
@@ -29,7 +31,7 @@ export async function listSimpleFiles(
 		}
 		const entryPath = path.join(directoryPath, entry.name);
 		if (entry.isDirectory()) {
-			return listSimpleFiles(entryPath, isCancelled);
+			return listSimpleFiles(entryPath, isCancelled, options);
 		}
 		return entry.isFile() && path.extname(entry.name).toLowerCase() === ".simple"
 			? [entryPath]

@@ -14,7 +14,7 @@ export interface ProgramProjectState {
 	/** 读取已持久化的状态值。 */
 	get<T>(key: string, defaultValue: T): T;
 	/** 更新已持久化的状态值。 */
-	update(key: string, value: unknown): Thenable<void>;
+	update(key: string, value: unknown, expectedProjectFiles?: readonly string[]): Thenable<void>;
 }
 
 /** 一个 ES4A 项目在工程文件中保存的项目级设置。 */
@@ -36,8 +36,8 @@ export interface WorkspaceProjectEntry {
 export interface WorkspaceProjectRegistry {
 	/** 返回当前有序项目及其项目级设置。 */
 	projectEntries(): readonly WorkspaceProjectEntry[];
-	/** 只更新指定项目的设置并保留项目列表、顺序和其它项目。 */
-	updateProjectSettings(projectFile: string, settings: WorkspaceProjectSettings | undefined): Thenable<void>;
+	/** 在提交队列内基于最新设置求值，并保留项目列表、顺序和其它项目。 */
+	updateProjectSettings(projectFile: string, update: (settings: WorkspaceProjectSettings | undefined) => WorkspaceProjectSettings | undefined): Thenable<void>;
 }
 
 /** 项目树状态与项目级设置注册表的统一实现。 */
@@ -51,8 +51,10 @@ export interface ProgramWorkspaceConfiguration {
 	readonly baseDirectory?: string;
 	/** 读取显式配置的 `es4a.projects`；未配置时返回 `undefined`。 */
 	read(): unknown;
+	/** 读取失败保留最后有效状态；显式写入仍必须拒绝损坏配置。 */
+	onReadError?(error: unknown): void;
 	/** 按原顺序更新 `es4a.projects`。 */
-	update(projects: readonly WorkspaceProjectReference[]): Thenable<void>;
+	update(projects: readonly WorkspaceProjectReference[], expected?: { readonly value: unknown }): Thenable<void>;
 }
 
 /** 判断未知值是否为普通对象。 */
@@ -63,25 +65,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** 只接受项目设置对象，不解释各项目功能自己的内部字段。 */
 function workspaceProjectSettings(value: unknown): WorkspaceProjectSettings | undefined {
 	return isRecord(value) ? value : undefined;
-}
-
-/** 判断未知值是否为可无损规范化的工作区项目引用数组。 */
-function isWorkspaceProjectReferences(value: unknown): value is readonly WorkspaceProjectReference[] {
-	return Array.isArray(value) && value.every((candidate) => (
-		isRecord(candidate)
-		&& Object.keys(candidate).every((key) => key === "path" || key === "settings")
-		&& typeof candidate.path === "string"
-		&& candidate.path.length > 0
-		&& (candidate.settings === undefined || isRecord(candidate.settings))
-	));
-}
-
-/** 比较项目引用，避免仅为相同规范化结果重写工作区文件。 */
-function sameWorkspaceProjectReferences(
-	left: readonly WorkspaceProjectReference[],
-	right: readonly WorkspaceProjectReference[]
-): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
 }
 
 /** 只保留项目树状态值中有效的绝对 `project.properties` 路径。 */
@@ -177,61 +160,92 @@ export async function createProgramProjectState(
 		writeQueue = task.catch(() => undefined);
 		return task;
 	};
-	const configuredProjects = workspace.read();
-	let entries = [...resolveWorkspaceProjectEntries(configuredProjects, workspace.baseDirectory)];
-
-	if (workspace.baseDirectory !== undefined && isWorkspaceProjectReferences(configuredProjects)) {
-		const normalizedProjects = serializeWorkspaceProjectEntries(entries, workspace.baseDirectory);
-		if (!sameWorkspaceProjectReferences(configuredProjects, normalizedProjects)) {
-			await enqueueWrite(async () => workspace.update(normalizedProjects));
+	let entries: WorkspaceProjectEntry[] = [];
+	let observedConfiguration: string | undefined;
+	let configurationRevision = 0;
+	let readFailure: string | undefined;
+	const refreshFromWorkspace = (strict = false): unknown => {
+		if (!workspace.available) return undefined;
+		let current: unknown;
+		try {
+			current = workspace.read();
+			readFailure = undefined;
+		} catch (error) {
+			if (strict) throw error;
+			const message = String(error);
+			if (message !== readFailure) workspace.onReadError?.(error);
+			readFailure = message;
+			return undefined;
 		}
-	}
+		const serialized = JSON.stringify(current);
+		if (serialized !== observedConfiguration) {
+			entries = [...resolveWorkspaceProjectEntries(current, workspace.baseDirectory)];
+			observedConfiguration = serialized;
+			configurationRevision++;
+		}
+		return current;
+	};
+	refreshFromWorkspace();
+	// 加载只规范化内存路径；首次显式修改再写规范格式，不能因脏配置阻断扩展激活。
+	const persistEntries = async (updated: WorkspaceProjectEntry[], expected: { readonly value: unknown }): Promise<void> => {
+		const projects = serializeWorkspaceProjectEntries(updated, workspace.baseDirectory);
+		if (!workspace.available) { entries = updated; return; }
+		const revision = configurationRevision;
+		await workspace.update(projects, expected);
+		const current = refreshFromWorkspace();
+		if (readFailure === undefined) {
+			// 即使配置回到了先前值，也要以写入完成后的真实配置为准。
+			entries = [...resolveWorkspaceProjectEntries(current, workspace.baseDirectory)];
+		} else if (configurationRevision === revision) {
+			// 没有更新的有效观测时，成功写出的版本才可作为最后有效状态。
+			entries = updated;
+			observedConfiguration = JSON.stringify(projects);
+			configurationRevision++;
+		}
+	};
 
 	return {
 		get<T>(key: string, defaultValue: T): T {
 			if (key !== PROGRAM_PROJECT_FILES_STATE_KEY) return defaultValue;
+			refreshFromWorkspace();
 			return entries.map((entry) => entry.projectFile) as T;
 		},
-		async update(key: string, value: unknown): Promise<void> {
+		async update(key: string, value: unknown, expectedProjectFiles?: readonly string[]): Promise<void> {
 			if (key !== PROGRAM_PROJECT_FILES_STATE_KEY) return;
 
 			const updatedProjectFiles = normalizeProjectFiles(value);
 			await enqueueWrite(async () => {
+				const expected = { value: refreshFromWorkspace(true) };
+				if (expectedProjectFiles !== undefined && JSON.stringify(entries.map((entry) => filePathKey(entry.projectFile))) !== JSON.stringify(expectedProjectFiles.map(filePathKey))) {
+					throw new Error("工程项目列表已变化，请按最新列表重试。");
+				}
 				const existingByPath = new Map(entries.map((entry) => [filePathKey(entry.projectFile), entry]));
 				const updatedEntries = updatedProjectFiles.map((projectFile) => ({
 					projectFile,
 					settings: existingByPath.get(filePathKey(projectFile))?.settings
 				}));
-				if (workspace.available) {
-					await workspace.update(
-						serializeWorkspaceProjectEntries(updatedEntries, workspace.baseDirectory)
-					);
-				}
-				entries = updatedEntries;
+				await persistEntries(updatedEntries, expected);
 			});
 		},
-		projectEntries: () => entries.map((entry) => ({ ...entry })),
+		projectEntries: () => { refreshFromWorkspace(); return entries.map((entry) => ({ ...entry })); },
 		async updateProjectSettings(
 			projectFile: string,
-			settings: WorkspaceProjectSettings | undefined
+			update: (settings: WorkspaceProjectSettings | undefined) => WorkspaceProjectSettings | undefined
 		): Promise<void> {
 			await enqueueWrite(async () => {
+				const expected = { value: refreshFromWorkspace(true) };
 				const projectKey = filePathKey(projectFile);
 				const projectIndex = entries.findIndex((entry) => filePathKey(entry.projectFile) === projectKey);
 				if (projectIndex < 0) {
 					throw new Error(`无法保存不属于当前工程的项目设置：${projectFile}`);
 				}
 				const updatedEntries = [...entries];
+				const settings = update(entries[projectIndex]!.settings);
 				updatedEntries[projectIndex] = {
 					projectFile: updatedEntries[projectIndex]!.projectFile,
 					settings: settings === undefined || Object.keys(settings).length === 0 ? undefined : settings
 				};
-				if (workspace.available) {
-					await workspace.update(
-						serializeWorkspaceProjectEntries(updatedEntries, workspace.baseDirectory)
-					);
-				}
-				entries = updatedEntries;
+				await persistEntries(updatedEntries, expected);
 			});
 		}
 	};

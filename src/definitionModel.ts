@@ -4,6 +4,8 @@ xhwsd@qq.com 2026-9-1
 */
 
 import {
+	createSimpleSourceAnalysis,
+	isSimpleResourceRoot,
 	resolveSimpleBinding,
 	resolveSimpleQualifier,
 	type SimpleSourceAnalysis
@@ -16,7 +18,6 @@ import {
 	type Sdk
 } from "./sdk";
 import {
-	buildSemanticDefinitionIndex,
 	isSimpleMemberAccessible,
 	isSimpleAliasName,
 	resolveSimpleDefinitionName,
@@ -29,9 +30,9 @@ import {
 	type LibrarySymbolTarget
 } from "./librarySymbol";
 import { findCallableArgumentCount } from "./signatures";
-import { isSimpleIgnoredOffset } from "./simpleSourceLexical";
+import { isSimpleEventTarget } from "./simpleSourceSyntax";
+import { simpleIdentifierRange as identifierRange, simpleSourceTokenIndex, type SimpleSourceToken } from "./simpleSourceLexical";
 
-const IDENTIFIER_CHARACTER = /[\p{L}\p{N}_]/u;
 
 /** 编辑器适配层可直接转换为目标位置的一次定义解析结果。 */
 export interface SimpleDefinitionTarget {
@@ -48,62 +49,16 @@ export interface SimpleDefinitionTarget {
 	readonly targetOffset?: number;
 }
 
-/** 返回光标所在标识符范围；名称末尾的插入位置仍属于紧邻左侧的名称。 */
-function identifierRange(
-	source: string,
-	offset: number
-): { readonly end: number; readonly name: string; readonly start: number } | undefined {
-	const actualOffset = IDENTIFIER_CHARACTER.test(source[offset] ?? "") ? offset : offset - 1;
-	if (actualOffset < 0 || !IDENTIFIER_CHARACTER.test(source[actualOffset] ?? "")) {
-		return undefined;
-	}
-
-	let start = actualOffset;
-	let end = actualOffset + 1;
-	while (start > 0 && IDENTIFIER_CHARACTER.test(source[start - 1] ?? "")) {
-		start -= 1;
-	}
-	while (end < source.length && IDENTIFIER_CHARACTER.test(source[end] ?? "")) {
-		end += 1;
-	}
-	return { end, name: source.slice(start, end), start };
-}
-
 /** 读取包含当前标识符的点号链，允许点号两侧空白，保留原文范围而统一解析名称。 */
-function qualifiedNameAt(
-	source: string,
-	start: number,
-	end: number
-): { readonly end: number; readonly name: string; readonly start: number } {
-	let qualifiedStart = start;
-	let qualifiedEnd = end;
-	while (qualifiedStart > 0) {
-		let cursor = qualifiedStart;
-		while (cursor > 0 && /[ \t]/u.test(source[cursor - 1]!)) cursor -= 1;
-		if (source[cursor - 1] !== ".") break;
-		cursor -= 1;
-		while (cursor > 0 && /[ \t]/u.test(source[cursor - 1]!)) cursor -= 1;
-		const end = cursor;
-		while (cursor > 0 && IDENTIFIER_CHARACTER.test(source[cursor - 1]!)) cursor -= 1;
-		if (cursor === end) break;
-		qualifiedStart = cursor;
-	}
-	while (qualifiedEnd < source.length) {
-		let cursor = qualifiedEnd;
-		while (cursor < source.length && /[ \t]/u.test(source[cursor]!)) cursor += 1;
-		if (source[cursor] !== ".") break;
-		cursor += 1;
-		while (cursor < source.length && /[ \t]/u.test(source[cursor]!)) cursor += 1;
-		const start = cursor;
-		while (cursor < source.length && IDENTIFIER_CHARACTER.test(source[cursor]!)) cursor += 1;
-		if (cursor === start) break;
-		qualifiedEnd = cursor;
-	}
-	return {
-		end: qualifiedEnd,
-		name: source.slice(qualifiedStart, qualifiedEnd).replace(/[ \t]/gu, ""),
-		start: qualifiedStart
-	};
+function qualifiedNameAt(tokens: readonly SimpleSourceToken[], start: number, end: number): { readonly end: number; readonly name: string; readonly start: number; readonly qualifier?: string } {
+	const index = simpleSourceTokenIndex(tokens, start);
+	let first = index;
+	const last = index;
+	while (tokens[first - 1]?.text === "." && tokens[first - 2]?.kind === "word") first -= 2;
+	// 查询类型段时只解析截至光标的前缀，右侧成员不属于该类型的限定名。
+	return { start: tokens[first]?.start ?? start, end: tokens[last]?.end ?? end,
+		name: tokens.slice(first, last + 1).map((token) => token.text).join(""),
+		qualifier: first === index ? undefined : tokens.slice(first, index - 1).map((token) => token.text).join("") };
 }
 
 /** 从清单扩展字段读取项目源码路径。 */
@@ -234,13 +189,17 @@ export function findSimpleDefinition(
 		return undefined;
 	}
 	const range = identifierRange(source, offset);
-	if (range === undefined || isSimpleIgnoredOffset(source, range.start, true)) {
+	if (range === undefined) {
 		return undefined;
 	}
-	const qualified = qualifiedNameAt(source, range.start, range.end);
-	const qualifier = qualified.start === range.start ? undefined : source.slice(qualified.start, range.start).replace(/[ \t]/gu, "").slice(0, -1);
+	const current = analysis ?? createSimpleSourceAnalysis(source, sdk, context);
+	const lexical = current.syntax.tokens[simpleSourceTokenIndex(current.syntax.tokens, range.start)];
+	if (lexical?.kind !== "word" || lexical.start !== range.start || lexical.end !== range.end) {
+		return undefined;
+	}
+	const { qualifier, ...qualified } = qualifiedNameAt(current.expressionTokens, range.start, range.end);
 	/* R 成员直接定位 res 中的首个真实来源，不依赖构建目录或 R.txt。 */
-	if (qualifier === "R" && resolveSimpleBinding(source, range.start, "R", context, analysis) === undefined) {
+	if (qualifier === "R" && isSimpleResourceRoot(current, qualified.start, context)) {
 		const resource = context?.resources?.symbols.find((symbol) => symbol.name === range.name);
 		const filePath = resource?.sourceFiles[0];
 		return filePath === undefined ? undefined : {
@@ -254,10 +213,24 @@ export function findSimpleDefinition(
 		return undefined;
 	}
 
-	const definitions = analysis?.definitions ?? buildSemanticDefinitionIndex(sdk, context);
+	const definitions = current.definitions;
 	const callArity = findCallableArgumentCount(source, range.end);
+	if (isSimpleEventTarget(current.syntax, range.start)) {
+		const owner = definitions.get(currentUnit.qualifiedName);
+		return owner === undefined ? undefined : effectiveMemberTarget(owner, ["events"], range.name, definitions, range, "instance");
+	}
+	const access = current.memberAt(range.start);
+	if (access?.receiver !== undefined) {
+		return effectiveMemberTarget(access.receiver.reference,
+			access.receiver.access === "static" ? ["constants", "variables", "functions"] : ["constants", "variables", "properties", "functions", "events"],
+			range.name, current.definitions, range, access.receiver.access, callArity);
+	}
+	const expressionIndex = simpleSourceTokenIndex(current.expressionTokens, qualified.start);
+	if (access !== undefined && (qualifier === undefined || current.expressionTokens[expressionIndex - 1]?.text === ".")) {
+		return undefined;
+	}
 	if (qualifier !== undefined) {
-		const resolved = resolveSimpleQualifier(source, range.start, qualifier, sdk, context, analysis);
+		const resolved = resolveSimpleQualifier(source, range.start, qualifier, sdk, context, current);
 		if (resolved !== undefined) {
 			return effectiveMemberTarget(
 				resolved.reference,
@@ -273,7 +246,7 @@ export function findSimpleDefinition(
 		}
 	}
 
-	const binding = qualifier === undefined ? resolveSimpleBinding(source, range.start, range.name, context, analysis) : undefined;
+	const binding = qualifier === undefined ? resolveSimpleBinding(source, range.start, range.name, context, current) : undefined;
 	if (binding?.declarationStart !== undefined) {
 		return {
 			...range,
@@ -306,7 +279,7 @@ export function findSimpleDefinition(
 	}
 
 	const root = qualified.name.split(".")[0]!;
-	if (qualifier !== undefined && resolveSimpleBinding(source, qualified.start, root, context, analysis) !== undefined) return undefined;
+	if (qualifier !== undefined && resolveSimpleBinding(source, qualified.start, root, context, current) !== undefined) return undefined;
 	const definition = resolveSimpleDefinitionName(qualified.name, definitions)
 		?? (qualifier === undefined ? resolveSimpleDefinitionName(range.name, definitions) : undefined);
 	const target = definition === undefined ? undefined : definitionTarget(definition, qualified);

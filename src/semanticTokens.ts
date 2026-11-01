@@ -7,10 +7,7 @@ import * as vscode from "vscode";
 import {
 	SIMPLE_SEMANTIC_TOKEN_MODIFIERS,
 	SIMPLE_SEMANTIC_TOKEN_TYPES,
-	buildCompilerTokenRules,
-	buildDocumentTokenRules,
-	tokenizeSimpleText,
-	type CompilerTokenRule
+	buildSimpleSemanticTokens
 } from "./compilerTokens";
 import type { Sdk } from "./sdk";
 import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
@@ -43,12 +40,11 @@ function modifierBits(modifiers: readonly string[]): number {
 	}, 0);
 }
 
-/** 根据 SDK 清单和当前文档声明提供 Simple 语义着色。 */
+/** 根据固定语法与源码符号提供着色，SDK 只补充外部符号。 */
 export class SimpleSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider, vscode.Disposable {
 	private cache = new WeakMap<vscode.TextDocument, CachedSemanticTokens>();
 	private readonly changed = new vscode.EventEmitter<void>();
 	private generation = 0;
-	private rules: readonly CompilerTokenRule[] = [];
 	private sdk: Sdk | undefined;
 
 	/** 注入当前文档源码和项目语义上下文，统一着色用户代码与完整代码只读预览。 */
@@ -69,13 +65,12 @@ export class SimpleSemanticTokensProvider implements vscode.DocumentSemanticToke
 	}
 
 	/**
-	 * 更新 SDK 动态规则并通知 VS Code 重新请求所有可见文档的令牌。
+	 * 更新外部符号信息并通知 VS Code 重新请求所有可见文档的令牌。
 	 *
-	 * @param sdk 最新 SDK；传入 `undefined` 时清空动态规则。
+	 * @param sdk 最新 SDK；传入 `undefined` 时仍保留固定语法和源码着色。
 	 */
 	updateSdk(sdk: Sdk | undefined): void {
 		this.sdk = sdk;
-		this.rules = buildCompilerTokenRules(sdk);
 		this.invalidate();
 	}
 
@@ -95,7 +90,7 @@ export class SimpleSemanticTokensProvider implements vscode.DocumentSemanticToke
 	 * 扫描指定文档并返回 VS Code 紧凑语义令牌数据。
 	 *
 	 * @param document VS Code 请求着色的 Simple 文档。
-	 * @param _cancellationToken VS Code 提供的取消令牌；当前扫描为同步操作。
+	 * @param cancellationToken VS Code 提供的取消令牌；当前扫描为同步操作。
 	 * @returns 按文档位置编码的语义令牌集合。
 	 */
 	provideDocumentSemanticTokens(
@@ -117,16 +112,7 @@ export class SimpleSemanticTokensProvider implements vscode.DocumentSemanticToke
 		}
 		const visibleSource = document.getText();
 		const analysisSource = this.readSource(document);
-		const rules = [
-			...this.rules,
-			...buildDocumentTokenRules(
-				analysisSource,
-				this.sdk,
-				this.readContext(document, analysisSource)
-			)
-		];
-
-		for (const token of tokenizeSimpleText(visibleSource, rules)) {
+		for (const token of buildSimpleSemanticTokens(analysisSource, this.sdk, this.readContext(document, analysisSource), visibleSource)) {
 			builder.push(
 				token.line,
 				token.character,

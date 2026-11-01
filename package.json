@@ -1,10 +1,24 @@
 {
 	"name": "es4a",
 	"displayName": "ES4A",
-	"description": "为 Simple 项目提供集成开发环境支持。",
+	"description": "中文安卓应用开发工具。",
 	"icon": "icons/es4a-extension.png",
-	"version": "0.1.0",
-	"publisher": "es4a",
+	"version": "0.1.4",
+	"publisher": "paike",
+	"author": {
+		"name": "树先生",
+		"email": "xhwsd@qq.com",
+		"url": "https://wsd.cx"
+	},
+	"homepage": "https://gitee.com/es4a",
+	"repository": {
+		"type": "git",
+		"url": "https://gitee.com/es4a/extension.git"
+	},
+	"bugs": {
+		"url": "https://dwz.wsd.cx/wsd-ly",
+		"email": "xhwsd@qq.com"
+	},
 	"private": true,
 	"license": "UNLICENSED",
 	"engines": {
@@ -17,6 +31,7 @@
 		"Simple",
 		"BASIC",
 		"Android",
+		"安卓",
 		"中文编程"
 	],
 	"activationEvents": [
@@ -26,7 +41,11 @@
 	"contributes": {
 		"configurationDefaults": {
 			"[simple]": {
-				"editor.wordBasedSuggestions": "off"
+				"editor.wordBasedSuggestions": "off",
+				"editor.semanticHighlighting.enabled": true
+			},
+			"[simple-full-preview]": {
+				"editor.semanticHighlighting.enabled": true
 			}
 		},
 		"languages": [
@@ -1430,13 +1449,15 @@
 		"build": "node esbuild.js",
 		"watch": "node esbuild.js --watch",
 		"check-types": "tsc --noEmit",
-		"compile": "npm run check-types && npm run build",
+		"compile": "npm run generate-syntax && npm run check-types && npm run build",
 		"clean-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
-		"compile-tests": "npm run clean-tests && tsc -p tsconfig.test.json",
+		"compile-tests": "npm run check-language && npm run clean-tests && tsc -p tsconfig.test.json",
 		"test": "npm run compile-tests && node --test out/test/*.test.js",
 		"test:sdk": "npm run compile-tests && node out/test/validateSdk.js",
 		"test:integration": "npm run compile && npm run compile-tests && vscode-test",
-		"package:vsix": "vsce package --allow-missing-repository --skip-license --baseImagesUrl https://gitee.com/es4a/extension/raw/main/"
+		"package:vsix": "vsce package --allow-missing-repository --skip-license --baseImagesUrl https://gitee.com/es4a/extension/raw/main/",
+		"generate-syntax": "node scripts/generateSyntax.js",
+		"check-language": "node scripts/generateSyntax.js --check"
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",

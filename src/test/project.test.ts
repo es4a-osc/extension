@@ -102,16 +102,16 @@ test("主窗口限定名使用最具体源码根，未配置或相似前缀的 m
 	assert.equal(updateProjectMainForRenamedUnits(source.replace("old.主窗口", "old.主窗口2"), projectFile, units), undefined);
 });
 
-test("主窗口改名离开源码根或 main 延续行无法保持时拒绝生成修改", () => {
+test("主窗口改名离开源码根时拒绝，main 延续行可安全合并", () => {
 	const projectFile = path.resolve("project", "project.properties");
 	const unit = {
 		oldFile: path.resolve("project", "src", "old", "主窗口.simple"),
 		newFile: path.resolve("project", "other", "new", "主窗口.simple")
 	};
 	assert.throws(() => updateProjectMainForRenamedUnits("main=old.主窗口\n", projectFile, [unit]), /不属于项目源码目录/u);
-	assert.throws(() => updateProjectMainForRenamedUnits("main=old.\\\n  主窗口\n", projectFile, [{
+	assert.equal(updateProjectMainForRenamedUnits("main=old.\\\n  主窗口\n", projectFile, [{
 		...unit, newFile: path.resolve("project", "src", "new", "主窗口.simple")
-	}]), /暂不支持的属性排版/u);
+	}]), "main=new.主窗口\n");
 });
 
 test("主窗口文件改名完整匹配限定名，仅替换 main 的单元名", () => {

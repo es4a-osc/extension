@@ -11,7 +11,6 @@ import {
 	type LibraryManifest,
 	type LibraryMember,
 	type LibraryMemberGroup,
-	type LibraryParameter,
 	type Sdk
 } from "./sdk";
 import {
@@ -30,10 +29,7 @@ import {
 import { splitSimpleUnitSource } from "./simpleUnitSource";
 import type { SimpleProjectResourceIndex } from "./simpleResourceSymbols";
 import { simpleQualifiedName } from "./simpleProjectPaths";
-import { stripSimpleLineComment } from "./simpleSourceLexical";
-
-const IDENTIFIER = "[\\p{L}][\\p{L}\\p{N}_]*";
-const QUALIFIED_IDENTIFIER = `${IDENTIFIER}(?:\\.${IDENTIFIER})*`;
+import { analyzeSimpleSourceSyntax, type SimpleSourceSyntax } from "./simpleSourceSyntax";
 
 /** 当前单元文件内声明的一个符号别名。 */
 export interface SimpleAliasSymbol {
@@ -108,89 +104,15 @@ export function splitSimpleTopLevelDeclarations(value: string): readonly string[
 	return values.filter((item) => item.length > 0);
 }
 
-/** 解析函数、过程或事件的正式参数。 */
-function parseParameters(value: string): readonly LibraryParameter[] {
-	const pattern = new RegExp(
-		`^(?:(传值|传址)[ \\t]+)?(${IDENTIFIER})[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:\\([^)]*\\))?)`,
-		"u"
-	);
-
-	return splitSimpleTopLevelDeclarations(value).flatMap((item) => {
-		const match = pattern.exec(item);
-		const name = match?.[2];
-		if (name === undefined) {
-			return [];
-		}
-
-		return [{
-			byRef: match?.[1] === "传址" || undefined,
-			name,
-			...(match?.[1] === undefined
-				? {}
-				: { passing: match[1] as "传值" | "传址" }),
-			type: match?.[3]
-		}];
-	});
-}
-
-/** 查找声明体的排他结束位置，用来排除局部变量。 */
-function declarationEnd(source: string, start: number, kind: string): number {
-	const ending = new RegExp(`^[ \\t]*结束[ \\t]+${kind}(?=[ \\t'\\r\\n]|$)`, "gmu");
-	ending.lastIndex = start;
-	const match = ending.exec(source);
-	return match === null ? source.length : match.index + match[0].length;
-}
-
-/** 查找代码中函数、过程、事件和属性的声明体范围。 */
-function codeDeclarationScopes(userCode: string): readonly { readonly end: number; readonly start: number }[] {
-	const scopes: Array<{ readonly end: number; readonly start: number }> = [];
-	const callable = new RegExp(
-		`^[ \\t]*(?:静态[ \\t]+)?(函数|过程|事件|属性)[ \\t]+(?:${QUALIFIED_IDENTIFIER}\\.)?${IDENTIFIER}`,
-		"gmu"
-	);
-
-	for (const match of userCode.matchAll(callable)) {
-		const declarationKind = match[1];
-		if (declarationKind !== undefined && match.index !== undefined) {
-			scopes.push({
-				end: declarationEnd(userCode, match.index, declarationKind),
-				start: match.index
-			});
-		}
-	}
-
-	return scopes;
-}
-
-/** 解析只允许出现在文件级的别名声明。 */
-function parseCodeAliases(userCode: string): readonly SimpleAliasSymbol[] {
-	const scopes = codeDeclarationScopes(userCode);
-	const aliases: SimpleAliasSymbol[] = [];
-	const declaration = new RegExp(
-		`^[ \\t]*别名[ \\t]+(${IDENTIFIER})[ \\t]*=[ \\t]*(${QUALIFIED_IDENTIFIER})(?=[ \\t:'\\r\\n]|$)`,
-		"gmu"
-	);
-
-	for (const match of userCode.matchAll(declaration)) {
-		const name = match[1];
-		const target = match[2];
-		if (
-			name !== undefined
-			&& target !== undefined
-			&& match.index !== undefined
-			&& !scopes.some((scope) => match.index !== undefined && match.index >= scope.start && match.index < scope.end)
-		) {
-			const description = findAdjacentSimpleDocumentationComment(userCode, match.index);
-			aliases.push({
-				...(description === undefined ? {} : { description }),
-				line: userCode.slice(0, match.index).split(/\r\n|\n|\r/u).length,
-				name,
-				target
-			});
-		}
-	}
-
-	return aliases;
+/** 从同一次语法分析中读取单元级别名，保留声明相邻文档。 */
+function parseCodeAliases(userCode: string, syntax: SimpleSourceSyntax): readonly SimpleAliasSymbol[] {
+	return syntax.declarations.filter((declaration) => declaration.kind === "alias" && declaration.scope === syntax.root && declaration.target !== undefined)
+		.map((declaration) => ({
+			...(findAdjacentSimpleDocumentationComment(userCode, declaration.statementStart) === undefined ? {} : { description: findAdjacentSimpleDocumentationComment(userCode, declaration.statementStart) }),
+			line: declaration.token.line + 1,
+			name: declaration.name,
+			target: declaration.target!
+		}));
 }
 
 /** 把属性 XML 中的继承和接口值转换为类型名称。 */
@@ -262,101 +184,41 @@ function definitionKind(unitType: SimpleUnitType | undefined): string {
 	return "object";
 }
 
-/** 从代码区读取单元直接声明的成员。 */
+/** 将共享语法声明投影为项目成员，不另行扫描或猜测局部声明范围。 */
 function parseCodeMembers(
 	userCode: string,
 	unitName: string,
-	qualifiedName: string
-): Pick<
-	LibraryDefinition,
-	"constants" | "events" | "functions" | "properties" | "variables"
-> {
-	const constants: LibraryMember[] = [];
-	const events: LibraryMember[] = [];
-	const functions: LibraryMember[] = [];
-	const properties: LibraryMember[] = [];
-	const variables: LibraryMember[] = [];
-	const scopes: Array<{ readonly end: number; readonly start: number }> = [];
-	const callable = new RegExp(
-		`^[ \\t]*(静态[ \\t]+)?(函数|过程|事件|属性)[ \\t]+(?:(${QUALIFIED_IDENTIFIER})\\.)?(${IDENTIFIER})[ \\t]*(?:\\(([^\\r\\n]*)\\))?(?:[ \\t]+为[ \\t]+([^\\r\\n']+))?`,
-		"gmu"
-	);
-
-	for (const match of userCode.matchAll(callable)) {
-		const declarationKind = match[2];
-		const owner = match[3];
-		const name = match[4];
-		if (declarationKind === undefined || name === undefined || match.index === undefined) {
+	qualifiedName: string,
+	syntax: SimpleSourceSyntax
+): Pick<LibraryDefinition, "constants" | "events" | "functions" | "properties" | "variables"> {
+	const members: Record<LibraryMemberGroup, LibraryMember[]> = { constants: [], events: [], functions: [], properties: [], variables: [] };
+	for (const declaration of syntax.declarations) {
+		if (declaration.scope !== syntax.root || declaration.implicit === true || declaration.kind === "alias") {
 			continue;
 		}
-
-		scopes.push({
-			end: declarationEnd(userCode, match.index, declarationKind),
-			start: match.index
-		});
-		const description = findAdjacentSimpleDocumentationComment(userCode, match.index);
-		const member: LibraryMember = {
-			...(description === undefined ? {} : { description }),
-			line: userCode.slice(0, match.index).split(/\r\n|\n|\r/u).length,
-			declarationOffset: match.index + match[0].indexOf(owner === undefined ? name : owner + "." + name, match[0].indexOf(declarationKind) + declarationKind.length) + (owner === undefined ? 0 : owner.length + 1),
-			name,
-			params: declarationKind === "属性" ? undefined : parseParameters(match[5] ?? ""),
-			return: declarationKind === "函数" ? match[6]?.trim() : undefined,
-			static: match[1] !== undefined || undefined,
-			type: declarationKind === "属性" ? match[6]?.trim() : undefined
+		const groups: Partial<Record<typeof declaration.kind, LibraryMemberGroup>> = {
+			constant: "constants", event: "events", function: "functions", procedure: "functions", property: "properties", variable: "variables"
 		};
-
-		if (declarationKind === "属性") {
-			properties.push(member);
-		} else if (declarationKind === "事件") {
-			if (owner === undefined || owner === unitName || owner === qualifiedName) {
-				events.push(member);
-			}
-		} else {
-			functions.push(member);
-		}
-	}
-
-	const data = new RegExp(`^[ \\t]*(静态[ \\t]+)?(变量|常量)[ \\t]+([^\\r\\n]*)`, "gmu");
-	const declaration = new RegExp(
-		`^(${IDENTIFIER})[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:\\([^)]*\\))?)(?:[ \\t]*=[ \\t]*(.*))?$`,
-		"u"
-	);
-
-	for (const match of userCode.matchAll(data)) {
-		if (
-			match.index === undefined
-			|| scopes.some((scope) => match.index !== undefined && match.index >= scope.start && match.index < scope.end)
-		) {
+		const group = groups[declaration.kind];
+		if (group === undefined || declaration.kind === "event" && declaration.owner !== undefined
+			&& declaration.owner !== unitName && declaration.owner !== qualifiedName) {
 			continue;
 		}
-
-		for (const value of splitSimpleTopLevelDeclarations(stripSimpleLineComment(match[3] ?? ""))) {
-			const valueMatch = declaration.exec(value);
-			const name = valueMatch?.[1];
-			if (name === undefined) {
-				continue;
-			}
-
-			const description = findAdjacentSimpleDocumentationComment(userCode, match.index);
-			const initializer = valueMatch?.[3]?.trim();
-			const member: LibraryMember = {
-				...(description === undefined ? {} : { description }),
-				...(initializer === undefined ? {} : {
-					initializer: { label: initializer, value: initializer }
-				}),
-				line: userCode.slice(0, match.index).split(/\r\n|\n|\r/u).length,
-				declarationOffset: match.index + match[0].indexOf(name, match[0].indexOf(match[2]!) + match[2]!.length),
-				name,
-				static: match[1] !== undefined || undefined,
-				type: valueMatch?.[2],
-				value: match[2] === "常量" ? valueMatch?.[3]?.trim() : undefined
-			};
-			(match[2] === "常量" ? constants : variables).push(member);
-		}
+		const description = findAdjacentSimpleDocumentationComment(userCode, declaration.statementStart);
+		members[group].push({
+			...(description === undefined ? {} : { description }),
+			line: declaration.token.line + 1,
+			declarationOffset: declaration.token.start,
+			name: declaration.name,
+			static: declaration.static || undefined,
+			type: declaration.kind === "property" || declaration.kind === "variable" || declaration.kind === "constant" ? declaration.typeName : undefined,
+			return: declaration.kind === "function" ? declaration.typeName : undefined,
+			params: declaration.parameters?.map((parameter) => ({ name: parameter.name, type: parameter.typeName, passing: parameter.passing, byRef: parameter.passing === "传址" || undefined })),
+			...(declaration.initializer === undefined ? {} : { initializer: { label: declaration.initializer, value: declaration.initializer } }),
+			value: declaration.kind === "constant" ? declaration.initializer : undefined
+		});
 	}
-
-	return { constants, events, functions, properties, variables };
+	return members;
 }
 
 /**
@@ -391,11 +253,8 @@ export function parseSimpleUnitSymbolsFromModel(
 	const unitType = property.document === undefined
 		? undefined
 		: getSimplePropertyUnitType(property.document);
-	const codeMembers = parseCodeMembers(
-		userCode,
-		name,
-		qualifiedName
-	);
+	const syntax = analyzeSimpleSourceSyntax(userCode, unitType === "接口");
+	const codeMembers = parseCodeMembers(userCode, name, qualifiedName, syntax);
 	const baseObject = propertyTypeNames(property, "基础对象")[0];
 	const interfaces = propertyTypeNames(property, "实现接口");
 	const description = findSimpleUnitComment(userCode);
@@ -406,7 +265,7 @@ export function parseSimpleUnitSymbolsFromModel(
 	];
 
 	return {
-		aliases: parseCodeAliases(userCode),
+		aliases: parseCodeAliases(userCode, syntax),
 		definition: {
 			...codeMembers,
 			...(baseObject === undefined ? {} : { baseObject }),

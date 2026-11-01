@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-10
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -132,7 +132,7 @@ window.addEventListener("message", async (event) => {
 suite("设计器属性输入", () => {
 	for (const mode of ["项目计划", "未注册项目", "本地同步"]) test(`真实 Vue 页面回车提交改名和文本（${mode}），输入法、重复提交及取消保持正确`, async function () {
 		this.timeout(30000);
-		const extension = vscode.extensions.getExtension("es4a.es4a")!;
+		const extension = vscode.extensions.getExtension(testExtensionId())!;
 		await extension.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-property-enter-"));
 		const sourceFile = path.join(directory, "主窗口.simple");
@@ -243,7 +243,7 @@ suite("设计器属性输入", () => {
 
 	for (const succeeded of [true, false]) test(`组件改名立即显示，慢同步${succeeded ? "成功确认" : "失败恢复"}且正式 XML 与代码不提前改变`, async function () {
 		this.timeout(30000);
-		const extension = vscode.extensions.getExtension("es4a.es4a")!;
+		const extension = vscode.extensions.getExtension(testExtensionId())!;
 		await extension.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-rename-feedback-"));
 		const sourceFile = path.join(directory, "主窗口.simple");

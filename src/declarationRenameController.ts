@@ -141,6 +141,7 @@ export class SimpleDeclarationRenameController implements vscode.Disposable {
 			const targets = await Promise.all(plans.map(async (plan) => ({ plan, document: await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(plan.unit.filePath))) })));
 			if (!valid()) return;
 			for (const unit of units.filter((unit) => unit === origin || plans.some((plan) => plan.unit === unit))) await unit.assertUnchanged();
+			for (const unit of units) unit.assertCurrent();
 			if (!valid()) return;
 			for (const target of targets) if (target.document.getText() !== target.plan.unit.userCode) throw new Error("关联代码已变化，未应用此次重构。");
 			if (targets.length === 0) { this.clear(document); return; }

@@ -245,7 +245,7 @@ test("没有 SDK 时不误报 SDK 类型和全局函数", () => {
 
 test("缺失资产仅诊断 SDK 资产属性，数字指数与普通文本不误报", async () => {
 	const sdk = await sdkPromise;
-	const code = '事件 主窗口.初始化()\r\n\t图片框1.图片 = "images/missing.png"\r\n\t显示提示框("images/missing.png")\r\n\t变量 n 为 双精度小数型\r\n\tn = 1e3\r\n结束 事件\r\n';
+	const code = '事件 主窗口.初始化()\r\n\t图片框1.图片 = "images/missing.png"\r\n\t显示提示框("images/missing.png")\r\n\t变量 n 为 双精度小数型\r\n\tn = 1.0e3\r\n结束 事件\r\n';
 	const property = inspectSimplePropertyXml('$属性\r\n\t$资源 $窗口\r\n\t$定义 主窗口 $为 窗口\r\n\t\t$定义 图片框1 $为 图片框\r\n\t\t\t图片 = "images/missing.png"\r\n\t\t$结束 $定义\r\n\t$结束 $定义\r\n$结束 $属性\r\n');
 	const unit: RefactoringUnit = { filePath: path.resolve("C:/diagnostics/src/主窗口.simple"), sourceRoot: path.resolve("C:/diagnostics/src"), userCode: code, property };
 	const context = refactoringContext(unit, [unit]);

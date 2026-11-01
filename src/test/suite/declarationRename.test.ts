@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-10
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -80,7 +80,7 @@ suite("声明直接改名", () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
 		await configuration.update("sdk.path", testSdkPath(), vscode.ConfigurationTarget.Global);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
 	suiteTeardown(async () => { await vscode.workspace.getConfiguration("es4a").update("sdk.path", originalSdkPath, vscode.ConfigurationTarget.Global); });

@@ -14,7 +14,7 @@ import { addSimpleDesignerComponent, createSimpleDesignerModel } from "../../des
 import { createPropertyXmlAttributePath, serializePropertyXml, writePropertyXmlValue } from "../../propertyXml";
 import { loadSdk } from "../../sdk";
 import type { SimpleDesignerDocument } from "../../designerDocument";
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 import { simpleTestUnitPath } from "../testProjects";
 
 /** 驱动真实 DOM 和 Vue 事件；不替换测量、滚动或 XML 实现。 */
@@ -67,11 +67,17 @@ window.addEventListener("message", async event => {
   await frame(); await frame();
   check((horizontal ? surface.scrollLeft : surface.scrollTop) > 0, "滑块区域不能响应滚轮");
   bar = document.querySelector('.designer-scrollbar-' + event.data.axis);
+  // 缩放下 scrollHeight/clientHeight 各自取整，差值不一定是浏览器实际可达的边界。
+  const priorOffset = horizontal ? surface.scrollLeft : surface.scrollTop;
+  if (horizontal) surface.scrollLeft = surface.scrollWidth;
+  else surface.scrollTop = surface.scrollHeight;
+  const maximum = horizontal ? surface.scrollLeft : surface.scrollTop;
+  if (horizontal) surface.scrollLeft = priorOffset;
+  else surface.scrollTop = priorOffset;
   bar.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
   await frame(); await frame();
   const offset = horizontal ? surface.scrollLeft : surface.scrollTop;
-  const maximum = horizontal ? surface.scrollWidth - surface.clientWidth : surface.scrollHeight - surface.clientHeight;
-  check(Math.abs(offset - maximum) < 1, "滚动条未能浏览到内容末尾");
+  check(Math.abs(offset - maximum) < 0.5, "滚动条未能浏览到内容末尾：" + JSON.stringify({ offset, maximum, devicePixelRatio }));
   check(JSON.stringify(size()) === JSON.stringify(initial), "滚动操作改变了布局尺寸");
   canvas.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1 }));
   await waitFor(() => !document.querySelector('.designer-scrollbar'));
@@ -85,7 +91,7 @@ window.addEventListener("message", async event => {
 suite("设计器覆盖式滚动条", () => {
 	for (const target of ["container", "window"] as const) for (const axis of ["horizontal", "vertical"] as const) test(`${target} ${axis}：悬停显示且不占布局空间，不改变选择或 XML`, async function () {
 		this.timeout(30000);
-		const extension = vscode.extensions.getExtension("es4a.es4a")!;
+		const extension = vscode.extensions.getExtension(testExtensionId())!;
 		await extension.activate();
 		const sdk = await loadSdk(testSdkPath());
 		const name = axis === "horizontal" ? "水平" : "垂直";

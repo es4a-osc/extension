@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-9
 */
 
-import { testFixturePath } from "../testFixtures";
+import { testExtensionId, testFixturePath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -17,7 +17,7 @@ import { splitSimpleUnitSource } from "../../simpleUnitSource";
 suite("主窗口包目录改名", () => {
 	test("同步 main 后等待保存，目录与配置一起撤销重做，其他包改名不改配置", async function () {
 		this.timeout(30000);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-main-package-"));
 		const projectFile = path.join(directory, "project.properties");
 		const oldDirectory = path.join(directory, "src", "old");
@@ -72,7 +72,7 @@ suite("主窗口包目录改名", () => {
 
 	test("当前主窗口单元改名同步 main 和根名称，同名非主窗口不改 main", async function () {
 		this.timeout(30000);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-main-unit-"));
 		const projectFile = path.join(directory, "project.properties");
 		const sourceFile = path.join(directory, "src", "demo", "主窗口.simple");
@@ -118,7 +118,7 @@ suite("主窗口包目录改名", () => {
 
 	test("对象、服务和窗口根名不一致时同步自身事件，保留无关代码与属性", async function () {
 		this.timeout(30000);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-unit-events-"));
 		const projectFile = path.join(directory, "project.properties");
 		const objectSource = await fs.readFile(testFixturePath("simple", "samples/Tetris/src/simple/samples/tetris/Bar.simple"), "utf8");

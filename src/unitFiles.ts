@@ -3,10 +3,13 @@
 xhwsd@qq.com 2026-8-27
 */
 
-import {
-	renameSimpleCodeIdentifiers,
-	renameSimpleComponent
-} from "./componentRename";
+import { renameSimpleComponent } from "./componentRename";
+import { analyzeSimpleSourceSyntax } from "./simpleSourceSyntax";
+import { simpleSourceTokenIndex } from "./simpleSourceLexical";
+import { planSimpleUnitPaths, type RefactoringUnit } from "./refactoringModel";
+import type { Sdk } from "./sdk";
+import * as path from "node:path";
+import { sameFilePath } from "./simpleProjectPaths";
 import {
 	getSimplePropertyUnitType,
 	inspectSimplePropertyXml,
@@ -39,46 +42,12 @@ export interface SimpleUnitLifecycleEventAction {
 	readonly insertionText?: string;
 }
 
-/** 用户代码中的一行及其物理位置。 */
-interface SimpleSourceLine {
-	readonly end: number;
-	readonly endWithLineEnding: number;
-	readonly start: number;
-	readonly text: string;
-}
-
 /** 已存在的生命周期事件声明及完整事件范围。 */
 interface SimpleUnitLifecycleEventHandler {
 	readonly bodyOffset: number;
 	readonly end?: number;
 	readonly eventName: SimpleUnitLifecycleEventName;
 	readonly start: number;
-}
-
-/** 把用户代码拆成保留物理偏移的行，兼容 CRLF、LF 和 CR。 */
-function simpleSourceLines(source: string): readonly SimpleSourceLine[] {
-	const lines: SimpleSourceLine[] = [];
-	let start = 0;
-	while (start < source.length) {
-		let end = start;
-		while (end < source.length && source[end] !== "\r" && source[end] !== "\n") end += 1;
-		let endWithLineEnding = end;
-		if (source[endWithLineEnding] === "\r") endWithLineEnding += 1;
-		if (source[endWithLineEnding] === "\n") endWithLineEnding += 1;
-		lines.push({
-			end,
-			endWithLineEnding,
-			start,
-			text: source.slice(start, end)
-		});
-		start = endWithLineEnding;
-	}
-	return lines;
-}
-
-/** 转义将被拼入正则表达式的单元名称。 */
-function escapeRegularExpression(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 /**
@@ -91,17 +60,11 @@ export function renameSimpleUnitLifecycleEventOwners(
 	newName: string
 ): string {
 	if (oldName === newName) return userCode;
-	const declarationPattern = new RegExp(
-		`^([\\t ]*事件[\\t ]+)${escapeRegularExpression(oldName)}(?=[\\t ]*\\.[\\t ]*(?:加载|初始化)[\\t ]*\\()`,
-		"u"
-	);
+	const owners = analyzeSimpleSourceSyntax(userCode).declarations.filter((declaration) => declaration.kind === "event"
+		&& declaration.owner === oldName && (declaration.name === "加载" || declaration.name === "初始化"))
+		.map((declaration) => declaration.ownerToken!).sort((left, right) => right.start - left.start);
 	let updated = userCode;
-	for (const line of [...simpleSourceLines(userCode)].reverse()) {
-		const match = declarationPattern.exec(line.text);
-		if (match === null) continue;
-		const offset = line.start + match[1]!.length;
-		updated = updated.slice(0, offset) + newName + updated.slice(offset + oldName.length);
-	}
+	for (const token of owners) updated = updated.slice(0, token.start) + newName + updated.slice(token.end);
 	return updated;
 }
 
@@ -110,30 +73,17 @@ function collectSimpleUnitLifecycleEventHandlers(
 	userCode: string,
 	unitName: string
 ): readonly SimpleUnitLifecycleEventHandler[] {
-	const lines = simpleSourceLines(userCode);
-	const declarationPattern = new RegExp(
-		`^[\\t ]*事件[\\t ]+${escapeRegularExpression(unitName)}[\\t ]*\\.[\\t ]*(加载|初始化)[\\t ]*\\([\\t ]*\\)[\\t ]*(?:'.*)?$`,
-		"u"
-	);
-	const endPattern = /^[\t ]*结束[\t ]+事件[\t ]*(?:'.*)?$/u;
-	const handlers: SimpleUnitLifecycleEventHandler[] = [];
-	for (let index = 0; index < lines.length; index += 1) {
-		const line = lines[index]!;
-		const eventName = declarationPattern.exec(line.text)?.[1] as SimpleUnitLifecycleEventName | undefined;
-		if (eventName === undefined) continue;
-		let end: number | undefined;
-		for (let closingIndex = index + 1; closingIndex < lines.length; closingIndex += 1) {
-			const closingLine = lines[closingIndex]!;
-			if (endPattern.test(closingLine.text)) {
-				end = closingLine.end;
-				break;
-			}
+	const syntax = analyzeSimpleSourceSyntax(userCode);
+	return syntax.declarations.flatMap((declaration): SimpleUnitLifecycleEventHandler[] => {
+		if (declaration.kind !== "event" || declaration.owner !== unitName
+			|| declaration.name !== "加载" && declaration.name !== "初始化") return [];
+		let end = declaration.body?.closed === true ? declaration.body.end : undefined;
+		if (end !== undefined) {
+			const next = syntax.tokens[simpleSourceTokenIndex(syntax.tokens, end, true) + 1];
+			if (next?.kind === "comment") end = next.end;
 		}
-		let bodyOffset = line.endWithLineEnding;
-		while (userCode[bodyOffset] === "\t" || userCode[bodyOffset] === " ") bodyOffset += 1;
-		handlers.push({ bodyOffset, end, eventName, start: line.start });
-	}
-	return handlers;
+		return [{ bodyOffset: declaration.bodyOffset ?? userCode.length, end, eventName: declaration.name, start: declaration.statementStart }];
+	});
 }
 
 /** 按 Simple 语法创建空的单元生命周期事件处理过程。 */
@@ -318,18 +268,29 @@ function copiedPropertyIndentation(propertySource: string): string {
 	return /(?:^|\r\n|\n|\r)([\t ]+)\S/u.exec(propertySource)?.[1] ?? "\t";
 }
 
+/** 复制使用整个项目的类型信息，只为源单元计算代码修改。 */
+export interface SimpleUnitCopyContext {
+	readonly sourceFile: string;
+	readonly sourceRoot: string;
+	readonly destinationFile: string;
+	readonly destinationRoot: string;
+	readonly units: readonly RefactoringUnit[];
+	readonly sdk?: Sdk;
+}
+
 /**
  * 为复制后改名的单元生成新内容。
  *
- * 窗口单元同步窗口根定义；所有单元都同步用户代码中指向原单元名的完整标识符。
+ * 窗口单元同步窗口根定义；其它引用复用项目语义重构，保留同名参数及局部变量。
  * 原单元和项目内其它单元均不修改。
  */
 export function createCopiedSimpleUnitSource(
 	source: string,
 	oldName: string,
-	newName: string
+	newName: string,
+	context?: SimpleUnitCopyContext
 ): string {
-	if (oldName === newName) {
+	if (oldName === newName && (context === undefined || path.dirname(context.sourceFile) === path.dirname(context.destinationFile))) {
 		return source;
 	}
 
@@ -339,11 +300,17 @@ export function createCopiedSimpleUnitSource(
 	}
 
 	const sections = splitSimpleUnitSource(source);
-	const userCode = getVisibleSimpleUnitUserCode(source);
+	const originalCode = getVisibleSimpleUnitUserCode(source);
+	const sourceRoot = context?.sourceRoot ?? path.resolve(".");
+	const sourceFile = context?.sourceFile ?? path.join(sourceRoot, oldName + ".simple");
+	const origin: RefactoringUnit = { filePath: sourceFile, sourceRoot, userCode: originalCode, property };
+	const units = [origin, ...(context?.units ?? []).filter((unit) => !sameFilePath(unit.filePath, sourceFile))];
+	const changes = planSimpleUnitPaths(units, [{ oldFile: sourceFile, newFile: context?.destinationFile ?? path.join(sourceRoot, newName + ".simple"), sourceRoot: context?.destinationRoot ?? sourceRoot }], context?.sdk, origin);
+	const userCode = renameSimpleUnitLifecycleEventOwners(changes.find((change) => change.unit === origin)?.userCode ?? originalCode, oldName, newName);
 	if (getSimplePropertyUnitType(property.document) !== "窗口") {
 		return assembleSimpleUnitSource(
 			source,
-			renameSimpleCodeIdentifiers(userCode, oldName, newName),
+			userCode,
 			sections.propertySource
 		);
 	}

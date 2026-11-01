@@ -1,0 +1,320 @@
+{
+	"authority": "simple/compiler/scanner/TokenKind.java, Keywords.java; parser/Parser.java",
+	"words": {
+		"TOK_ALIAS": {
+			"text": "别名",
+			"role": "simpleDeclaration"
+		},
+		"TOK_CONST": {
+			"text": "常量",
+			"role": "simpleDeclaration"
+		},
+		"TOK_DIM": {
+			"text": "变量",
+			"role": "simpleDeclaration"
+		},
+		"TOK_EVENT": {
+			"text": "事件",
+			"role": "simpleDeclaration"
+		},
+		"TOK_FUNCTION": {
+			"text": "函数",
+			"role": "simpleDeclaration"
+		},
+		"TOK_GET": {
+			"text": "获取",
+			"role": "simpleDeclaration"
+		},
+		"TOK_PROPERTY": {
+			"text": "属性",
+			"role": "simpleDeclaration"
+		},
+		"TOK_SET": {
+			"text": "设置",
+			"role": "simpleDeclaration"
+		},
+		"TOK_SUB": {
+			"text": "过程",
+			"role": "simpleDeclaration"
+		},
+		"TOK_CASE": {
+			"text": "分支",
+			"role": "simpleControl"
+		},
+		"TOK_DO": {
+			"text": "执行",
+			"role": "simpleControl"
+		},
+		"TOK_EACH": {
+			"text": "每个",
+			"role": "simpleControl"
+		},
+		"TOK_ELSE": {
+			"text": "否则",
+			"role": "simpleControl"
+		},
+		"TOK_ELSEIF": {
+			"text": "否则如果",
+			"role": "simpleControl"
+		},
+		"TOK_END": {
+			"text": "结束",
+			"role": "simpleControl"
+		},
+		"TOK_ERROR": {
+			"text": "错误",
+			"role": "simpleControl"
+		},
+		"TOK_EXIT": {
+			"text": "退出",
+			"role": "simpleControl"
+		},
+		"TOK_FOR": {
+			"text": "循环",
+			"role": "simpleControl"
+		},
+		"TOK_IF": {
+			"text": "如果",
+			"role": "simpleControl"
+		},
+		"TOK_IN": {
+			"text": "从",
+			"role": "simpleControl"
+		},
+		"TOK_NEXT": {
+			"text": "下个",
+			"role": "simpleControl"
+		},
+		"TOK_ON": {
+			"text": "位于",
+			"role": "simpleControl"
+		},
+		"TOK_RAISEEVENT": {
+			"text": "触发事件",
+			"role": "simpleControl"
+		},
+		"TOK_SELECT": {
+			"text": "判断",
+			"role": "simpleControl"
+		},
+		"TOK_STEP": {
+			"text": "步进",
+			"role": "simpleControl"
+		},
+		"TOK_THEN": {
+			"text": "则",
+			"role": "simpleControl"
+		},
+		"TOK_TO": {
+			"text": "至",
+			"role": "simpleControl"
+		},
+		"TOK_UNTIL": {
+			"text": "直到",
+			"role": "simpleControl"
+		},
+		"TOK_WHILE": {
+			"text": "判断循环",
+			"role": "simpleControl"
+		},
+		"TOK_BYREF": {
+			"text": "传址",
+			"role": "simpleModifier"
+		},
+		"TOK_BYVAL": {
+			"text": "传值",
+			"role": "simpleModifier"
+		},
+		"TOK_STATIC": {
+			"text": "静态",
+			"role": "simpleModifier"
+		},
+		"TOK_ME": {
+			"text": "本对象",
+			"role": "keyword"
+		},
+		"TOK_NEW": {
+			"text": "创建",
+			"role": "keyword"
+		},
+		"TOK_TYPEOF": {
+			"text": "类型检验",
+			"role": "keyword"
+		},
+		"TOK_BOOLEAN": {
+			"text": "逻辑型",
+			"role": "type"
+		},
+		"TOK_BYTE": {
+			"text": "字节型",
+			"role": "type"
+		},
+		"TOK_DATE": {
+			"text": "日期时间型",
+			"role": "type"
+		},
+		"TOK_DOUBLE": {
+			"text": "双精度小数型",
+			"role": "type"
+		},
+		"TOK_INTEGER": {
+			"text": "整数型",
+			"role": "type"
+		},
+		"TOK_LONG": {
+			"text": "长整数型",
+			"role": "type"
+		},
+		"TOK_OBJECT": {
+			"text": "对象",
+			"role": "type"
+		},
+		"TOK_SHORT": {
+			"text": "短整数型",
+			"role": "type"
+		},
+		"TOK_SINGLE": {
+			"text": "单精度小数型",
+			"role": "type"
+		},
+		"TOK_STRING": {
+			"text": "文本型",
+			"role": "type"
+		},
+		"TOK_VARIANT": {
+			"text": "变体型",
+			"role": "type"
+		},
+		"TOK_AND": {
+			"text": "且",
+			"role": "operator"
+		},
+		"TOK_AS": {
+			"text": "为",
+			"role": "operator"
+		},
+		"TOK_IS": {
+			"text": "是",
+			"role": "operator"
+		},
+		"TOK_ISNOT": {
+			"text": "非",
+			"role": "operator"
+		},
+		"TOK_LIKE": {
+			"text": "匹配",
+			"role": "operator"
+		},
+		"TOK_NOT": {
+			"text": "取反",
+			"role": "operator"
+		},
+		"TOK_OR": {
+			"text": "或",
+			"role": "operator"
+		},
+		"TOK_XOR": {
+			"text": "异或",
+			"role": "operator"
+		},
+		"TOK_NOTHING": {
+			"text": "空",
+			"role": "enumMember"
+		},
+		"TOK_TRUE": {
+			"text": "真",
+			"role": "enumMember"
+		},
+		"TOK_FALSE": {
+			"text": "假",
+			"role": "enumMember"
+		},
+		"TOK_$AS": {
+			"text": "$为",
+			"role": "keyword"
+		},
+		"TOK_$DEFINE": {
+			"text": "$定义",
+			"role": "keyword"
+		},
+		"TOK_$END": {
+			"text": "$结束",
+			"role": "keyword"
+		},
+		"TOK_$FORM": {
+			"text": "$窗口",
+			"role": "type"
+		},
+		"TOK_$INTERFACE": {
+			"text": "$接口",
+			"role": "type"
+		},
+		"TOK_$OBJECT": {
+			"text": "$对象",
+			"role": "type"
+		},
+		"TOK_$PROPERTIES": {
+			"text": "$属性",
+			"role": "keyword"
+		},
+		"TOK_$SOURCE": {
+			"text": "$资源",
+			"role": "keyword"
+		},
+		"TOK_$SERVICE": {
+			"text": "$服务",
+			"role": "type"
+		}
+	},
+	"operators": [
+		"<>",
+		"<=",
+		">=",
+		"<<",
+		">>",
+		"+",
+		"-",
+		"*",
+		"/",
+		"%",
+		"\\",
+		"^",
+		"&",
+		"=",
+		"<",
+		">"
+	],
+	"contexts": {
+		"topLevel": [
+			"别名",
+			"常量",
+			"变量",
+			"事件",
+			"函数",
+			"过程",
+			"属性",
+			"静态"
+		],
+		"statement": [
+			"变量",
+			"本对象",
+			"如果",
+			"判断",
+			"判断循环",
+			"循环",
+			"执行",
+			"退出",
+			"位于",
+			"触发事件"
+		],
+		"expression": [
+			"创建",
+			"本对象",
+			"真",
+			"假",
+			"空",
+			"取反",
+			"类型检验"
+		]
+	}
+}

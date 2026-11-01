@@ -3,7 +3,8 @@
 xhwsd@qq.com 2026-9-17
 */
 
-import { buildCompilerTokenRules, buildDocumentTokenRules } from "./compilerTokens";
+import languageFacts from "./simpleLanguageFacts.json";
+import { analyzeSimpleSourceSyntax } from "./simpleSourceSyntax";
 import {
 	collectPropertyXmlElements,
 	findPropertyXmlElementPath,
@@ -29,13 +30,13 @@ export interface ResolvedDesignerComponentIdentity extends DesignerComponentIden
 }
 
 /** 返回组件名称的语法或关键字错误；`undefined` 表示可作为 Simple 标识符。 */
-export function componentNameValidationError(name: string, sdk?: Sdk): string | undefined {
+export function componentNameValidationError(name: string, _sdk?: Sdk): string | undefined {
 	if (name.length === 0) return "组件名称不能为空。";
 	if (name !== name.trim()) return "组件名称前后不能包含空白字符。";
 	if (!SIMPLE_COMPONENT_NAME.test(name)) {
 		return "组件名称必须以字母开头，并且只能包含字母、数字和下划线。";
 	}
-	if (buildCompilerTokenRules(sdk).some((rule) => rule.text === name)) {
+	if (Object.values(languageFacts.words).some((word) => word.text === name)) {
 		return `“${name}”是 Simple 关键字或保留字，不能作为组件名称。`;
 	}
 	return undefined;
@@ -87,7 +88,7 @@ export function collectUnavailableComponentNames(
 		...collectPropertyXmlElements(document.root, "定义")
 			.map((element) => getPropertyXmlAttribute(element, "名称"))
 			.filter((name): name is string => name !== undefined),
-		...buildDocumentTokenRules(userCode).map((rule) => rule.text)
+		...analyzeSimpleSourceSyntax(userCode).declarations.map((declaration) => declaration.name)
 	]);
 }
 

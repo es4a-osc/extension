@@ -18,6 +18,7 @@ import {
 import { workspacePathExists } from "./workspaceFileSystem";
 import { resolveSimpleUnitTab } from "./simpleUnitTabs";
 import { SIMPLE_DESIGNER_VIEW_TYPE } from "./designerWebview";
+import type { Sdk } from "./sdk";
 import {
 	toUnitContentPreviewUri,
 	toUnitXmlPreviewUri
@@ -25,6 +26,7 @@ import {
 
 /** 单元移动命令访问共享文档边界所需依赖。 */
 export interface UnitMoveServices {
+	readonly getSdk?: () => Sdk | undefined;
 	readonly refactoring?: SimpleProjectRefactoring;
 	readonly codeDocuments: SimpleCodeFileSystemProvider;
 	readonly refreshProjectSemantics: () => Promise<void>;

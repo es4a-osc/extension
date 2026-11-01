@@ -7,7 +7,7 @@ import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
 import { provideSimpleCompletions } from "../completionModel";
-import { buildCompilerTokenRules, buildDocumentTokenRules, tokenizeSimpleText } from "../compilerTokens";
+import { buildLanguageTokenRules, buildDocumentTokenRules, tokenizeSimpleText } from "../compilerTokens";
 import { findSimpleKeywordHover } from "../keywordHover";
 import { createSimplePropertyXmlDocument } from "../propertyXml";
 import { analyzeSimpleReferences } from "../referenceDiagnostics";
@@ -39,7 +39,7 @@ test("点号后的匹配是运行库方法，普通表达式中的匹配仍是�
 	const completions = provideSimpleCompletions(source, memberStart, sdk, context);
 	assert.ok(completions?.candidates.some((candidate) => candidate.name === "匹配" && candidate.kind === "function"));
 	const tokens = tokenizeSimpleText(source, [
-		...buildCompilerTokenRules(sdk), ...buildDocumentTokenRules(source, sdk, context)
+		...buildLanguageTokenRules(), ...buildDocumentTokenRules(source, sdk, context)
 	]);
 	assert.deepEqual(tokens.filter((token) => token.text === "匹配").map((token) => token.type), ["method", "operator"]);
 	const call = findCallContext(source, memberStart + "匹配(".length);

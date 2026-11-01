@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-10
 */
 
+import { testExtensionId } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -49,7 +51,7 @@ suite("自动同步设置", () => {
 			try {
 				await configuration.update(AUTOMATIC_SYNC_SETTINGS.unit, kind !== "unit", vscode.ConfigurationTarget.Global);
 				await configuration.update(AUTOMATIC_SYNC_SETTINGS.package, kind !== "package", vscode.ConfigurationTarget.Global);
-				await vscode.extensions.getExtension("es4a.es4a")!.activate();
+				await vscode.extensions.getExtension(testExtensionId())!.activate();
 				await fs.mkdir(folder, { recursive: true });
 				await fs.mkdir(path.join(directory, "src", "destination"));
 				await fs.writeFile(file, source);

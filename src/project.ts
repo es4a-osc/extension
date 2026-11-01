@@ -57,6 +57,8 @@ function toLogicalLines(source: string): string[] {
 	let continuing = false;
 
 	for (const physicalLine of physicalLines) {
+		// Properties 的注释行从不参与反斜杠续行，即使注释以 Windows 路径结束。
+		if (!continuing && /^[ \t\f]*[#!]/u.test(physicalLine)) continue;
 		const line = continuing ? physicalLine.replace(/^[ \t\f]+/, "") : physicalLine;
 		current += line;
 
@@ -185,10 +187,11 @@ function projectPropertyValueStart(line: string, key: string): number | undefine
 	if (cursor >= line.length || line[cursor] === "#" || line[cursor] === "!") {
 		return undefined;
 	}
-	if (line.slice(cursor, cursor + key.length) !== key) {
+	const keyEnd = findKeyEnd(line, cursor);
+	if (unescapeProperty(line.slice(cursor, keyEnd)) !== key) {
 		return undefined;
 	}
-	cursor += key.length;
+	cursor = keyEnd;
 	if (cursor < line.length && !/[ \t\f=:]/.test(line[cursor] ?? "")) {
 		return undefined;
 	}
@@ -215,37 +218,58 @@ export function updateProjectProperty(source: string, key: string, value: string
 		throw new Error("项目属性名称和值不能包含换行。");
 	}
 
+	const encodedKey = key.replace(/[\\ \t\f=:#!]/gu, (character) => character === "\t" ? "\\t" : character === "\f" ? "\\f" : "\\" + character);
+	const encodedValue = value.replace(/\\/gu, "\\\\").replace(/\t/gu, "\\t").replace(/\f/gu, "\\f").replace(/^ +/u, (spaces) => "\\ ".repeat(spaces.length));
 	let lineStart = 0;
-	let lastMatch: { readonly start: number; readonly end: number } | undefined;
+	let logicalStart = 0;
+	let logical = "";
+	let continuing = false;
+	let firstValueStart: number | undefined;
+	let lastMatch: { readonly start: number; readonly end: number; readonly replaceEntry: boolean } | undefined;
 	while (lineStart <= source.length) {
-		const newlineIndex = source.indexOf("\n", lineStart);
-		const physicalEnd = newlineIndex < 0 ? source.length : newlineIndex;
-		const contentEnd = physicalEnd > lineStart && source[physicalEnd - 1] === "\r"
-			? physicalEnd - 1
-			: physicalEnd;
+		const newline = /\r\n|\n|\r/gu;
+		newline.lastIndex = lineStart;
+		const separator = newline.exec(source);
+		const newlineIndex = separator?.index ?? -1;
+		const contentEnd = newlineIndex < 0 ? source.length : newlineIndex;
 		const line = source.slice(lineStart, contentEnd);
-		const valueStart = projectPropertyValueStart(line, key);
-		if (valueStart !== undefined) {
-			lastMatch = {
-				start: lineStart + valueStart,
-				end: contentEnd
-			};
+		if (!continuing && /^[ \t\f]*[#!]/u.test(line)) {
+			if (separator === null) break;
+			lineStart = separator.index + separator[0].length;
+			continue;
+		}
+		if (!continuing) {
+			logicalStart = lineStart;
+			firstValueStart = projectPropertyValueStart(line, key);
+		}
+		logical += continuing ? line.replace(/^[ \t\f]+/u, "") : line;
+		continuing = hasContinuation(logical);
+		if (continuing) {
+			logical = logical.slice(0, -1);
+		} else {
+			if (projectPropertyValueStart(logical, key) !== undefined) {
+				lastMatch = { start: logicalStart + (firstValueStart ?? 0), end: contentEnd, replaceEntry: firstValueStart === undefined };
+			}
+			logical = "";
 		}
 		if (newlineIndex < 0) {
 			break;
 		}
-		lineStart = newlineIndex + 1;
+		lineStart = separator!.index + separator![0].length;
 	}
 
+	if (continuing && projectPropertyValueStart(logical, key) !== undefined) {
+		lastMatch = { start: logicalStart + (firstValueStart ?? 0), end: source.length, replaceEntry: firstValueStart === undefined };
+	}
 	if (lastMatch !== undefined) {
-		return source.slice(0, lastMatch.start) + value + source.slice(lastMatch.end);
+		return source.slice(0, lastMatch.start) + (lastMatch.replaceEntry ? encodedKey + "=" : "") + encodedValue + source.slice(lastMatch.end);
 	}
 
-	const newline = source.includes("\r\n") ? "\r\n" : source.includes("\n") ? "\n" : "\r\n";
-	const hasFinalNewline = /(?:\r\n|\n)$/u.test(source);
+	const newline = /\r\n|\n|\r/u.exec(source)?.[0] ?? "\r\n";
+	const hasFinalNewline = /[\r\n]$/u.test(source);
 	const prefix = source.length === 0 || hasFinalNewline ? "" : newline;
 	const suffix = hasFinalNewline ? newline : "";
-	return `${source}${prefix}${key}=${value}${suffix}`;
+	return `${source}${prefix}${encodedKey}=${encodedValue}${suffix}`;
 }
 
 /** 仅在实际改名的单元完整匹配当前 main 时同步限定名，不按包名前缀改写配置。 */
@@ -317,4 +341,3 @@ export function createProjectInfo(
 		sourceDirectories: sourceValues.map((value) => path.resolve(directory, value))
 	};
 }
-

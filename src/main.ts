@@ -4,6 +4,7 @@ xhwsd@qq.com 2026-8-29
 */
 
 import * as path from "node:path";
+import { readFileSync } from "node:fs";
 import * as vscode from "vscode";
 import { SimpleProjectRefactoring } from "./projectRefactoring";
 import { SIMPLE_REFACTOR_SCHEME } from "./simpleCodeFileSystem";
@@ -36,7 +37,8 @@ import {
 	SimpleDesignerProvider
 } from "./designerWebview";
 import { createDesignerPreferenceState } from "./designerPreferencePersistence";
-import { updateWorkspaceConfigurationJsonc } from "./workspaceConfigurationFile";
+import { readWorkspaceConfigurationJsonc } from "./workspaceConfigurationFile";
+import { writeWorkspaceConfiguration } from "./workspaceConfigurationWriter";
 import { registerProgramCommands } from "./programCommands";
 import {
 	registerSdkCapabilityCommands,
@@ -59,7 +61,7 @@ import {
 import { SimplePunctuationNormalizer } from "./punctuationNormalizer";
 import { SimpleCodeDocumentRecovery } from "./simpleCodeDocumentRecovery";
 import { filePathKey, sameFilePath } from "./simpleProjectPaths";
-import { findProjectForSource } from "./projectCapability";
+import { findProjectForPath, findProjectForSource } from "./projectCapability";
 import {
 	closeSimpleUnitTabsInDirectories,
 	moveSimpleUnitPreviewTabs,
@@ -231,46 +233,14 @@ function workspaceConfigurationContext(): WorkspaceConfigurationContext {
 async function updateWorkspaceConfigurationFile(
 	context: WorkspaceConfigurationContext,
 	key: string,
-	value: unknown
+	value: unknown,
+	expected?: { readonly value: unknown }
 ): Promise<boolean> {
 	const configurationFile = context.configurationFile;
 	if (configurationFile === undefined) return false;
 
-	let source: string;
-	try {
-		source = Buffer.from(await vscode.workspace.fs.readFile(configurationFile)).toString("utf8");
-	} catch (error) {
-		if (
-			context.configurationDirectory === undefined
-			|| !(error instanceof vscode.FileSystemError)
-			|| error.code !== "FileNotFound"
-		) {
-			throw error;
-		}
-		await vscode.workspace.fs.createDirectory(context.configurationDirectory);
-		source = "{\r\n}\r\n";
-	}
-
-	const updated = updateWorkspaceConfigurationJsonc(
-		source,
-		[...context.configurationPropertyPrefix, key],
-		value
-	);
-	if (updated !== source) {
-		const temporaryFile = configurationFile.with({
-			path: `${configurationFile.path}.es4a-${process.pid}-${Date.now()}.tmp`
-		});
-		try {
-			await vscode.workspace.fs.writeFile(temporaryFile, new TextEncoder().encode(updated));
-			await vscode.workspace.fs.rename(temporaryFile, configurationFile, { overwrite: true });
-		} finally {
-			try {
-				await vscode.workspace.fs.delete(temporaryFile);
-			} catch {
-				// 替换成功后临时文件已经不存在；失败时这里只做尽力清理。
-			}
-		}
-	}
+	await writeWorkspaceConfiguration(configurationFile, context.configurationDirectory,
+		[...context.configurationPropertyPrefix, key], value, vscode.workspace.fs, expected);
 	return true;
 }
 
@@ -279,10 +249,14 @@ function enqueueWorkspaceConfigurationUpdate(
 	context: WorkspaceConfigurationContext,
 	key: string,
 	value: unknown,
-	updateUntitledWorkspace: () => Thenable<void>
+	updateUntitledWorkspace: () => Thenable<void>,
+	expected?: { readonly value: unknown }
 ): Promise<void> {
 	const task = workspaceConfigurationWriteQueue.then(async () => {
-		if (await updateWorkspaceConfigurationFile(context, key, value)) return;
+		if (await updateWorkspaceConfigurationFile(context, key, value, expected)) return;
+		if (expected !== undefined && JSON.stringify(vscode.workspace.getConfiguration("es4a").inspect<unknown>(key.slice("es4a.".length))?.workspaceValue) !== JSON.stringify(expected.value)) {
+			throw new Error("工程项目配置已变化，请按最新配置重试。");
+		}
 		await updateUntitledWorkspace();
 	});
 	workspaceConfigurationWriteQueue = task.catch(() => undefined);
@@ -290,15 +264,25 @@ function enqueueWorkspaceConfigurationUpdate(
 }
 
 /** 把当前 VS Code 工作区适配为 ES4A 项目列表的配置边界。 */
-function programWorkspaceConfiguration(): ProgramWorkspaceConfiguration {
+function programWorkspaceConfiguration(onReadError: (error: unknown) => void): ProgramWorkspaceConfiguration {
 	const context = workspaceConfigurationContext();
 	const configuration = vscode.workspace.getConfiguration("es4a");
 
 	return {
 		available: context.available,
 		baseDirectory: context.baseDirectory,
-		read: () => configuration.inspect<unknown>("projects")?.workspaceValue,
-		update: (projects) => enqueueWorkspaceConfigurationUpdate(
+		onReadError,
+		read: () => {
+			if (context.configurationFile?.scheme !== "file") return configuration.inspect<unknown>("projects")?.workspaceValue;
+			let source: string;
+			try { source = readFileSync(context.configurationFile.fsPath, "utf8"); }
+			catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+				throw error;
+			}
+			return readWorkspaceConfigurationJsonc(source, [...context.configurationPropertyPrefix, "es4a.projects"]);
+		},
+		update: (projects, expected) => enqueueWorkspaceConfigurationUpdate(
 			context,
 			"es4a.projects",
 			projects,
@@ -306,7 +290,8 @@ function programWorkspaceConfiguration(): ProgramWorkspaceConfiguration {
 				"projects",
 				projects,
 				vscode.ConfigurationTarget.Workspace
-			)
+			),
+			expected
 		)
 	};
 }
@@ -318,7 +303,7 @@ function programWorkspaceConfiguration(): ProgramWorkspaceConfiguration {
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const output = vscode.window.createOutputChannel("ES4A");
-	simpleCodeDocumentRecovery = new SimpleCodeDocumentRecovery(context.workspaceState);
+	simpleCodeDocumentRecovery = new SimpleCodeDocumentRecovery(context.workspaceState, (error) => output.appendLine(`保存用户代码恢复快照失败：${String(error)}`));
 	let restoringWorkbenchUnitTabs = true;
 	let scheduleUnitTabReconcile = (): void => undefined;
 	/** 后台恢复目标用户代码，不让兜底恢复阻塞扩展激活和普通文档加载。 */
@@ -382,7 +367,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		unitPreviewProvider
 	);
 	const programProjectState = await createProgramProjectState(
-		programWorkspaceConfiguration()
+		programWorkspaceConfiguration((error) => output.appendLine(`读取工程项目配置失败，暂时保留最后有效项目：${String(error)}`))
 	);
 	const designerPreferenceState = createDesignerPreferenceState(programProjectState);
 	const designerProvider = new SimpleDesignerProvider(
@@ -593,6 +578,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		dragAndDropController: programProvider,
 		showCollapseAll: true,
 		treeDataProvider: programProvider
+	});
+	programProvider.setTreeVisible(programView.visible);
+	const treeExpandListener = programView.onDidExpandElement((event) => {
+		programProvider.setTreeExpanded(event.element, true);
+	});
+	const treeCollapseListener = programView.onDidCollapseElement((event) => {
+		programProvider.setTreeExpanded(event.element, false);
+	});
+	const treeVisibilityListener = programView.onDidChangeVisibility((event) => {
+		programProvider.setTreeVisible(event.visible);
 	});
 	const programTreeExpansion = new ProgramTreeExpansionController(
 		programProvider,
@@ -972,14 +967,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			await refactoring.waitForIdle();
 			const projects = await programProvider.getProjects();
 			const entries = event.files.map((file) => {
-				const project = projects.find((value) => mostSpecificSourceRoot(value.sourceDirectories, file.oldUri.fsPath) !== undefined
-					|| isPathInsideOrEqual(value.resourceDirectory, file.oldUri.fsPath) || isPathInsideOrEqual(value.assetsDirectory, file.oldUri.fsPath));
+				const project = findProjectForPath(projects, file.oldUri.fsPath);
 				const kind = project !== undefined && mostSpecificSourceRoot(project.sourceDirectories, file.oldUri.fsPath) !== undefined ? "units" : "resources";
 				return { file, project, kind } as const;
 			});
 			const first = entries[0]!;
 			if (first.project === undefined || entries.some((entry) => entry.project?.filePath !== first.project?.filePath || entry.kind !== first.kind)) return undefined;
-			if (first.kind === "units" && entries.some(({ file }) => path.extname(file.oldUri.fsPath).length > 0 && path.extname(file.oldUri.fsPath).toLowerCase() !== ".simple")) return undefined;
+			if (first.kind === "units") for (const { file } of entries) {
+				const stat = await vscode.workspace.fs.stat(file.oldUri);
+				if ((stat.type & vscode.FileType.Directory) === 0 && path.extname(file.oldUri.fsPath).toLowerCase() !== ".simple") return undefined;
+			}
 			return refactoring.prepareNativePathEdits(first.project, entries.map(({ file }) => ({ oldFile: file.oldUri.fsPath, newFile: file.newUri.fsPath })), first.kind);
 		})());
 	});
@@ -1007,6 +1004,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		revealActiveDesignerTab();
 	});
 	const configurationListener = vscode.workspace.onDidChangeConfiguration((event) => {
+		if (event.affectsConfiguration("es4a.projects")) {
+			try {
+				const projectsChanged = programProvider.reloadProjectConfiguration();
+				designerProvider.refreshAll();
+				if (projectsChanged) scheduleUnitTabReconcile();
+			} catch (error) { output.appendLine(`读取工程项目配置失败：${String(error)}`); }
+		}
 		if (event.affectsConfiguration("es4a.sdk.path") && !sdkSelectionInProgress) {
 			void reloadSdkAndRefreshLibraries();
 		}
@@ -1044,6 +1048,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		revealLibrarySymbolCommand,
 		programProvider,
 		programView,
+		treeExpandListener,
+		treeCollapseListener,
+		treeVisibilityListener,
 		programTreeExpansion,
 		programReveal,
 		projectSemantics,

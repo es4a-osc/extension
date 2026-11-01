@@ -11,6 +11,7 @@ import {
 	type LibraryDefinitionReference,
 	type LibraryMember,
 	type LibraryMemberGroup,
+	type EffectiveLibraryMember,
 	type Sdk
 } from "./sdk";
 import {
@@ -19,12 +20,20 @@ import {
 	isSimpleAliasName,
 	resolveSimpleDefinitionName,
 	resolveSimpleNamespaceName,
-	splitSimpleTopLevelDeclarations,
 	isStaticProjectMember,
 	type SimpleAliasSymbol,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
-import { isSimpleIgnoredOffset } from "./simpleSourceLexical";
+import { SIMPLE_IDENTIFIER_CHARACTER as IDENTIFIER_CHARACTER, SIMPLE_IDENTIFIER_PATTERN, isSimpleIgnoredOffset, maskSimpleIgnoredText, simpleSourceTokenIndex, type SimpleSourceToken } from "./simpleSourceLexical";
+import {
+	analyzeSimpleSourceSyntax,
+	isSimpleEventTarget,
+	type SimpleSourceDeclaration,
+	type SimpleSourceSyntax,
+	type SimpleSourceBlock as BlockFrame,
+	type SimpleSourceBlockKind as BlockKind
+} from "./simpleSourceSyntax";
+import languageFacts from "./simpleLanguageFacts.json";
 
 /** 补全项的编辑器中立语义类型。 */
 export type SimpleCompletionKind =
@@ -65,30 +74,6 @@ export interface SimpleCompletionResult {
 	readonly start: number;
 }
 
-/** 补全分析需要追踪的 Simple 代码块种类。 */
-type BlockKind =
-	| "do"
-	| "error"
-	| "event"
-	| "for"
-	| "function"
-	| "getter"
-	| "if"
-	| "property"
-	| "procedure"
-	| "select"
-	| "setter"
-	| "while";
-
-/** 光标前一个尚未关闭的 Simple 语法块。 */
-interface BlockFrame {
-	getterSeen?: boolean;
-	header: string;
-	kind: BlockKind;
-	setterSeen?: boolean;
-	start: number;
-}
-
 /** 光标位置待替换文本及可能存在的点号限定名。 */
 interface CompletionInput {
 	readonly end: number;
@@ -122,23 +107,12 @@ export interface SimpleBinding {
 	readonly typeName: string;
 }
 
-const IDENTIFIER_CHARACTER = /[\p{L}\p{N}_]/u;
-const IDENTIFIER = "[\\p{L}][\\p{L}\\p{N}_]*";
+const IDENTIFIER = SIMPLE_IDENTIFIER_PATTERN;
 const QUALIFIED_IDENTIFIER = `${IDENTIFIER}(?:\\.${IDENTIFIER})*`;
-const TOP_LEVEL_KEYWORDS = ["别名", "常量", "变量", "事件", "函数", "过程", "属性", "静态"] as const;
-const STATEMENT_KEYWORDS = [
-	"变量",
-	"本对象",
-	"如果",
-	"判断",
-	"判断循环",
-	"循环",
-	"执行",
-	"退出",
-	"位于",
-	"触发事件"
-] as const;
-const EXPRESSION_KEYWORDS = ["创建", "本对象", "真", "假", "空", "取反", "类型检验"] as const;
+const TOP_LEVEL_KEYWORDS = languageFacts.contexts.topLevel;
+const STATEMENT_KEYWORDS = languageFacts.contexts.statement;
+const EXPRESSION_KEYWORDS = languageFacts.contexts.expression;
+const LANGUAGE_WORDS = new Set(Object.values(languageFacts.words).map((word) => word.text));
 
 /** 将中文名称转换为连续的小写拼音首字母，保留下划线和已有拉丁字符。 */
 export function pinyinInitials(value: string): string {
@@ -151,55 +125,7 @@ export function pinyinInitials(value: string): string {
 
 /** 将注释和字符串替换为空格，同时保持偏移及换行位置不变。 */
 function sanitizeSource(source: string): string {
-	const characters = source.split("");
-	let inComment = false;
-	let inString = false;
-
-	for (let index = 0; index < characters.length; index += 1) {
-		const current = characters[index];
-
-		if (current === "\n") {
-			inComment = false;
-			if (inString) {
-				inString = false;
-			}
-			continue;
-		}
-
-		if (inComment) {
-			if (current !== "\r") {
-				characters[index] = " ";
-			}
-			continue;
-		}
-
-		if (inString) {
-			if (current === "\\" && index + 1 < characters.length) {
-				characters[index] = " ";
-				index += 1;
-				if (characters[index] !== "\r" && characters[index] !== "\n") {
-					characters[index] = " ";
-				}
-				continue;
-			}
-
-			characters[index] = " ";
-			if (current === "\"") {
-				inString = false;
-			}
-			continue;
-		}
-
-		if (current === "'") {
-			characters[index] = " ";
-			inComment = true;
-		} else if (current === "\"") {
-			characters[index] = " ";
-			inString = true;
-		}
-	}
-
-	return characters.join("");
+	return maskSimpleIgnoredText(source);
 }
 
 /** 返回当前逻辑语句的起点，续行换行不结束语句，冒号与普通换行会结束语句。 */
@@ -282,150 +208,87 @@ function isVariableDeclarationName(prefixBeforeQuery: string): boolean {
 	return depth === 0 && /^[ \t]*$/u.test(prefixBeforeQuery.slice(start));
 }
 
-/** 按结束类型弹出最近的匹配块。 */
-function closeBlock(stack: BlockFrame[], kind: BlockKind): void {
-	for (let index = stack.length - 1; index >= 0; index -= 1) {
-		if (stack[index]?.kind !== kind) {
-			continue;
-		}
-
-		stack.splice(index);
-		const property = [...stack].reverse().find((frame) => frame.kind === "property");
-		if (kind === "getter" && property !== undefined) {
-			property.getterSeen = true;
-		} else if (kind === "setter" && property !== undefined) {
-			property.setterSeen = true;
-		}
-		return;
-	}
-}
-
-/** 单次语句的块状态转换；即时查询和批量分析使用同一规则。 */
-function advanceBlockStack(stack: BlockFrame[], statement: string, baseOffset: number): void {
-	const trimmed = statement.trim();
-	if (trimmed.length === 0) {
-		return;
-	}
-	const statementStart = baseOffset + statement.indexOf(trimmed);
-
-	const ending = /^结束\s+(函数|过程|事件|属性|获取|设置|如果|判断|判断循环|错误)(?:\s|$)/u.exec(trimmed)?.[1];
-	const endingKinds: Readonly<Record<string, BlockKind>> = {
-		事件: "event",
-		函数: "function",
-		判断: "select",
-		判断循环: "while",
-		过程: "procedure",
-		获取: "getter",
-		设置: "setter",
-		属性: "property",
-		如果: "if",
-		错误: "error"
-	};
-
-	if (ending !== undefined) {
-		const kind = endingKinds[ending];
-		if (kind !== undefined) {
-			closeBlock(stack, kind);
-		}
-	} else if (/^下个(?:\s|$)/u.test(trimmed)) {
-		closeBlock(stack, "for");
-	} else if (/^(?:直到|判断循环)(?:\s|$)/u.test(trimmed) && stack.at(-1)?.kind === "do") {
-		closeBlock(stack, "do");
-	} else {
-		const declaration = /^(?:静态\s+)?(函数|过程|事件|属性)(?:\s|$)/u.exec(trimmed)?.[1];
-		const declarationKinds: Readonly<Record<string, BlockKind>> = {
-			事件: "event",
-			函数: "function",
-			过程: "procedure",
-			属性: "property"
-		};
-
-		if (declaration !== undefined) {
-			const kind = declarationKinds[declaration];
-			if (kind !== undefined) {
-				stack.push({ header: trimmed, kind, start: statementStart });
-			}
-		} else if (/^获取(?:\s|$)/u.test(trimmed) && stack.at(-1)?.kind === "property") {
-			stack.push({ header: trimmed, kind: "getter", start: statementStart });
-		} else if (/^设置(?:\s|$)/u.test(trimmed) && stack.at(-1)?.kind === "property") {
-			stack.push({ header: trimmed, kind: "setter", start: statementStart });
-		} else if (/^如果(?:\s|$).*则[ \t]*$/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "if", start: statementStart });
-		} else if (/^判断循环(?:\s|$)/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "while", start: statementStart });
-		} else if (/^判断(?:\s|$)/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "select", start: statementStart });
-		} else if (/^循环(?:\s|$)/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "for", start: statementStart });
-		} else if (/^执行(?:\s|$)/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "do", start: statementStart });
-		} else if (/^位于\s+错误(?:\s|$)/u.test(trimmed)) {
-			stack.push({ header: trimmed, kind: "error", start: statementStart });
-		}
-	}
-}
-
-/** 扫描光标前的完整逻辑语句，建立足以约束补全的轻量块栈。 */
-function blockStack(sanitized: string, offset: number): BlockFrame[] {
-	const stack: BlockFrame[] = [];
-	const currentLineStart = sanitized.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-	const logicalPrefix = normalizeLogicalPrefix(sanitized.slice(0, currentLineStart));
-	let lineStart = 0;
-
-	while (lineStart < logicalPrefix.length) {
-		const newline = logicalPrefix.indexOf("\n", lineStart);
-		const colon = logicalPrefix.indexOf(":", lineStart);
-		const separators = [newline, colon].filter((index) => index >= 0);
-		const statementEnd = separators.length === 0 ? logicalPrefix.length : Math.min(...separators);
-		const statements = [logicalPrefix.slice(lineStart, statementEnd)];
-
-		for (const statement of statements) advanceBlockStack(stack, statement, lineStart);
-
-		if (statementEnd >= logicalPrefix.length) {
-			break;
-		}
-		lineStart = statementEnd + 1;
-	}
-
-	return stack;
-}
-
 /** 单次语言分析的词法、块作用域、字段及定义索引；使用结束后即可释放。 */
 export interface SimpleSourceAnalysis {
 	readonly source: string;
+	readonly syntax: SimpleSourceSyntax;
 	readonly sanitized: string;
 	readonly definitions: ReadonlyMap<string, LibraryDefinitionReference>;
-	readonly fields: readonly SimpleBinding[];
+	readonly expressionTokens: readonly SimpleSourceToken[];
 	stackAt(offset: number): readonly BlockFrame[];
+	members(reference: LibraryDefinitionReference, group: LibraryMemberGroup, name: string): readonly EffectiveLibraryMember[];
+	memberAt(offset: number): { readonly receiver: ResolvedSimpleQualifier | undefined } | undefined;
+	receiverBefore(offset: number): { readonly receiver: ResolvedSimpleQualifier | undefined } | undefined;
 }
 
 /** 线性预扫块状态与字段，避免项目诊断对每个名称重复扫描全文。 */
-export function createSimpleSourceAnalysis(source: string, sdk: Sdk | undefined, context?: SimpleProjectSemanticContext): SimpleSourceAnalysis {
-	const sanitized = sanitizeSource(source);
-	const normalized = normalizeLogicalPrefix(sanitized);
-	const stack: BlockFrame[] = [];
-	const snapshots = new Map<number, readonly BlockFrame[]>([[0, []]]);
-	let start = 0;
-	for (let index = 0; index <= normalized.length; index += 1) {
-		if (index < normalized.length && normalized[index] !== "\n" && normalized[index] !== ":") continue;
-		advanceBlockStack(stack, normalized.slice(start, index), start);
-		if (normalized[index] === "\n") snapshots.set(index + 1, stack.map((frame) => ({ ...frame })));
-		start = index + 1;
-	}
-	const stackAt = (offset: number): readonly BlockFrame[] => {
-		const lineStart = sanitized.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-		let value = snapshots.get(lineStart);
-		// 续行中间的物理行保留即时查询的既有语义，不把后半段声明提前引入。
-		if (value === undefined) { value = blockStack(sanitized, offset); snapshots.set(lineStart, value); }
-		return value;
+export function createSimpleSourceAnalysis(
+	source: string,
+	sdk: Sdk | undefined,
+	context?: SimpleProjectSemanticContext,
+	input: { readonly syntax?: SimpleSourceSyntax; readonly tokens?: readonly SimpleSourceToken[] } = {}
+): SimpleSourceAnalysis {
+	const syntax = input.syntax ?? analyzeSimpleSourceSyntax(source, context?.currentUnit?.unitType === "接口");
+	let sanitized: string | undefined;
+	const definitions = buildSemanticDefinitionIndex(sdk, context);
+	const expressionTokens = (input.tokens ?? syntax.tokens).filter((token) => token.kind !== "comment" && token.kind !== "continuation");
+	const memberIndex = new Map<LibraryDefinitionReference, Map<LibraryMemberGroup, Map<string, EffectiveLibraryMember[]>>>();
+	const receiverTypes = new Map<number, ResolvedSimpleQualifier | undefined>();
+	const analysis: SimpleSourceAnalysis = {
+		source, syntax, definitions, expressionTokens, stackAt: syntax.blocksAt,
+		get sanitized() {
+			sanitized ??= maskSimpleIgnoredText(source, syntax.tokens);
+			return sanitized;
+		},
+		members(reference, group, name) {
+			let groups = memberIndex.get(reference);
+			if (groups === undefined) {
+				groups = new Map();
+				memberIndex.set(reference, groups);
+			}
+			let names = groups.get(group);
+			if (names === undefined) {
+				names = new Map();
+				for (const value of getEffectiveMembers(reference, group, definitions)) {
+					const entries = names.get(value.member.name) ?? [];
+					entries.push(value);
+					names.set(value.member.name, entries);
+				}
+				groups.set(group, names);
+			}
+			return names.get(name) ?? [];
+		},
+		memberAt(offset) {
+			const index = simpleSourceTokenIndex(expressionTokens, offset);
+			if (index < 0 || expressionTokens[index - 1]?.text !== "." || syntax.roleAt(offset) === "type") {
+				return undefined;
+			}
+			return { receiver: expressionReceiverType(index - 2, analysis, context, receiverTypes) };
+		},
+		receiverBefore(offset) {
+			let low = 0;
+			let high = expressionTokens.length;
+			while (low < high) {
+				const middle = Math.floor((low + high) / 2);
+				if (expressionTokens[middle]!.end <= offset) low = middle + 1;
+				else high = middle;
+			}
+			return expressionTokens[low - 1]?.text === "."
+				? { receiver: expressionReceiverType(low - 2, analysis, context, receiverTypes) } : undefined;
+		}
 	};
-	const fields: SimpleBinding[] = [];
-	for (const match of sanitized.matchAll(/^[ \t]*(静态[ \t]+)?变量[ \t]+([^\r\n]*)/gmu)) {
-		if (callableFrame(stackAt(match.index)) !== undefined) continue;
-		const value = match[2] ?? "";
-		fields.push(...variableBindings(value, match[1] === undefined ? "field" : "staticField", match.index + match[0].indexOf(value)));
-	}
-	return { source, sanitized, definitions: buildSemanticDefinitionIndex(sdk, context), fields, stackAt };
+	return analysis;
+}
+
+/** 资源入口必须没有被代码声明、项目类型、别名或当前单元成员遮蔽。 */
+export function isSimpleResourceRoot(analysis: SimpleSourceAnalysis, offset: number, context?: SimpleProjectSemanticContext): boolean {
+	if (analysis.syntax.roleAt(offset) === "type" || analysis.syntax.resolve("R", offset) !== undefined
+		|| resolveSimpleBinding(analysis.source, offset, "R", context, analysis) !== undefined
+		|| resolveSimpleDefinitionName("R", analysis.definitions) !== undefined
+		|| resolveSimpleNamespaceName("R", analysis.definitions) !== undefined) return false;
+	const current = context?.currentUnit === undefined ? undefined : analysis.definitions.get(context.currentUnit.qualifiedName);
+	return current === undefined || !(["constants", "variables", "properties", "functions", "events"] as const)
+		.some((group) => analysis.members(current, group, "R").length > 0);
 }
 
 /** 从文档属性声明读取当前程序单元类型；只用于约束代码区，属性区本身不参与补全。 */
@@ -444,139 +307,32 @@ function callableFrame(stack: readonly BlockFrame[]): BlockFrame | undefined {
 	));
 }
 
-/** 解析显式类型或 `创建` 初始化器能够确定类型的变量声明。 */
-function variableBindings(
-	value: string,
-	kind: SimpleBindingKind,
-	baseOffset: number = 0
-): readonly SimpleBinding[] {
-	const bindings: SimpleBinding[] = [];
-	const pattern = new RegExp(
-		`^[ \\t]*(?:(传值|传址)[ \\t]+)?(${IDENTIFIER})(?:[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:[ \\t]*\\([^)]*\\))?)(?:[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))?|[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))`,
-		"u"
-	);
-
-	// 初值中的调用和字符串也可含逗号，只有顶层逗号才能开始下一个声明。
-	let searchOffset = 0;
-	for (const declaration of splitSimpleTopLevelDeclarations(value)) {
-		const declarationOffset = value.indexOf(declaration, searchOffset);
-		searchOffset = declarationOffset + declaration.length;
-		const match = pattern.exec(declaration);
-		if (match === null) {
-			continue;
-		}
-		const passing = match[1] as "传值" | "传址" | undefined;
-		const name = match[2];
-		const declaredTypeName = match[3];
-		const createdTypeName = match[4] ?? match[5];
-		const typeName = declaredTypeName === "变体型" && createdTypeName !== undefined
-			? createdTypeName
-			: declaredTypeName ?? createdTypeName;
-		if (name !== undefined && typeName !== undefined) {
-			const declarationStart = baseOffset + declarationOffset + match[0].indexOf(name);
-			bindings.push({
-				declarationStart,
-				declaredTypeName: declaredTypeName === "变体型" && createdTypeName !== undefined
-					? declaredTypeName
-					: undefined,
-				kind,
-				name,
-				...(passing === undefined ? {} : { passing }),
-				typeName
-			});
-		}
-	}
-
-	return bindings;
-}
-
-/** 按完整逻辑声明解析正式参数；续行替换等长空白，保留声明跳转及重命名所用的物理偏移。 */
-function parameterBindingAtDeclaration(
-	sanitized: string,
-	offset: number,
-	name: string
-): SimpleBinding | undefined {
-	const lineStart = logicalStatementStart(sanitized, offset);
-	let lineEnd = offset;
-	for (; lineEnd < sanitized.length; lineEnd += 1) {
-		const character = sanitized[lineEnd];
-		if (character === "_") {
-			if (sanitized[lineEnd + 1] === "\n") {
-				lineEnd += 1;
-			} else if (sanitized[lineEnd + 1] === "\r" && sanitized[lineEnd + 2] === "\n") {
-				lineEnd += 2;
-			}
-		} else if (character === ":" || character === "\r" || character === "\n") {
-			break;
-		}
-	}
-	const line = normalizeLogicalPrefix(sanitized.slice(lineStart, lineEnd));
-	const header = /^[ \t]*(?:静态[ \t]+)?(?:函数|过程|事件)[ \t]+[^()\r\n]+\((.*)\)/u.exec(line);
-	const parameters = header?.[1];
-	if (parameters === undefined) {
+/** 将共享语法声明转换为既有语言能力使用的类型绑定。 */
+function sourceBinding(declaration: SimpleSourceDeclaration): SimpleBinding | undefined {
+	if (!["variable", "parameter", "functionResult"].includes(declaration.kind) || declaration.typeName === undefined) {
 		return undefined;
 	}
-
-	const parameterOffset = lineStart + line.indexOf(parameters);
-	return variableBindings(parameters, "parameter", parameterOffset).find((binding) => (
-		binding.name === name
-		&& binding.declarationStart !== undefined
-		&& offset >= binding.declarationStart
-		&& offset < binding.declarationStart + binding.name.length
-	));
+	const created = declaration.createdTypeName;
+	return {
+		declarationStart: declaration.token.start,
+		kind: declaration.kind === "parameter" ? "parameter" : declaration.kind === "functionResult" ? "functionResult"
+			: declaration.scope.parent === undefined ? declaration.static ? "staticField" : "field" : "variable",
+		name: declaration.name,
+		passing: declaration.passing,
+		typeName: declaration.typeName === "变体型" && created !== undefined ? created : declaration.typeName,
+		declaredTypeName: declaration.typeName === "变体型" && created !== undefined ? declaration.typeName : undefined
+	};
 }
 
-/** 枚举当前函数式作用域内在光标前已经声明的参数、局部变量和函数返回值。 */
-function visibleLocalBindings(
-	sanitized: string,
-	offset: number,
-	stack: readonly BlockFrame[]
-): readonly SimpleBinding[] {
-	const callable = callableFrame(stack);
-	if (callable === undefined) {
-		return [];
-	}
-
-	const bindings = new Map<string, SimpleBinding>();
-	const parameters = /\((.*)\)/u.exec(callable.header)?.[1];
-	if (parameters !== undefined) {
-		const parameterOffset = callable.start + callable.header.indexOf(parameters);
-		for (const binding of variableBindings(parameters, "parameter", parameterOffset)) {
-			bindings.set(binding.name, binding);
-		}
-	}
-
-	const declaration = /^[ \t]*(?:静态[ \t]+)?变量[ \t]+([^\r\n]*)/gmu;
-	declaration.lastIndex = callable.start;
-	for (let match = declaration.exec(sanitized); match !== null && match.index < offset; match = declaration.exec(sanitized)) {
-		if (match.index < callable.start) {
-			continue;
-		}
-		const declarationSource = match[1] ?? "";
-		const declarationOffset = match.index + match[0].indexOf(declarationSource);
-		for (const binding of variableBindings(declarationSource, "variable", declarationOffset)) {
-			bindings.set(binding.name, binding);
-		}
-	}
-
-	if (callable.kind === "function") {
-		const result = new RegExp(
-			`^(?:静态[ \\t]+)?函数[ \\t]+(${IDENTIFIER})[^\\r\\n]*\\)[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER}(?:[ \\t]*\\([^)]*\\))?)`,
-			"u"
-		).exec(callable.header);
-		const name = result?.[1];
-		const typeName = result?.[2];
-		if (name !== undefined && typeName !== undefined && !bindings.has(name)) {
-			bindings.set(name, {
-				declarationStart: callable.start + callable.header.indexOf(name),
-				kind: "functionResult",
-				name,
-				typeName
-			});
-		}
-	}
-
-	return [...bindings.values()];
+/** 只枚举光标所在词法作用域内可见的参数、局部变量和返回值。 */
+function visibleLocalBindings(source: string, offset: number, _stack: readonly BlockFrame[], analysis?: SimpleSourceAnalysis): readonly SimpleBinding[] {
+	const syntax = analysis?.syntax ?? analyzeSimpleSourceSyntax(source);
+	const names = new Set(syntax.declarations.filter((declaration) => declaration.scope !== syntax.root).map((declaration) => declaration.name));
+	return [...names].flatMap((name) => {
+		const declaration = syntax.resolve(name, offset);
+		const binding = declaration === undefined || declaration.scope === syntax.root ? undefined : sourceBinding(declaration);
+		return binding === undefined ? [] : [binding];
+	});
 }
 
 /** 用光标前最后一次 `创建` 赋值收窄变体型，未知动态值仍保持变体型。 */
@@ -642,35 +398,15 @@ function resolveTypedBinding(
 	context?: SimpleProjectSemanticContext,
 	analysis?: SimpleSourceAnalysis
 ): SimpleBinding | undefined {
-	const local = visibleLocalBindings(sanitized, offset, stack).find((binding) => binding.name === name);
-	if (local !== undefined) {
-		return narrowVariantBinding(sanitized, offset, stack, local);
+	const syntax = analysis?.syntax ?? analyzeSimpleSourceSyntax(sanitized, context?.currentUnit?.unitType === "接口");
+	const direct = syntax.declarationAt(offset, name);
+	const declaration = direct ?? syntax.resolve(name, offset);
+	if (declaration !== undefined) {
+		const binding = sourceBinding(declaration);
+		return binding === undefined ? undefined : narrowVariantBinding(sanitized, offset, stack, binding);
 	}
-
-	const component = context?.currentUnit?.definition.variables?.find(
-		(member) => member.component === true && member.name === name
-	);
-	if (component?.type !== undefined) {
-		return { kind: "componentBinding", name, typeName: component.type };
-	}
-
-	const fields: SimpleBinding[] = [...(analysis?.fields ?? [])];
-	const fieldDeclaration = new RegExp(`^[ \\t]*(静态[ \\t]+)?变量[ \\t]+([^\\r\\n]*)`, "gmu");
-	for (const match of analysis === undefined ? sanitized.matchAll(fieldDeclaration) : []) {
-		if (match.index === undefined || callableFrame(blockStack(sanitized, match.index)) !== undefined) {
-			continue;
-		}
-
-		const declarationSource = match[2] ?? "";
-		fields.push(...variableBindings(
-			declarationSource,
-			match[1] === undefined ? "field" : "staticField",
-			match.index + match[0].indexOf(declarationSource)
-		));
-	}
-
-	const field = fields.reverse().find((binding) => binding.name === name);
-	return field === undefined ? undefined : narrowVariantBinding(sanitized, offset, stack, field);
+	const component = context?.currentUnit?.definition.variables?.find((member) => member.component === true && member.name === name);
+	return component?.type === undefined ? undefined : { kind: "componentBinding", name, typeName: component.type };
 }
 
 /**
@@ -692,21 +428,28 @@ export function resolveSimpleBinding(
 		return undefined;
 	}
 
-	const sanitized = analysis?.sanitized ?? sanitizeSource(source);
-	return parameterBindingAtDeclaration(sanitized, offset, name)
-		?? resolveTypedBinding(sanitized, offset, analysis?.stackAt(offset) ?? blockStack(sanitized, offset), name, context, analysis);
+	const current = analysis ?? createSimpleSourceAnalysis(source, undefined, context);
+	if (isSimpleEventTarget(current.syntax, offset)
+		|| current.syntax.declarationAt(offset, name) === undefined && current.syntax.roleAt(offset) === "type") {
+		return undefined;
+	}
+	return resolveTypedBinding(current.sanitized, offset, current.stackAt(offset), name, context, current);
 }
 
 /**
- * 解析指定源码位置可见的参数、变量、字段或属性区组件类型。
+ * 按作用域查询候选名称，供改名和移动的冲突预检使用。
  *
- * 该入口供补全以外的语言能力复用，保持点号成员的类型判断一致。
- *
- * @param source 完整 Simple 源码。
- * @param offset 当前查询位置。
- * @param name 待解析的限定名。
- * @returns 已知绑定的数据类型；无法确认时返回 `undefined`。
+ * 此查询不把当前位置视为候选名称的源码引用，因此类型位置也能检查同名变量
+ * 是否会遮蔽拟采用的短名；实际引用解析仍通过 resolveSimpleBinding。
  */
+export function lookupSimpleBinding(source: string, offset: number, name: string, context?: SimpleProjectSemanticContext, analysis?: SimpleSourceAnalysis): SimpleBinding | undefined {
+	if (offset < 0 || offset > source.length || name.length === 0) {
+		return undefined;
+	}
+	const current = analysis ?? createSimpleSourceAnalysis(source, undefined, context);
+	return resolveTypedBinding(current.sanitized, offset, current.stackAt(offset), name, context, current);
+}
+
 /** 从当前替换范围前读取点号限定名。 */
 function qualifierBefore(input: CompletionInput): string | undefined {
 	let cursor = input.start;
@@ -1009,7 +752,7 @@ function definitionForType(
 		return undefined;
 	}
 
-	const normalized = typeName.trim().replace(/\([^()]*\)$/u, "");
+	const normalized = typeName.split("(")[0]!.trim();
 	if (owner !== undefined && owner.manifest.kind !== "project") return definitions.get(normalized);
 	const declaringUnit = owner === undefined ? undefined : context?.units?.find((unit) => unit.filePath === owner.definition.sourceFile);
 	return resolveSimpleDefinitionName(normalized, definitions, declaringUnit);
@@ -1020,21 +763,22 @@ function memberResultDefinition(
 	resolved: ResolvedSimpleQualifier,
 	memberName: string,
 	definitions: ReadonlyMap<string, LibraryDefinitionReference>,
-	context: SimpleProjectSemanticContext | undefined
+	context: SimpleProjectSemanticContext | undefined,
+	analysis?: SimpleSourceAnalysis,
+	arity?: number
 ): LibraryDefinitionReference | undefined {
 	const groups: readonly LibraryMemberGroup[] = resolved.access === "static"
 		? ["constants", "functions", "variables"]
 		: ["constants", "properties", "variables", "functions"];
 
 	for (const group of groups) {
-		const value = getEffectiveMembers(resolved.reference, group, definitions).find(
-			(candidate) => candidate.member.name === memberName
-		);
+		const candidates = (analysis?.members(resolved.reference, group, memberName)
+			?? getEffectiveMembers(resolved.reference, group, definitions).filter((candidate) => candidate.member.name === memberName))
+			.filter((candidate) => isSimpleMemberAccessible(candidate.member, group, resolved.access));
+		const value = group === "functions" && arity !== undefined
+			? candidates.find((candidate) => (candidate.member.params?.length ?? 0) === arity) ?? (candidates.length === 1 ? candidates[0] : undefined)
+			: candidates[0];
 		if (value === undefined) {
-			continue;
-		}
-
-		if (!isSimpleMemberAccessible(value.member, group, resolved.access)) {
 			continue;
 		}
 
@@ -1047,6 +791,178 @@ function memberResultDefinition(
 	}
 
 	return undefined;
+}
+
+/** 查找当前逻辑语句中的左括号，不跨越未续行的换行或冒号。 */
+function expressionOpening(tokens: readonly SimpleSourceToken[], close: number): number {
+	let depth = 0;
+	for (let index = close; index >= 0; index -= 1) {
+		const token = tokens[index]!;
+		if (token.kind === "separator") {
+			break;
+		}
+		if (token.text === ")") {
+			depth += 1;
+		} else if (token.text === "(" && --depth === 0) {
+			return index;
+		}
+	}
+	return -1;
+}
+
+/** 括号令牌已排除字符串内分隔符，按最外层逗号计算实参数量。 */
+function expressionArity(tokens: readonly SimpleSourceToken[], open: number, close: number): number {
+	if (close === open + 1) {
+		return 0;
+	}
+	let count = 1;
+	let depth = 0;
+	for (let index = open + 1; index < close; index += 1) {
+		const text = tokens[index]!.text;
+		if (text === "(") {
+			depth += 1;
+		} else if (text === ")") {
+			depth -= 1;
+		} else if (text === "," && depth === 0) {
+			count += 1;
+		}
+	}
+	return count;
+}
+
+/** 解析未限定调用或数组索引的结果类型，未定型的局部声明仍遮蔽外部同名函数。 */
+function rootCallResultType(callee: SimpleSourceToken, arity: number, analysis: SimpleSourceAnalysis, context?: SimpleProjectSemanticContext): LibraryDefinitionReference | undefined {
+	const stack = analysis.stackAt(callee.start);
+	const binding = resolveTypedBinding(analysis.sanitized, callee.start, stack, callee.text, context, analysis);
+	if (binding !== undefined) {
+		return binding.typeName.includes("(") || binding.kind === "functionResult"
+			? definitionForType(binding.typeName, analysis.definitions, context) : undefined;
+	}
+	const local = analysis.syntax.resolve(callee.text, callee.start);
+	if (local?.kind === "variable" || local?.kind === "parameter" || local?.kind === "constant") {
+		return undefined;
+	}
+	const declaration = analysis.syntax.declarationsNamed(callee.text).find((value) => value.scope === analysis.syntax.root
+		&& value.kind === "function" && (value.parameters?.length ?? 0) === arity);
+	if (declaration !== undefined) {
+		return definitionForType(declaration.typeName, analysis.definitions, context);
+	}
+	const current = context?.currentUnit === undefined ? undefined : analysis.definitions.get(context.currentUnit.qualifiedName);
+	if (current !== undefined) {
+		const result = memberResultDefinition({ reference: current, access: isStaticCallable(callableFrame(stack)) ? "static" : "instance", directCurrentUnit: true }, callee.text, analysis.definitions, context, analysis, arity);
+		if (result !== undefined) {
+			return result;
+		}
+	}
+	for (const reference of new Set(analysis.definitions.values())) {
+		const member = reference.definition.functions?.find((value) => value.global === true && value.name === callee.text && (value.params?.length ?? 0) === arity);
+		if (member !== undefined) {
+			return definitionForType(member.return, analysis.definitions, context, reference);
+		}
+	}
+	return undefined;
+}
+
+/**
+ * 沿词法令牌推导点号左侧的表达式类型，复用同次分析的绑定与成员索引。
+ *
+ * 调用和数组索引使用实际返回或元素类型；未确认的表达式保持未知，不能回退
+ * 到某个恰好同名的局部变量。结果仅存活于本次分析，不建立项目级表达式缓存。
+ */
+function expressionReceiverType(
+	end: number,
+	analysis: SimpleSourceAnalysis,
+	context: SimpleProjectSemanticContext | undefined,
+	cache: Map<number, ResolvedSimpleQualifier | undefined>
+): ResolvedSimpleQualifier | undefined {
+	if (cache.has(end)) {
+		return cache.get(end);
+	}
+	const tokens = analysis.expressionTokens;
+	const token = tokens[end];
+	cache.set(end, undefined);
+	if (token === undefined || token.kind === "separator") {
+		return undefined;
+	}
+	const instance = (reference: LibraryDefinitionReference | undefined): ResolvedSimpleQualifier | undefined => reference === undefined
+		? undefined : { reference, access: "instance", directCurrentUnit: false };
+	const infer = (index: number) => expressionReceiverType(index, analysis, context, cache);
+	let result: ResolvedSimpleQualifier | undefined;
+	if (token.kind === "word") {
+		let start = end;
+		while (start >= 2 && tokens[start - 1]?.text === "." && tokens[start - 2]?.kind === "word") {
+			start -= 2;
+		}
+		if (tokens[start - 1]?.text !== ".") {
+			const qualifier = tokens.slice(start, end + 1).map((part) => part.text).join("");
+			const lookupOffset = Math.min(token.start, analysis.source.length);
+			result = resolveQualifier(qualifier, analysis.sanitized, lookupOffset, analysis.stackAt(lookupOffset), analysis.definitions, context, analysis);
+		}
+		if (result === undefined && tokens[end - 1]?.text === ".") {
+			const receiver = infer(end - 2);
+			if (receiver !== undefined) {
+				result = instance(memberResultDefinition(receiver, token.text, analysis.definitions, context, analysis));
+			}
+		}
+	} else if (token.text === ")") {
+		const open = expressionOpening(tokens, end);
+		if (open >= 0) {
+			const callee = tokens[open - 1];
+			if (callee?.kind === "word" && (tokens[open - 2]?.text === "." || !LANGUAGE_WORDS.has(callee.text))) {
+				const arity = expressionArity(tokens, open, end);
+				if (tokens[open - 2]?.text === ".") {
+					const receiver = infer(open - 3);
+					if (receiver !== undefined) {
+						result = instance(memberResultDefinition(receiver, callee.text, analysis.definitions, context, analysis, arity));
+					}
+				} else {
+					result = instance(rootCallResultType(callee, arity, analysis, context));
+				}
+			} else if (tokens[open + 1]?.text === "创建" && tokens[open + 2]?.kind === "word") {
+				let last = open + 3;
+				while (tokens[last]?.text === "." && tokens[last + 1]?.kind === "word") {
+					last += 2;
+				}
+				if (last === end || tokens[last]?.text === "位于") {
+					result = instance(definitionForType(tokens.slice(open + 2, last).map((part) => part.text).join(""), analysis.definitions, context));
+				}
+			} else {
+				let depth = 0;
+				let pathOnly = true;
+				let expectName = true;
+				let memberName = false;
+				for (let index = open + 1; index < end; index += 1) {
+					const part = tokens[index]!;
+					if (part.text === "(") {
+						if (depth === 0 && expectName && index !== open + 1) {
+							pathOnly = false;
+						}
+						depth += 1;
+					} else if (part.text === ")") {
+						depth -= 1;
+						if (depth === 0) {
+							expectName = false;
+						}
+					} else if (depth === 0) {
+						if (part.text === "." && !expectName) {
+							expectName = true;
+							memberName = true;
+						} else if (part.kind === "word" && expectName && (memberName || part.text === "本对象" || !LANGUAGE_WORDS.has(part.text))) {
+							expectName = false;
+							memberName = false;
+						} else {
+							pathOnly = false;
+						}
+					}
+				}
+				if (pathOnly && !expectName) {
+					result = infer(end - 1);
+				}
+			}
+		}
+	}
+	cache.set(end, result);
+	return result;
 }
 
 /**
@@ -1074,7 +990,11 @@ function resolveQualifier(
 		resolveSimpleDefinitionName(qualifier, definitions)?.definition.sourceFile === currentUnit.filePath
 	);
 
-	const binding = resolveTypedBinding(sanitized, offset, stack, first, context, analysis);
+	const binding = analysis?.syntax.roleAt(offset) === "type" ? undefined : resolveTypedBinding(sanitized, offset, stack, first, context, analysis);
+	const sourceDeclaration = analysis?.syntax.roleAt(offset) === "type" ? undefined : analysis?.syntax.resolve(first, offset);
+	if (binding === undefined && (sourceDeclaration?.kind === "variable" || sourceDeclaration?.kind === "parameter" || sourceDeclaration?.kind === "constant")) {
+		return undefined;
+	}
 	let consumed = 0;
 	let resolved: ResolvedSimpleQualifier | undefined;
 	if (first === "本对象" && currentUnit !== undefined && !isStaticCallable(callableFrame(stack))) {
@@ -1129,7 +1049,7 @@ function resolveQualifier(
 	}
 
 	for (const memberName of segments.slice(consumed)) {
-		const reference = memberResultDefinition(resolved, memberName, definitions, context);
+		const reference = memberResultDefinition(resolved, memberName, definitions, context, analysis);
 		if (reference === undefined) {
 			return undefined;
 		}
@@ -1157,15 +1077,16 @@ export function resolveSimpleQualifier(
 		return undefined;
 	}
 
-	const sanitized = analysis?.sanitized ?? sanitizeSource(source);
+	const current = analysis ?? createSimpleSourceAnalysis(source, sdk, context);
+	const sanitized = current.sanitized;
 	return resolveQualifier(
 		qualifier,
 		sanitized,
 		offset,
-		analysis?.stackAt(offset) ?? blockStack(sanitized, offset),
-		analysis?.definitions ?? buildSemanticDefinitionIndex(sdk, context),
+		current.stackAt(offset),
+		current.definitions,
 		context,
-		analysis
+		current
 	);
 }
 
@@ -1545,10 +1466,21 @@ export function provideSimpleCompletions(
 		return undefined;
 	}
 
-	const stack = blockStack(input.sanitized, offset);
-	const definitions = buildSemanticDefinitionIndex(sdk, context);
+	const analysis = createSimpleSourceAnalysis(source, sdk, context);
+	const cursorIndex = simpleSourceTokenIndex(analysis.syntax.tokens, offset, true);
+	const cursorToken = analysis.syntax.tokens[cursorIndex];
+	if (cursorToken?.kind === "number" && input.start < cursorToken.end) return undefined;
+	// 未完成的 &H 前缀、数字后紧贴的非法名称片段也不能被补成普通标识符。
+	const wordIndex = cursorToken?.kind === "word" ? cursorIndex : simpleSourceTokenIndex(analysis.syntax.tokens, input.start);
+	const word = analysis.syntax.tokens[wordIndex];
+	const previous = analysis.syntax.tokens[wordIndex - 1];
+	if (word?.kind === "word" && previous?.end === word.start
+		&& (previous.kind === "number" || previous.text === "&" && word.text.startsWith("H"))) return undefined;
+	const stack = analysis.stackAt(offset);
+	const definitions = analysis.definitions;
 	const currentUnitType = unitType(context);
 	const qualifier = qualifierBefore(input);
+	const memberAccess = analysis.receiverBefore(input.start);
 	const conditionalPrefix = prefixBeforeQuery.trimStart();
 	const incompleteConditional = /^(?:如果|否则如果)(?:[ \t]|$)/u.test(conditionalPrefix)
 		&& !/(?:^|[ \t])则(?:[ \t]|$)/u.test(conditionalPrefix);
@@ -1588,21 +1520,22 @@ export function provideSimpleCompletions(
 			...typeAliasCandidates(context, definitions, 0),
 			...semanticTypeCandidates(definitions, 1)
 		];
-	} else if (qualifier !== undefined) {
-		if (qualifier === "R") {
+	} else if (qualifier !== undefined || memberAccess !== undefined) {
+		if (qualifier === "R" && isSimpleResourceRoot(analysis, input.start, context)) {
 			candidates = [...resourceMemberCandidates(context)];
 		} else {
-			const resolved = resolveQualifier(
+			const resolved = memberAccess?.receiver ?? (qualifier === undefined ? undefined : resolveQualifier(
 				qualifier,
 				input.sanitized,
 				offset,
 				stack,
 				definitions,
-				context
-			);
+				context,
+				analysis
+			));
 
 			if (resolved === undefined) {
-				candidates = resolveTypedBinding(input.sanitized, offset, stack, qualifier.split(".")[0]!, context) === undefined
+				candidates = qualifier !== undefined && resolveTypedBinding(input.sanitized, offset, stack, qualifier.split(".")[0]!, context, analysis) === undefined
 					? [...namespaceMemberCandidates(qualifier, definitions)] : [];
 			} else if (resolved.access === "instance") {
 				const eventDeclaration = /^[ \t]*事件[ \t]+/u.test(input.linePrefix);
@@ -1627,7 +1560,7 @@ export function provideSimpleCompletions(
 			: [
 				...keywordCandidates,
 				...(allowsRuntimeValues
-					? visibleLocalBindings(input.sanitized, offset, stack).map((binding) => bindingCandidate(binding, 0))
+					? visibleLocalBindings(source, offset, stack, analysis).map((binding) => bindingCandidate(binding, 0))
 					: []),
 				...(allowsRuntimeValues
 					? currentUnitCandidates(context, definitions, isStaticCallable(callableFrame(stack)))

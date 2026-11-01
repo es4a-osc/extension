@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-8-27
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -278,7 +278,7 @@ suite("ES4A 扩展", () => {
 	let workspaceSettingsFile: string | undefined;
 
 	suiteSetup("显式选择集成测试 SDK", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		assert.ok(workspaceFolder, "扩展宿主没有打开工作区");
@@ -331,7 +331,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("冷启动可直接恢复用户代码虚拟文档", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sourceUri = vscode.Uri.file(testProjectPath(
 			"SmokeTest",
@@ -451,7 +451,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("Tetris 用户代码虚拟文档逐字保留属性区之前的源码", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sourceUri = vscode.Uri.file(testProjectPath(
 			"Tetris",
@@ -472,7 +472,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("Ell 用户代码通过属性 XML 提供 Brick 继承悬停", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath(
 			"Tetris",
@@ -527,7 +527,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("组件事件悬停显示事件说明并把完整事件定义排在末尾", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTests", "project.properties");
 		const sourceFile = await simpleTestUnitPath("SmokeTests", "测试其它");
@@ -569,7 +569,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("参数个数错误时悬停仍显示完整函数签名和参数说明", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const source = "过程 Run()\r\n\t弹出确认框(\"授权结果\")\r\n结束 过程";
@@ -588,7 +588,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("当前窗口单元的加载事件在代码视图显示对象事件说明", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTests", "project.properties");
 		const sourceFile = await simpleTestUnitPath("SmokeTests", "局部布局");
@@ -620,7 +620,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("普通注释不进入悬停且三单引号过程文档按多行显示", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTest", "project.properties");
 		const sourceFile = path.resolve(
@@ -677,7 +677,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("DerivedObject 悬停只显示直接基础对象重写关系", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath(
 			"SmokeTest",
@@ -727,7 +727,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("BaseObject 重载悬停只显示对应签名和接口关系", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTest", "project.properties");
 		const sourceFile = path.resolve(
@@ -772,7 +772,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("别名右侧限定名跳到对象单元且单元接口关系位于悬停末尾", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTest", "project.properties");
 		const sourceFile = path.resolve(
@@ -819,7 +819,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("注册扩展、命令和 Simple 语言", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 
 		await extension.activate();
@@ -935,7 +935,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("完整代码保持只读并复用 Simple 着色和悬停", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const sourceUri = vscode.Uri.file(testProjectPath(
@@ -963,7 +963,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("两个单元预览协议以无文件系统锁的只读文本打开", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-preview-text-"));
@@ -1003,7 +1003,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("窗口单元通过命令打开自定义设计器标签页", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const filePath = testProjectPath(
 			"Tetris",
@@ -1071,7 +1071,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("非窗口单元拒绝打开窗口设计器", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension);
 		const filePath = testProjectPath(
 			"Tetris", "src", "simple", "samples", "tetris", "DownStep.simple"
@@ -1156,7 +1156,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("后台设计器只在真正可见时初始化并生成模型", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const document = await vscode.workspace.openTextDocument({
 			content: "",
@@ -1239,7 +1239,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("设计器标签页内嵌属性框、布局树、画布和组件列表", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const source = await fs.readFile(testProjectPath(
 			"Tetris", "src", "simple",
@@ -1953,7 +1953,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("项目树项目、单元分组、窗口和服务单元保持稳定图标", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const provider = new ProgramTreeProvider();
 		try {
@@ -1993,7 +1993,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("代码标签撤销和重做始终共享同一份 XML 属性状态", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -2075,7 +2075,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("VS Code 按作用域和已知类型提供 Simple 首拼补全", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -2181,7 +2181,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("VS Code 补全项保留用户别名的首拼过滤文本和引用图标", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const markedSource = [
 			"''' **日期工具说明**",
@@ -2224,7 +2224,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("VS Code 补全保留原名称并使混合首拼通过编辑器过滤", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension);
 		const provider = new SimpleCompletionProvider();
 		provider.updateSdk(await loadSdk(testSdkPath()));
@@ -2318,7 +2318,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("方法补全复用光标后已有括号且缺少括号时插入参数片段", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const provide = async (statement: string): Promise<vscode.CompletionItem> => {
@@ -2420,7 +2420,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("VS Code 从编译器和运行库清单提供悬停说明", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		// 单独运行此测试时也等待所选 SDK 加载完成。
@@ -2531,7 +2531,7 @@ suite("ES4A 扩展", () => {
 	});
 
 	test("用户代码保存时逐字保留磁盘上的最新 XML 属性区", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -2548,9 +2548,9 @@ suite("ES4A 扩展", () => {
 
 			assert.equal(document.uri.scheme, SIMPLE_CODE_SCHEME);
 			assert.equal(document.languageId, "simple");
-			assert.equal(document.getText(), "过程 Before()\r\n结束 过程");
+			assert.equal(document.getText(), "过程 Before()\r\n结束 过程\r\n");
 
-			await fs.writeFile(sourceFile, document.getText() + "\r\n" + latestPropertySource, "utf8");
+			await fs.writeFile(sourceFile, document.getText() + latestPropertySource, "utf8");
 			const changedCode = "过程 After()\r\n结束 过程";
 			const edit = new vscode.WorkspaceEdit();
 			edit.replace(
@@ -2801,7 +2801,7 @@ ${propertySource}`;
 			]);
 			const savedSource = await fs.readFile(sourceFile, "utf8");
 			assert.match(savedSource, /标题 = "设计器标题"/u);
-			assert.equal(getVisibleSimpleUnitUserCode(savedSource), unsavedCode);
+			assert.equal(getVisibleSimpleUnitUserCode(savedSource), unsavedCode + "\r\n");
 			assert.equal(document.getText(), unsavedCode);
 			assert.equal(document.isDirty, true);
 
@@ -2835,7 +2835,7 @@ ${propertySource}`;
 			]);
 			const secondSavedSource = await fs.readFile(sourceFile, "utf8");
 			assert.match(secondSavedSource, /标题 = "第二次标题"/u);
-			assert.equal(getVisibleSimpleUnitUserCode(secondSavedSource), secondUserCode);
+			assert.equal(getVisibleSimpleUnitUserCode(secondSavedSource), secondUserCode + "\r\n");
 
 			const thirdCurrentDocument = provider.getProperty(document)?.document;
 			assert.ok(thirdCurrentDocument);
@@ -2881,7 +2881,7 @@ ${propertySource}`;
 	});
 
 	test("设计器组件操作登记独立撤销且始终保持当前标签", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-designer-history-"));
 		const sourceFile = path.join(temporaryDirectory, "HistoryWindow.simple");
@@ -3042,7 +3042,7 @@ ${propertySource}`;
 	});
 
 	test("对象单元右键命令通过共享 XML 状态设置基础对象和实现接口", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-object-relations-"));
@@ -3246,7 +3246,7 @@ ${propertySource}`;
 	});
 
 	test("保存前补齐属性区边界换行且重新打开后保持干净", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -3282,7 +3282,7 @@ ${propertySource}`;
 	});
 
 	test("活动 Simple 编辑器只转换代码区域新输入的中文符号", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -3302,7 +3302,7 @@ ${propertySource}`;
 			assert.equal(await editor.edit((edit) => edit.insert(new vscode.Position(0, 0), input)), true);
 			await waitForDocumentText(document, expected);
 			assert.equal(await document.save(), true);
-			assert.equal(await fs.readFile(sourceFile, "utf8"), expected + "\r\n" + propertySource);
+			assert.equal(await fs.readFile(sourceFile, "utf8"), expected + propertySource);
 			await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
 		} finally {
 			await fs.rm(temporaryDirectory, { force: true, recursive: true });
@@ -3310,7 +3310,7 @@ ${propertySource}`;
 	});
 
 	test("虚拟文档隐藏属性区后仍按单元类型限制补全作用域", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -3346,7 +3346,7 @@ ${propertySource}`;
 				(item) => typeof item.label === "string" ? item.label : item.label.label
 			);
 
-			assert.equal(document.getText(), userCode + "\r\n");
+			assert.equal(document.getText(), userCode + "\r\n\r\n");
 			assert.equal(
 				labels.includes("如果"),
 				false,
@@ -3360,7 +3360,7 @@ ${propertySource}`;
 	});
 
 	test("代码错误且属性区损坏的单元仍可打开代码标签并安全保存", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 
@@ -3374,7 +3374,7 @@ ${propertySource}`;
 			const codeUri = toSimpleCodeUri(vscode.Uri.file(sourceFile));
 			const document = await vscode.workspace.openTextDocument(codeUri);
 			await vscode.window.showTextDocument(document, { preview: false });
-			assert.equal(document.getText(), "这不是合法的 Simple 代码");
+			assert.equal(document.getText(), "这不是合法的 Simple 代码\r\n");
 
 			const edit = new vscode.WorkspaceEdit();
 			edit.replace(
@@ -3646,9 +3646,15 @@ ${propertySource}`;
 				"source=./src",
 				""
 			].join("\r\n"));
-			assert.equal(treeRefreshCount, 1);
+
+			// 文件监听可能补发配置通知；这里校验立即刷新和最终配置，而不是事件次数。
+			assert.ok(treeRefreshCount >= 1);
+			const renamed = (await provider.getChildren())[0];
+			assert.ok(renamed?.kind === "project");
+			assert.equal(renamed.label, "新名称");
 			assert.equal(semanticRefreshCount, 1);
 
+			const beforeMacroRefresh = treeRefreshCount;
 			await editProjectManifestMacro(provider, {
 				refreshProjectSemantics: async () => {
 					semanticRefreshCount += 1;
@@ -3663,7 +3669,10 @@ ${propertySource}`;
 				"source=./src",
 				""
 			].join("\r\n"));
-			assert.equal(treeRefreshCount, 2);
+			assert.ok(treeRefreshCount > beforeMacroRefresh);
+			const updated = (await provider.getChildren())[0];
+			assert.ok(updated?.kind === "project");
+			assert.equal(updated.project.properties["应用更新.applicationId"], "新标识");
 			assert.equal(semanticRefreshCount, 2);
 		} finally {
 			listener.dispose();
@@ -3855,13 +3864,16 @@ ${propertySource}`;
 			assert.equal(missingBuild.directoryPath, buildDirectory);
 			assert.equal(missingBuild.missing, true);
 			assert.equal(provider.getTreeItem(missingBuild).contextValue, "es4a.build");
+			provider.setTreeVisible(true);
+			provider.setTreeExpanded(project, true);
 
 			const refreshed = new Promise<void>((resolve, reject) => {
 				const timeout = setTimeout(() => {
 					listener.dispose();
 					reject(new Error("首次生成构建目录后项目树没有刷新"));
 				}, 5_000);
-				const listener = provider.onDidChangeTreeData(() => {
+				const listener = provider.onDidChangeTreeData((node) => {
+					assert.equal(node, missingBuild, "首次生成构建目录只能刷新构建节点");
 					clearTimeout(timeout);
 					listener.dispose();
 					resolve();
@@ -3932,13 +3944,20 @@ ${propertySource}`;
 			const units = (await provider.getChildren(project)).find((node) => node.kind === "units");
 			assert.ok(units);
 			assert.deepEqual(await provider.getChildren(units), []);
+			provider.setTreeVisible(true);
+			provider.setTreeExpanded(project, true);
+			provider.setTreeExpanded(units, true);
+			await new Promise((resolve) => setTimeout(resolve, 350));
 
 			const refreshed = new Promise<void>((resolve, reject) => {
 				const timeout = setTimeout(() => {
 					listener.dispose();
 					reject(new Error("外部新增单元后项目树没有刷新"));
 				}, 5_000);
-				const listener = provider.onDidChangeTreeData(() => {
+				const listener = provider.onDidChangeTreeData((node) => {
+					if (node !== units) {
+						return;
+					}
 					clearTimeout(timeout);
 					listener.dispose();
 					resolve();
@@ -3984,13 +4003,31 @@ ${propertySource}`;
 			assert.equal(await provider.addProject(projectFile), true);
 			const project = (await provider.getChildren())[0];
 			assert.ok(project?.kind === "project");
+			const resources = (await provider.getChildren(project)).find((node) => node.kind === "resources");
+			assert.ok(resources);
+			const roots = await provider.getChildren(resources);
+			const res = roots.find((node) => node.kind === "res");
+			const assets = roots.find((node) => node.kind === "assets");
+			assert.ok(res && assets);
+			const drawableFolder = (await provider.getChildren(res)).find((node) => node.kind === "directory" && node.label === "drawable");
+			assert.ok(drawableFolder);
+			await provider.getChildren(drawableFolder);
+			await provider.getChildren(assets);
+			provider.setTreeVisible(true);
+			for (const node of [project, resources, res, drawableFolder, assets]) {
+				provider.setTreeExpanded(node, true);
+			}
+			await new Promise((resolve) => setTimeout(resolve, 350));
 
-			const waitForRefresh = (message: string): Promise<void> => new Promise((resolve, reject) => {
+			const waitForRefresh = (target: ProgramTreeNode, message: string): Promise<void> => new Promise((resolve, reject) => {
 				const timeout = setTimeout(() => {
 					listener.dispose();
 					reject(new Error(message));
 				}, 5_000);
-				const listener = provider.onDidChangeTreeData(() => {
+				const listener = provider.onDidChangeTreeData((node) => {
+					if (node !== target) {
+						return;
+					}
 					clearTimeout(timeout);
 					listener.dispose();
 					resolve();
@@ -3998,7 +4035,7 @@ ${propertySource}`;
 			});
 
 			const drawableFile = path.join(drawableDirectory, "external.png");
-			const resRefreshed = waitForRefresh("外部新增 Res 文件后项目树没有刷新");
+			const resRefreshed = waitForRefresh(drawableFolder, "外部新增 Res 文件后项目树没有刷新");
 			await fs.writeFile(drawableFile, new Uint8Array());
 			await resRefreshed;
 			const drawable = await provider.findResourceByFilePath(drawableFile);
@@ -4007,7 +4044,7 @@ ${propertySource}`;
 			assert.equal(provider.getParent(drawable!)?.label, "drawable");
 
 			const assetFile = path.join(assetsDirectory, "external.json");
-			const assetsRefreshed = waitForRefresh("外部新增 Assets 文件后项目树没有刷新");
+			const assetsRefreshed = waitForRefresh(assets, "外部新增 Assets 文件后项目树没有刷新");
 			await fs.writeFile(assetFile, "{}", "utf8");
 			await assetsRefreshed;
 			const asset = await provider.findResourceByFilePath(assetFile);
@@ -4371,7 +4408,7 @@ ${propertySource}`;
 	});
 
 	test("项目树按 project.properties 路径恢复 SmokeTest 项目", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const values = new Map<string, unknown>();
 		const state: ProgramProjectState = {
@@ -4534,7 +4571,7 @@ ${propertySource}`;
 	});
 
 	test("项目树单元提示显示继承、限定名和 source 相对路径", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTest", "project.properties");
 		const smokeTestFile = testProjectPath(
@@ -4627,7 +4664,7 @@ ${propertySource}`;
 	});
 
 	test("项目树源码文件夹和单元复制名称、限定名及真实路径", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const projectFile = testProjectPath("SmokeTest", "project.properties");
@@ -4710,7 +4747,7 @@ ${propertySource}`;
 	});
 
 	test("项目树资源分组提示统一使用映射目录相对路径", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath("SmokeTests", "project.properties");
 		const provider = new ProgramTreeProvider();
@@ -4788,7 +4825,7 @@ ${propertySource}`;
 	});
 
 	test("项目树逐级显示并识别单目录链与分支", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath(
 			"SmokeTests",
@@ -5028,7 +5065,7 @@ ${propertySource}`;
 	});
 
 	test("项目树拖动顶层项目并持久化排序", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const values = new Map<string, unknown>();
 		const state: ProgramProjectState = {
@@ -5081,7 +5118,7 @@ ${propertySource}`;
 	});
 
 	test("项目树把单个单元拖到源码文件夹或目标单元的同级目录", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const projectFile = testProjectPath(
 			"SmokeTests",
@@ -5123,13 +5160,14 @@ ${propertySource}`;
 		await provider.handleDrop(targetUnit, dataTransfer, cancellation.token);
 		assert.equal(movedSource?.filePath, sourceFile);
 		assert.equal(movedTarget?.directoryPath, siblingDirectory);
-		assert.equal(movedTarget?.project, source.project);
+		assert.equal(movedTarget?.project?.filePath, source.project.filePath);
+		assert.deepEqual(movedTarget?.project?.sourceDirectories, source.project.sourceDirectories);
 		cancellation.dispose();
 		provider.dispose();
 	});
 
 	test("单元移动事务明确拒绝跨项目拖拽且不改文件", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const sourceProject = await loadSimpleProject(testProjectPath("SmokeTests", "project.properties"));
@@ -5298,7 +5336,7 @@ ${propertySource}`;
 
 	test("单元移动同步用户代码、XML 关系和 main 并可整体撤销重做", async function () {
 		this.timeout(60_000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-unit-move-"));
@@ -5402,7 +5440,7 @@ ${propertySource}`;
 
 	test("复制单元按目标目录递增数字后缀并同步新单元自身名称", async function () {
 		this.timeout(60_000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-unit-copy-"));
@@ -5475,7 +5513,7 @@ ${propertySource}`;
 
 	test("剪切粘贴单元复用移动事务并在成功后清空状态", async function () {
 		this.timeout(60_000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-unit-cut-"));
@@ -5568,7 +5606,7 @@ ${propertySource}`;
 	});
 
 	test("ES4A 侧边栏只保留项目和类库视图", () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const packageJson = extension.packageJSON as {
 			activationEvents?: string[];
@@ -6029,7 +6067,7 @@ ${propertySource}`;
 	});
 
 	test("语言配置文件没有错误或警告", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 
 		const configurationUri = vscode.Uri.file(
@@ -6047,8 +6085,8 @@ ${propertySource}`;
 		);
 	});
 
-	test("从真实 SimpleCompiler.json 动态生成语义着色", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+	test("固定语法着色复用文档缓存且 SDK 刷新不移除语言规则", async () => {
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		let analysisCount = 0;
@@ -6073,9 +6111,53 @@ ${propertySource}`;
 			provider.refresh();
 			provider.provideDocumentSemanticTokens(document, cancellation.token);
 			assert.equal(analysisCount, 2);
+			provider.updateSdk(undefined);
+			assert.deepEqual(provider.provideDocumentSemanticTokens(document, cancellation.token).data, tokens.data);
 		} finally {
 			cancellation.dispose();
 			provider.dispose();
+		}
+	});
+
+	test("未选择 SDK 的真实编辑器按语法着色，输入后的声明和引用立即更新", async () => {
+		const configuration = vscode.workspace.getConfiguration("es4a");
+		const selectedSdk = configuration.inspect<string>("sdk.path")?.globalValue;
+		try {
+			await configuration.update("sdk.path", undefined, vscode.ConfigurationTarget.Global);
+			await vscode.commands.executeCommand("es4a.refreshLibraries");
+			assert.equal(await loadConfiguredSdk(), undefined);
+			const document = await vscode.workspace.openTextDocument({
+				language: "simple",
+				content: "过程 运行(甲 为 未安装类型, _\r\n乙 为 文本型)\r\n变量 数量 为 整数型 : 变量 名称 为 文本型\r\n名称 = 乙\r\n结束 过程"
+			});
+			const editor = await vscode.window.showTextDocument(document, { preview: false });
+			const readTokens = async (): Promise<readonly { readonly text: string; readonly type: string }[]> => {
+				const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", document.uri);
+				const tokens = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", document.uri);
+				assert.ok(legend && tokens, "注册的 Simple Provider 应在无 SDK 时返回令牌");
+				const result: { text: string; type: string }[] = [];
+				let line = 0;
+				let character = 0;
+				for (let index = 0; index < tokens.data.length; index += 5) {
+					line += tokens.data[index]!;
+					character = tokens.data[index] === 0 ? character + tokens.data[index + 1]! : tokens.data[index + 1]!;
+					result.push({ text: document.lineAt(line).text.slice(character, character + tokens.data[index + 2]!), type: legend.tokenTypes[tokens.data[index + 3]!]! });
+				}
+				return result;
+			};
+			const before = await readTokens();
+			assert.equal(before.filter((token) => token.text === "乙" && token.type === "parameter").length, 2);
+			assert.ok(before.some((token) => token.text === "未安装类型" && token.type === "type"));
+			assert.equal(before.filter((token) => token.text === "名称" && token.type === "variable").length, 2);
+			const declaration = document.lineAt(2).text.indexOf("名称");
+			assert.equal(await editor.edit((edit) => edit.replace(new vscode.Range(2, declaration, 2, declaration + 2), "标题")), true);
+			const after = await readTokens();
+			assert.ok(after.some((token) => token.text === "标题" && token.type === "variable"));
+			assert.equal(after.some((token) => token.text === "名称"), false, "原引用应随声明身份失效，不沿用上一版本的名称规则");
+		} finally {
+			await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+			await configuration.update("sdk.path", selectedSdk, vscode.ConfigurationTarget.Global);
+			await vscode.commands.executeCommand("es4a.refreshLibraries");
 		}
 	});
 
@@ -6183,7 +6265,7 @@ ${propertySource}`;
 	});
 
 	test("编译器清单将流程控制、声明、修饰符和语法定义分开", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const compiler = sdk.manifests.find((manifest) => manifest.kind === "compiler");
@@ -6225,7 +6307,7 @@ ${propertySource}`;
 	});
 
 	test("从真实运行库解析组件类型和继承成员着色", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const provider = new SimpleSemanticTokensProvider();
@@ -6274,7 +6356,7 @@ ${propertySource}`;
 	});
 
 	test("类库树按需加载并解析运行库方法的完整父级路径", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const runtime = sdk.manifests.find((manifest) => manifest.kind === "runtime");
@@ -6452,7 +6534,7 @@ ${propertySource}`;
 	});
 
 	test("项目树 Assets 文件和 Res 文件夹、文件复制名称及真实路径", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		await extension.activate();
 		const projectFile = testProjectPath("SmokeTests", "project.properties");
@@ -6547,7 +6629,7 @@ ${propertySource}`;
 	});
 
 	test("类库根节点显示清单元数据并提供清单操作上下文", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const provider = new LibraryTreeProvider(async () => sdk);
@@ -6634,7 +6716,7 @@ ${propertySource}`;
 	});
 
 	test("类库树使用紧凑签名、继承摘要和分组语义图标", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const provider = new LibraryTreeProvider(async () => sdk);
@@ -6947,7 +7029,7 @@ ${propertySource}`;
 	});
 
 	test("参数提示按完整限定变量类型列出扩展类库重载", async () => {
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const sdk = await loadSdk(testSdkPath());
 		const sourceRoot = "C:\\project\\src";

@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-10
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -35,7 +35,7 @@ suite("项目关联重构", () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		originalSdkPath = configuration.inspect<string>("sdk.path")?.globalValue;
 		await configuration.update("sdk.path", testSdkPath(), vscode.ConfigurationTarget.Global);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
 	suiteTeardown(async () => {
@@ -421,7 +421,7 @@ suite("项目关联重构", () => {
 	});
 
 	test("引用位置 F2 重命名参数并整体撤销，保持其它作用域和磁盘属性", async () => {
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-refactor-f2-"));
 		const projectFile = path.join(directory, "project.properties");
 		const unitFile = path.join(directory, "src", "对象1.simple");
@@ -442,6 +442,40 @@ suite("项目关联重构", () => {
 			assert.equal(await fs.readFile(unitFile, "utf8"), source, "只准备计划不能写入");
 			assert.ok(await vscode.workspace.applyEdit(edit));
 			const changed = source.replace("A(值", "A(新值").replace("值 = 值 +", "新值 = 新值 +");
+			assert.equal(document.getText(), getVisibleSimpleUnitUserCode(changed));
+			assert.equal(await fs.readFile(unitFile, "utf8"), source);
+			await vscode.commands.executeCommand("undo");
+			assert.equal(document.getText(), getVisibleSimpleUnitUserCode(source));
+			await vscode.commands.executeCommand("redo");
+			assert.equal(document.getText(), getVisibleSimpleUnitUserCode(changed));
+			await document.save();
+			assert.equal(await fs.readFile(unitFile, "utf8"), changed);
+		} finally {
+			await vscode.commands.executeCommand("es4a.internal.removeProject", projectFile);
+			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
+	test("参数与项目类型同名时 F2 只改参数，保留类型声明和 XML", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-refactor-f2-type-shadow-"));
+		const projectFile = path.join(directory, "project.properties");
+		const unitFile = path.join(directory, "src", "类型名.simple");
+		const source = "过程 运行(类型名 为 类型名)\r\n\t类型名 = 类型名\r\n结束 过程\r\n\r\n$属性\r\n\t$资源 $对象\r\n$结束 $属性\r\n";
+		try {
+			await fs.mkdir(path.dirname(unitFile), { recursive: true });
+			await fs.writeFile(unitFile, source);
+			await fs.writeFile(projectFile, "source=./src\r\n");
+			await vscode.commands.executeCommand("es4a.internal.addProject", projectFile);
+			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(unitFile)));
+			await vscode.window.showTextDocument(document, { preview: false });
+			const position = document.positionAt(document.getText().indexOf("类型名 = 类型名"));
+			const references = await vscode.commands.executeCommand<vscode.Location[]>("vscode.executeReferenceProvider", document.uri, position);
+			assert.equal(references.length, 3);
+			const edit = await vscode.commands.executeCommand<vscode.WorkspaceEdit>("vscode.executeDocumentRenameProvider", document.uri, position, "参数");
+			assert.ok(edit);
+			assert.equal(edit.get(document.uri).length, 3);
+			assert.ok(await vscode.workspace.applyEdit(edit));
+			const changed = source.replace("运行(类型名", "运行(参数").replace("类型名 = 类型名", "参数 = 参数");
 			assert.equal(document.getText(), getVisibleSimpleUnitUserCode(changed));
 			assert.equal(await fs.readFile(unitFile, "utf8"), source);
 			await vscode.commands.executeCommand("undo");
@@ -498,7 +532,7 @@ suite("项目关联重构", () => {
 
 	test("原生工作区文件夹改名同步引用并整体撤销", async function () {
 		this.timeout(30000);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-refactor-native-"));
 		const projectFile = path.join(directory, "project.properties");
 		const old = path.join(directory, "src", "old");
@@ -548,7 +582,7 @@ suite("项目关联重构", () => {
 		this.timeout(30000);
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		const previousUnitSync = configuration.inspect<boolean>("automaticSync.unit")?.globalValue;
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-refactor-"));
 		const projectFile = path.join(directory, "project.properties");
 		const oldFolder = path.join(directory, "src", "old");
@@ -991,7 +1025,7 @@ suite("项目关联重构", () => {
 		const panel = { active: true, visible: true, viewColumn: vscode.ViewColumn.One, webview, onDidChangeViewState: viewStates.event, onDidDispose: disposed.event } as unknown as vscode.WebviewPanel;
 		const sdk = await loadSdk(testSdkPath());
 		let planCalls = 0;
-		const provider = new SimpleDesignerProvider(codeDocuments, vscode.extensions.getExtension("es4a.es4a")!.extensionUri, {
+		const provider = new SimpleDesignerProvider(codeDocuments, vscode.extensions.getExtension(testExtensionId())!.extensionUri, {
 			getDocument: () => ({}), updateColumnOrder: async () => undefined, updateDisplayOption: async () => undefined, moveDocument: async () => undefined, deleteDocument: async () => undefined
 		}, undefined, async (_document, componentPath, name) => {
 			planCalls += 1;

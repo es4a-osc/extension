@@ -52,8 +52,9 @@ export class SimpleCodeDocumentRecovery {
 	private readonly restoreOperations = new Map<string, Promise<boolean>>();
 	private pendingWrite: Promise<void> = Promise.resolve();
 	private writeTimer: NodeJS.Timeout | undefined;
+	private lastWriteFailed = false;
 
-	constructor(private readonly workspaceState: vscode.Memento) {
+	constructor(private readonly workspaceState: vscode.Memento, private readonly reportError?: (error: unknown) => void) {
 		this.entries = normalizeEntries(
 			workspaceState.get<unknown>(RECOVERY_STATE_KEY)
 		);
@@ -115,7 +116,7 @@ export class SimpleCodeDocumentRecovery {
 
 	/** 在扩展宿主关闭前提交最后一次工作区状态写入。 */
 	async flush(): Promise<void> {
-		if (this.writeTimer !== undefined) {
+		if (this.writeTimer !== undefined || this.lastWriteFailed) {
 			clearTimeout(this.writeTimer);
 			this.writeTimer = undefined;
 			this.enqueueWrite();
@@ -171,9 +172,12 @@ export class SimpleCodeDocumentRecovery {
 		const snapshot = Object.keys(this.entries).length === 0
 			? undefined
 			: structuredClone(this.entries);
-		this.pendingWrite = this.pendingWrite.then(
-			() => this.workspaceState.update(RECOVERY_STATE_KEY, snapshot)
-		);
+		const write = (): Thenable<void> => this.workspaceState.update(RECOVERY_STATE_KEY, snapshot);
+		this.pendingWrite = this.pendingWrite.then(write, write);
+		// 保留失败供 flush 报告，但不能使下一次快照沿用失败的 Promise 而跳过写入。
+		void this.pendingWrite.then(() => { this.lastWriteFailed = false; }, (error: unknown) => {
+			this.lastWriteFailed = true;
+			this.reportError?.(error);
+		});
 	}
 }
-

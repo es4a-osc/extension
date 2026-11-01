@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-8
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -28,7 +28,7 @@ async function waitForSelectionEdit(predicate: () => boolean, label: string): Pr
 suite("属性输入与画布选择", () => {
 	test("点击画布和先失焦两种顺序均保存输入，连续选择保留最终目标且不重复写入", async function () {
 		this.timeout(40000);
-		const extension = vscode.extensions.getExtension("es4a.es4a");
+		const extension = vscode.extensions.getExtension(testExtensionId());
 		assert.ok(extension);
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-property-selection-"));
 		const sourceFile = path.join(directory, "SelectionWindow.simple");

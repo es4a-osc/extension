@@ -479,6 +479,11 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		await this.preferenceState.deleteDocument(sourceUri.fsPath);
 	}
 
+	/** 工程设置更新后，所有设计器重读同一份项目偏好。 */
+	refreshAll(): void {
+		for (const state of this.panels) this.render(state);
+	}
+
 	/** SDK 更新后重新生成候选组件和属性编辑器。 */
 	updateSdk(sdk: Sdk | undefined): void {
 		this.sdk = sdk;
@@ -584,6 +589,13 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 			return;
 		}
 		if (parsedMessage.type === "focus") { this.focusEmitter.fire(); return; }
+		// 原生撤销回调也进入文档队列，不能在队列内等待该回调而形成自锁。
+		if (parsedMessage.type === "navigateDocumentHistory") {
+			void vscode.commands.executeCommand(parsedMessage.direction).then(undefined, (error: unknown) => {
+				void vscode.window.showErrorMessage(`设计器历史操作失败：${String(error)}`);
+			});
+			return;
+		}
 		if (parsedMessage.type === "selectNode") {
 			/* 先失焦的写入可能已经重绘：纯选择按当前组件身份定位；携带编辑仍严格校验版本。 */
 			if (parsedMessage.renderVersion > state.renderVersion
@@ -1002,13 +1014,13 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 		this.documentChangeEmitter.fire({
 			document: state.document,
 			label,
-			redo: () => restoreVersion(
+			redo: () => this.enqueueDocumentOperation(state.document, () => restoreVersion(
 				currentPropertyDocument,
 				updatedPropertyDocument,
 				nextSelection,
 				renamedComponent
-			),
-			undo: () => restoreVersion(
+			)),
+			undo: () => this.enqueueDocumentOperation(state.document, () => restoreVersion(
 				updatedPropertyDocument,
 				currentPropertyDocument,
 				previousSelection,
@@ -1016,7 +1028,7 @@ export class SimpleDesignerProvider implements vscode.CustomEditorProvider<Simpl
 					? undefined
 					: { from: renamedComponent.to, to: renamedComponent.from },
 				true
-			)
+			))
 		});
 		this.notifyPropertyDocumentChanged(state.document);
 	}

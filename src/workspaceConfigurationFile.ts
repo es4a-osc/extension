@@ -21,6 +21,21 @@ function formattingOptions(source: string): FormattingOptions {
 	};
 }
 
+/** 读取磁盘上的实际配置，避免 VS Code 延迟通知把刚写入的项目列表回滚为旧缓存。 */
+export function readWorkspaceConfigurationJsonc(source: string, propertyPath: JSONPath): unknown {
+	const errors: ParseError[] = [];
+	let value: unknown = parse(source.replace(/^\uFEFF/u, ""), errors, { allowTrailingComma: true, disallowComments: false, allowEmptyContent: true });
+	if (value === undefined && errors.length === 0) return undefined;
+	if (errors.length > 0 || typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("工作区配置文件不是有效的 JSONC 对象。");
+	}
+	for (const property of propertyPath) {
+		if (typeof value !== "object" || value === null) return undefined;
+		value = (value as Record<string | number, unknown>)[property];
+	}
+	return value;
+}
+
 /**
  * 更新 JSONC 工作区文件中的一个值。
  *
@@ -32,15 +47,18 @@ export function updateWorkspaceConfigurationJsonc(
 	value: unknown
 ): string {
 	const options = formattingOptions(source);
-	const content = source.trim().length === 0 ? `{${options.eol}}${options.eol}` : source;
+	const byteOrderMark = source.startsWith("\uFEFF") ? "\uFEFF" : "";
+	const text = source.slice(byteOrderMark.length);
+	const content = text.trim().length === 0 ? `{${options.eol}}${options.eol}` : text;
 	const errors: ParseError[] = [];
 	const parsed = parse(content, errors, {
 		allowTrailingComma: true,
-		disallowComments: false
+		disallowComments: false,
+		allowEmptyContent: true
 	});
-	if (errors.length > 0 || typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+	if (errors.length > 0 || parsed !== undefined && (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))) {
 		throw new Error("工作区配置文件不是有效的 JSONC 对象，已拒绝写入 ES4A 设置。");
 	}
 
-	return applyEdits(content, modify(content, propertyPath, value, { formattingOptions: options }));
+	return byteOrderMark + applyEdits(content, modify(content, propertyPath, value, { formattingOptions: options }));
 }

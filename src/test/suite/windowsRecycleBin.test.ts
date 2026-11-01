@@ -3,6 +3,8 @@
 xhwsd@qq.com 2026-10-9
 */
 
+import { testExtensionId } from "../testFixtures";
+
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -15,7 +17,7 @@ suite("项目树文件夹静默回收", () => {
 	test("回收资源子目录后保留项目和同级文件", async function () {
 		if (process.platform !== "win32") this.skip();
 		this.timeout(30000);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-recycle-folder-"));
 		const projectFile = path.join(directory, "project.properties");
 		const folder = path.join(directory, "res", "演示目录");

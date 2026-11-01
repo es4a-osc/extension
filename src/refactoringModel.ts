@@ -3,9 +3,9 @@
 xhwsd@qq.com 2026-10-10
 */
 
-import { createSimpleSourceAnalysis, resolveSimpleBinding, resolveSimpleQualifier, type SimpleSourceAnalysis } from "./completionModel";
+import { createSimpleSourceAnalysis, isSimpleResourceRoot, lookupSimpleBinding, resolveSimpleBinding, type SimpleSourceAnalysis } from "./completionModel";
 import { findSimpleDefinition, type SimpleDefinitionTarget } from "./definitionModel";
-import { buildCompilerTokenRules } from "./compilerTokens";
+import { buildLanguageTokenRules } from "./compilerTokens";
 import {
 	collectPropertyXmlElements, findPropertyXmlElementPath,
 	getPropertyXmlAttribute, getPropertyXmlChildren, writePropertyXmlValue,
@@ -14,11 +14,12 @@ import {
 import { getEffectiveMembers, type LibraryManifest, type Sdk } from "./sdk";
 import { parseSimpleStringLiteral, serializeSimpleStringLiteral } from "./simpleStringLiteral";
 import { filePathKey, simpleQualifiedName } from "./simpleProjectPaths";
-import { maskSimpleIgnoredText } from "./simpleSourceLexical";
+import { isSimpleIdentifier, scanSimpleSource, simpleSourceStatements, type SimpleSourceToken } from "./simpleSourceLexical";
 import {
 	buildSemanticDefinitionIndex, isSimpleAliasName, resolveSimpleDefinitionName, parseSimpleUnitSymbolsFromModel, type SimpleProjectSemanticContext, type SimpleUnitSymbol
 } from "./simpleUnitSymbols";
 import type { SimpleProjectResourceIndex } from "./simpleResourceSymbols";
+import { isSimpleEventTarget } from "./simpleSourceSyntax";
 
 export interface RefactoringUnit {
 	readonly filePath: string;
@@ -52,8 +53,8 @@ export interface SimpleUnitPathChange {
 
 /** 一次扫描建立偏移，字符串、注释和点链中的词分别保留原始位置。 */
 export function simpleIdentifierSpans(source: string): readonly SimpleReferenceSpan[] {
-	return [...maskSimpleIgnoredText(source).matchAll(/(?<![\p{L}\p{N}_])[\p{L}_][\p{L}\p{N}_]*/gu)]
-		.map((match) => ({ start: match.index, end: match.index + match[0].length, name: match[0] }));
+	return scanSimpleSource(source).filter((token) => token.kind === "word" && isSimpleIdentifier(token.text))
+		.map((token) => ({ start: token.start, end: token.end, name: token.text }));
 }
 
 export function applySimpleCodeChanges(source: string, edits: readonly SimpleCodeChange[]): string {
@@ -103,19 +104,25 @@ interface UnitReference extends SimpleReferenceSpan {
 /** 解析点链的最长单元前缀；局部变量和成员遮蔽优先于同名类型。 */
 function unitReferences(unit: RefactoringUnit, symbols: readonly SimpleUnitSymbol[], context: SimpleProjectSemanticContext, sdk?: Sdk, preparedAnalysis?: SimpleSourceAnalysis): readonly UnitReference[] {
 	const result: UnitReference[] = [];
-	const masked = maskSimpleIgnoredText(unit.userCode);
 	const analysis = preparedAnalysis ?? createSimpleSourceAnalysis(unit.userCode, sdk, context);
 	const definitions = analysis.definitions;
-	const chainPattern = /(?<![\p{L}\p{N}_])[\p{L}_][\p{L}\p{N}_]*(?:[ \t]*\.[ \t]*[\p{L}_][\p{L}\p{N}_]*)*/gu;
-	for (const match of masked.matchAll(chainPattern)) {
-		const parts = simpleIdentifierSpans(match[0]);
+	const tokens = analysis.syntax.tokens.filter((token) => token.kind !== "comment" && token.kind !== "continuation");
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index]!;
+		if (token.kind !== "word" || !isSimpleIdentifier(token.text) || tokens[index - 1]?.text === ".") continue;
+		const parts = [{ start: 0, end: token.end - token.start, name: token.text }];
+		let next = index;
+		while (tokens[next + 1]?.text === "." && tokens[next + 2]?.kind === "word") {
+			const part = tokens[next + 2]!;
+			parts.push({ start: part.start - token.start, end: part.end - token.start, name: part.text });
+			next += 2;
+		}
+		index = next;
 		const first = parts[0]!;
-		const start = match.index;
-		const lineStart = masked.lastIndexOf("\n", start - 1) + 1;
-		const prefix = masked.slice(lineStart, start);
-		/* 声明名称及别名左侧不是类型引用。类型注解不受同名变量遮蔽。 */
-		if (/^[ \t]*(?:(?:静态|私有|公开)[ \t]+)*(?:变量|常量|函数|过程|属性|别名)[ \t]*$/u.test(prefix)) continue;
-		const typePosition = /\b为[ \t]*$/u.test(prefix) || /(?:^|[ \t])为[ \t]*$/u.test(prefix) || /别名[ \t]+[\p{L}_][\p{L}\p{N}_]*[ \t]*=[ \t]*$/u.test(prefix);
+		const start = token.start;
+		const typePosition = analysis.syntax.roleAt(start) === "type";
+		if (analysis.syntax.declarationAt(start) !== undefined) continue;
+		if (isSimpleEventTarget(analysis.syntax, start)) continue;
 		if (!typePosition && resolveSimpleBinding(unit.userCode, start, first.name, context, analysis) !== undefined) continue;
 		const alias = isSimpleAliasName(first.name, definitions) ? first.name : undefined;
 		for (let length = parts.length; length >= 1; length -= 1) {
@@ -173,7 +180,7 @@ function relationChanges(document: SimplePropertyXmlDocument, moves: ReadonlyMap
 }
 
 /** 以同一次旧语义分析修正入站引用及移动单元自己的出站引用。 */
-export function planSimpleUnitPaths(units: readonly RefactoringUnit[], paths: readonly SimpleUnitPathChange[], sdk?: Sdk): readonly SimpleUnitChange[] {
+export function planSimpleUnitPaths(units: readonly RefactoringUnit[], paths: readonly SimpleUnitPathChange[], sdk?: Sdk, onlyUnit?: RefactoringUnit): readonly SimpleUnitChange[] {
 	const symbols = units.map((unit) => parseSimpleUnitSymbolsFromModel(unit.userCode, unit.property, unit.filePath, unit.sourceRoot));
 	const movedFiles = new Map(paths.map((value) => [filePathKey(value.oldFile), value]));
 	const moves = new Map(symbols.flatMap((symbol) => {
@@ -186,41 +193,56 @@ export function planSimpleUnitPaths(units: readonly RefactoringUnit[], paths: re
 		return moved === undefined ? symbol : parseSimpleUnitSymbolsFromModel(units[index]!.userCode, units[index]!.property, moved.newFile, moved.sourceRoot);
 	});
 	if (new Set(nextNames).size !== nextNames.length) throw new Error("目标单元限定名与项目内已有单元冲突。");
-	return units.flatMap((unit) => {
+	return units.filter((unit) => onlyUnit === undefined || unit === onlyUnit).flatMap((unit) => {
 		const context = refactoringContext(unit, units, undefined, symbols);
 		const ownMove = movedFiles.get(filePathKey(unit.filePath));
 		const nextUnit = ownMove === undefined ? unit : { ...unit, filePath: ownMove.newFile, sourceRoot: ownMove.sourceRoot };
 		const nextDefinitions = buildSemanticDefinitionIndex(sdk, refactoringContext(nextUnit, units, undefined, nextSymbols));
 		const analysis = createSimpleSourceAnalysis(unit.userCode, sdk, context);
 		const boundNames = new Set(simpleIdentifierSpans(unit.userCode).filter((span) => resolveSimpleBinding(unit.userCode, span.start, span.name, context, analysis) !== undefined).map((span) => span.name));
+		const eventOwners = new Set(analysis.syntax.declarations.filter((declaration) => declaration.kind === "event").map((declaration) => declaration.ownerToken?.start));
 		const edits: SimpleCodeChange[] = [];
 		const aliases = new Map<string, string>();
 		for (const reference of unitReferences(unit, symbols, context, sdk, analysis)) {
 			const nextTarget = moves.get(reference.target.qualifiedName)?.name ?? reference.target.qualifiedName;
 			if (reference.alias !== undefined) continue; // 别名右侧作为独立完整引用更新，使用处保持别名。
 			if (reference.full) {
-				if (nextTarget !== reference.target.qualifiedName) edits.push({ ...reference, replacement: nextTarget });
+				if (nextTarget !== reference.target.qualifiedName) {
+					if (!nextTarget.includes(".") && analysis.syntax.roleAt(reference.start) !== "type"
+						&& !eventOwners.has(reference.start) && analysis.syntax.resolve(nextTarget, reference.start) !== undefined) {
+						throw new Error(`新单元名称“${nextTarget}”被现有代码绑定遮蔽，且没有可用于区分的限定名。`);
+					}
+					edits.push({ ...reference, replacement: nextTarget });
+				}
 				continue;
 			}
 			/* 自己的短事件拥有者不因移动改变，改文件名时更新自身短名。 */
 			if (!reference.name.includes(".") && filePathKey(reference.target.filePath) === filePathKey(unit.filePath)) {
 				const nextShort = nextTarget.slice(nextTarget.lastIndexOf(".") + 1);
-				if (nextShort !== reference.name) edits.push({ ...reference, replacement: nextShort });
+				if (nextShort !== reference.name) {
+					const valueShadowed = analysis.syntax.roleAt(reference.start) !== "type"
+						&& analysis.syntax.resolve(nextShort, reference.start) !== undefined;
+					const shortVisible = resolveSimpleDefinitionName(nextShort, nextDefinitions)?.definition.name === nextTarget;
+					if (valueShadowed && nextShort === nextTarget && !eventOwners.has(reference.start)) {
+						throw new Error(`新单元名称“${nextShort}”被现有代码绑定遮蔽，且没有可用于区分的限定名。`);
+					}
+					edits.push({ ...reference, replacement: eventOwners.has(reference.start) || shortVisible && !valueShadowed ? nextShort : nextTarget });
+				}
 				continue;
 			}
 			const previousShort = reference.target.qualifiedName.slice(reference.target.qualifiedName.lastIndexOf(".") + 1);
 			const nextShort = nextTarget.slice(nextTarget.lastIndexOf(".") + 1);
 			// 改单元名称直接更新短名；只有命名空间移动造成的不可见才需要保留旧名的别名。
 			if (!reference.name.includes(".") && previousShort !== nextShort) {
-				const shortVisible = resolveSimpleDefinitionName(nextShort, nextDefinitions)?.definition.name === nextTarget && resolveSimpleBinding(unit.userCode, reference.start, nextShort, context, analysis) === undefined;
+				const shortVisible = resolveSimpleDefinitionName(nextShort, nextDefinitions)?.definition.name === nextTarget && lookupSimpleBinding(unit.userCode, reference.start, nextShort, context, analysis) === undefined;
 				edits.push({ ...reference, replacement: shortVisible ? nextShort : nextTarget });
 				continue;
 			}
-			const nextResolved = resolveSimpleDefinitionName(reference.name.replace(/[ \t]/gu, ""), nextDefinitions);
+			const nextResolved = resolveSimpleDefinitionName(scanSimpleSource(reference.name).filter((token) => token.kind !== "continuation").map((token) => token.text).join(""), nextDefinitions);
 			if (nextResolved?.definition.name === nextTarget) continue;
 			/* 相对包路径失效时只更新单元前缀，不能为点号名称创建别名。 */
 			if (reference.name.includes(".")) {
-				const spelling = reference.name.replace(/[ \t]/gu, "");
+				const spelling = scanSimpleSource(reference.name).filter((token) => token.kind !== "continuation").map((token) => token.text).join("");
 				const omitted = reference.target.qualifiedName.slice(0, -spelling.length);
 				const relative = nextTarget.startsWith(omitted) ? nextTarget.slice(omitted.length) : nextTarget;
 				const replacement = resolveSimpleDefinitionName(relative, nextDefinitions)?.definition.name === nextTarget ? relative : nextTarget;
@@ -369,7 +391,7 @@ function assertRenameBindings(units: readonly RefactoringUnit[], plans: readonly
 
 /** 变量、参数、字段、方法和别名使用真实定义身份改名，不改同名遮蔽声明。 */
 export function planSimpleSymbolRename(units: readonly RefactoringUnit[], origin: RefactoringUnit, offset: number, newName: string, sdk: Sdk | undefined): readonly SimpleUnitChange[] {
-	if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(newName) || buildCompilerTokenRules(sdk).some((rule) => rule.text === newName)) throw new Error("名称必须是有效的 Simple 标识符，不能使用关键字或 SDK 保留名称。");
+	if (!isSimpleIdentifier(newName) || buildLanguageTokenRules().some((rule) => rule.text === newName)) throw new Error("名称必须是有效的 Simple 标识符，不能使用关键字或 SDK 保留名称。");
 	const references = findSimpleProjectReferences(units, origin, offset, sdk);
 	if (references.length === 0) throw new Error("此处没有可重命名的项目符号。");
 	const target = findSimpleDefinition(origin.userCode, offset, sdk, refactoringContext(origin, units))!;
@@ -390,13 +412,13 @@ export function planSimpleSymbolRename(units: readonly RefactoringUnit[], origin
 		const context = refactoringContext(unit, units, undefined, symbols);
 		const analysis = edits.length === 0 ? undefined : createSimpleSourceAnalysis(unit.userCode, sdk, context);
 		for (const edit of edits) {
-			if (!/\.[ \t]*$/u.test(unit.userCode.slice(0, edit.start)) && resolveSimpleBinding(unit.userCode, edit.start, newName, context, analysis) !== undefined) throw new Error(`名称“${newName}”会与现有绑定冲突。`);
+			if (!/\.[ \t]*$/u.test(unit.userCode.slice(0, edit.start)) && lookupSimpleBinding(unit.userCode, edit.start, newName, context, analysis) !== undefined) throw new Error(`名称“${newName}”会与现有绑定冲突。`);
 		}
 		/* 后续局部声明同样参与冲突检查，不能只检查原名称被使用的位置。 */
 		if (target.symbolKind === "binding" && filePathKey(unit.filePath) === filePathKey(target.filePath!)) {
 			for (const span of simpleIdentifierSpans(unit.userCode).filter((value) => value.name === newName)) {
-				const existing = resolveSimpleBinding(unit.userCode, span.end, newName, context, analysis);
-				const original = resolveSimpleBinding(unit.userCode, span.end, target.name, context, analysis);
+				const existing = lookupSimpleBinding(unit.userCode, span.end, newName, context, analysis);
+				const original = lookupSimpleBinding(unit.userCode, span.end, target.name, context, analysis);
 				if (existing?.declarationStart === span.start && original?.declarationStart === target.targetOffset) throw new Error(`同一作用域已经声明“${newName}”。`);
 			}
 		}
@@ -413,25 +435,44 @@ export interface SimpleAssetReference extends SimpleReferenceSpan {
 	readonly propertyPath?: string;
 }
 
+/** 括号可以包围完整字符串；组合表达式中的字符串片段不是完整资产路径。 */
+function assetLiteral(tokens: readonly SimpleSourceToken[], first = 0, last = tokens.length - 1): SimpleSourceToken | undefined {
+	while (first < last && tokens[first]?.text === "(" && tokens[last]?.text === ")") { first++; last--; }
+	return first === last && tokens[first]?.kind === "string" ? tokens[first] : undefined;
+}
+
 export function findSimpleAssetReferences(unit: RefactoringUnit, context: SimpleProjectSemanticContext, sdk: Sdk | undefined, analysis?: SimpleSourceAnalysis): readonly SimpleAssetReference[] {
 	const definitions = analysis?.definitions ?? buildSemanticDefinitionIndex(sdk, context);
-	const masked = analysis?.sanitized ?? maskSimpleIgnoredText(unit.userCode);
 	const result: SimpleAssetReference[] = [];
 	const assetProperties = (component: string): ReadonlySet<string> => {
 		const reference = definitions.get(component);
 		return new Set(reference === undefined ? [] : getEffectiveMembers(reference, "properties", definitions).filter((value) => value.member.editor === "simple.asset").map((value) => value.member.name));
 	};
-	for (const match of unit.userCode.matchAll(/([\p{L}_][\p{L}\p{N}_]*(?:[ \t]*\.[ \t]*[\p{L}_][\p{L}\p{N}_]*)*)[ \t]*=[ \t]*("(?:\\[^\r\n]|[^"\\\r\n])*")/gu)) {
-		if (masked[match.index] === " ") continue;
-		const names = match[1]!.split(/[ \t]*\.[ \t]*/u);
-		const member = names.pop()!;
-		const reference = names.length > 0 ? resolveSimpleQualifier(unit.userCode, match.index, names.join("."), sdk, context, analysis)?.reference : definitions.get(context.currentUnit?.qualifiedName ?? "");
-		if (names.length === 0 && resolveSimpleBinding(unit.userCode, match.index, member, context, analysis) !== undefined) continue;
-		if (reference === undefined || !assetProperties(reference.definition.name).has(member)) continue;
-		const value = parseSimpleStringLiteral(match[2]!);
-		if (value === undefined) continue;
-		const start = match.index + match[0].lastIndexOf(match[2]!);
-		result.push({ start, end: start + match[2]!.length, name: match[2]!, value });
+	const prepared = analysis ?? createSimpleSourceAnalysis(unit.userCode, sdk, context);
+	for (const tokens of simpleSourceStatements(prepared.syntax.tokens)) {
+		for (let index = 1; index + 1 < tokens.length; index++) {
+			const equals = tokens[index]!;
+			const member = tokens[index - 1]!;
+			if (equals.text !== "=" || member.kind !== "word" || prepared.syntax.roleAt(member.start) === "type") continue;
+			// 只接受完整右值为字符串的引用；拼接、调用等表达式中的片段不能当作资产路径。
+			let last = tokens.length - 1;
+			if (tokens[0]?.text === "如果" || tokens[0]?.text === "否则如果") {
+				let depth = 0;
+				for (let cursor = index + 1; cursor < tokens.length; cursor++) {
+					if (tokens[cursor]?.text === "(") depth++;
+					else if (tokens[cursor]?.text === ")") depth--;
+					else if (depth === 0 && tokens[cursor]?.text === "否则" && tokens[cursor - 1]?.text !== ".") { last = cursor - 1; break; }
+				}
+			}
+			const literal = assetLiteral(tokens, index + 1, last);
+			if (literal === undefined) continue;
+			const qualified = tokens[index - 2]?.text === ".";
+			const reference = qualified ? prepared.memberAt(member.start)?.receiver?.reference : definitions.get(context.currentUnit?.qualifiedName ?? "");
+			if (!qualified && resolveSimpleBinding(unit.userCode, member.start, member.text, context, prepared) !== undefined) continue;
+			if (reference === undefined || !assetProperties(reference.definition.name).has(member.text)) continue;
+			const value = parseSimpleStringLiteral(literal.text);
+			if (value !== undefined) result.push({ start: literal.start, end: literal.end, name: literal.text, value });
+		}
 	}
 	const document = unit.property.document;
 	if (document !== undefined) {
@@ -440,9 +481,10 @@ export function findSimpleAssetReferences(unit: RefactoringUnit, context: Simple
 			for (const assignment of getPropertyXmlChildren(definition, "赋值")) {
 				if (!names.has(getPropertyXmlAttribute(assignment, "属性") ?? "")) continue;
 				const name = getPropertyXmlAttribute(assignment, "值") ?? "";
-				const value = parseSimpleStringLiteral(name);
+				const literal = assetLiteral(scanSimpleSource(name));
+				const value = literal === undefined ? undefined : parseSimpleStringLiteral(literal.text);
 				const elementPath = findPropertyXmlElementPath(document, assignment);
-				if (value !== undefined && elementPath !== undefined) result.push({ start: 0, end: name.length, name, value, propertyPath: elementPath + "/@值" });
+				if (value !== undefined && literal !== undefined && elementPath !== undefined) result.push({ start: literal.start, end: literal.end, name, value, propertyPath: elementPath + "/@值" });
 			}
 		}
 	}
@@ -450,14 +492,13 @@ export function findSimpleAssetReferences(unit: RefactoringUnit, context: Simple
 }
 
 /** R 必须是完整的首段名称，不能把中文标识符后缀或对象成员误认成资源入口。 */
-function resourceMembers(source: string): readonly RegExpExecArray[] {
-	const masked = maskSimpleIgnoredText(source);
-	return [...masked.matchAll(/(?<![\p{L}\p{N}_])R[ \t]*\.[ \t]*([\p{L}_][\p{L}\p{N}_]*)/gu)]
-		.filter((match) => {
-			let previous = match.index - 1;
-			while (previous >= 0 && /[ \t]/u.test(masked[previous]!)) previous -= 1;
-			return masked[previous] !== ".";
-		});
+function resourceMembers(source: string): readonly { readonly index: number; readonly member: { readonly start: number; readonly end: number; readonly text: string } }[] {
+	const tokens = scanSimpleSource(source).filter((token) => token.kind !== "comment" && token.kind !== "continuation");
+	return tokens.flatMap((token, index) => {
+		const member = tokens[index + 2];
+		return token.kind === "word" && token.text === "R" && tokens[index - 1]?.text !== "." && tokens[index + 1]?.text === "." && member?.kind === "word"
+			? [{ index: token.start, member }] : [];
+	});
 }
 
 /** 资源只匹配 R 的成员，不修改同名变量或字符串。 */
@@ -470,9 +511,9 @@ export function planSimpleResourceReferences(units: readonly RefactoringUnit[], 
 	};
 	const replaceResourceExpression = (source: string): string => {
 		const changes = resourceMembers(source).flatMap((match) => {
-			const replacement = renames.get(match[1]!);
-			const start = match.index + match[0].lastIndexOf(match[1]!);
-			return replacement === undefined ? [] : [{ start, end: start + match[1]!.length, name: match[1]!, replacement }];
+			const replacement = renames.get(match.member.text);
+			const start = match.member.start;
+			return replacement === undefined ? [] : [{ start, end: match.member.end, name: match.member.text, replacement }];
 		});
 		return applySimpleCodeChanges(source, changes);
 	};
@@ -481,10 +522,10 @@ export function planSimpleResourceReferences(units: readonly RefactoringUnit[], 
 		const analysis = createSimpleSourceAnalysis(unit.userCode, sdk, context);
 		const edits: SimpleCodeChange[] = [];
 		for (const match of resourceMembers(unit.userCode)) {
-			const replacement = renames.get(match[1]!);
-			if (replacement === undefined || resolveSimpleBinding(unit.userCode, match.index, "R", context, analysis) !== undefined) continue;
-			const start = match.index + match[0].lastIndexOf(match[1]!);
-			edits.push({ start, end: start + match[1]!.length, name: match[1]!, replacement });
+			const replacement = renames.get(match.member.text);
+			if (replacement === undefined || !isSimpleResourceRoot(analysis, match.index, context)) continue;
+			const start = match.member.start;
+			edits.push({ start, end: match.member.end, name: match.member.text, replacement });
 		}
 		let propertyDocument = unit.property.document;
 		for (const reference of findSimpleAssetReferences(unit, context, sdk, analysis)) {
@@ -492,10 +533,12 @@ export function planSimpleResourceReferences(units: readonly RefactoringUnit[], 
 			if (next === reference.value) continue;
 			const replacement = serializeSimpleStringLiteral(next);
 			if (reference.propertyPath === undefined) edits.push({ ...reference, replacement });
-			else if (propertyDocument !== undefined) propertyDocument = writePropertyXmlValue(propertyDocument, reference.propertyPath, replacement);
+			else if (propertyDocument !== undefined) propertyDocument = writePropertyXmlValue(propertyDocument, reference.propertyPath,
+				reference.name.slice(0, reference.start) + replacement + reference.name.slice(reference.end));
 		}
 		if (propertyDocument !== undefined) {
 			for (const assignment of collectPropertyXmlElements(unit.property.document!.root, "赋值")) {
+				if (!isSimpleResourceRoot(analysis, 0, context)) break;
 				const value = getPropertyXmlAttribute(assignment, "值") ?? "";
 				const next = replaceResourceExpression(value);
 				const elementPath = findPropertyXmlElementPath(unit.property.document!, assignment);

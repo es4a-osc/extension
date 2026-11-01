@@ -7,7 +7,73 @@ import {
 	detectSimpleLineEnding,
 	findPropertySectionStart
 } from "./simpleUnitSource";
-import { stripSimpleLineComment } from "./simpleSourceLexical";
+import { scanSimpleSource, simpleSourceStatements, stripSimpleLineComment, type SimpleSourceToken } from "./simpleSourceLexical";
+
+/** 属性预览的只读语法位置，不承载或复制 XML 业务状态。 */
+export interface SimplePropertyHighlightSpan {
+	readonly text: string;
+	readonly start: number;
+	readonly end: number;
+	readonly role: "type" | "property" | "variable";
+}
+
+/** 单次扫描产生的着色边界输入；后续语法和输出阶段直接复用令牌。 */
+export interface SimpleUnitHighlightingInput {
+	readonly userCode: string;
+	readonly tokens: readonly SimpleSourceToken[];
+	readonly userTokens: readonly SimpleSourceToken[];
+	readonly properties: readonly SimplePropertyHighlightSpan[];
+}
+
+/**
+ * 在原属性代码边界提供着色输入，业务层只消费位置和用户代码。
+ *
+ * 此映射不重新解析 XML，也不参与属性读取或修改；完整预览显示的原文由既有
+ * 文档边界提供。属性名称和类型位置按语法识别，外部常量仍由 SDK 符号补充。
+ */
+export function simpleUnitHighlightingInput(source: string): SimpleUnitHighlightingInput {
+	const start = findPropertySectionStart(source);
+	const tokens = scanSimpleSource(source);
+	const properties: SimplePropertyHighlightSpan[] = [];
+	const addTypeNames = (parts: readonly SimpleSourceToken[]): void => {
+		for (let index = 0; index < parts.length; index += 1) {
+			const first = parts[index]!;
+			if (first.kind !== "word") {
+				continue;
+			}
+			let last = first;
+			while (parts[index + 1]?.text === "." && parts[index + 2]?.kind === "word" && parts[index + 2]!.line === first.line) {
+				index += 2;
+				last = parts[index]!;
+			}
+			properties.push({ text: source.slice(first.start, last.end), start: first.start, end: last.end, role: "type" });
+		}
+	};
+	for (const statement of simpleSourceStatements(tokens.filter((token) => token.start >= start))) {
+		const first = statement[0]!;
+		if (first.text === "$定义") {
+			const name = statement[1];
+			if (name?.kind === "word") {
+				properties.push({ text: name.text, start: name.start, end: name.end, role: "variable" });
+			}
+			const as = statement.findIndex((token) => token.text === "$为");
+			if (as >= 0) {
+				addTypeNames(statement.slice(as + 1));
+			}
+		} else if (first.kind === "word" && !first.text.startsWith("$")) {
+			const equal = statement.findIndex((token) => token.text === "=");
+			const name = statement[equal - 1];
+			if (equal < 0 || name?.kind !== "word") {
+				continue;
+			}
+			properties.push({ text: name.text, start: name.start, end: name.end, role: "property" });
+			if (first.text === "基础对象" || first.text === "实现接口") {
+				addTypeNames(statement.slice(equal + 1));
+			}
+		}
+	}
+	return { userCode: source.slice(0, start), tokens, userTokens: start === source.length ? tokens : tokens.filter((token) => token.start < start), properties };
+}
 
 /** 当前编译器支持的 Simple 程序单元类型。 */
 export type SimpleUnitType = "窗口" | "对象" | "接口" | "服务";
@@ -952,40 +1018,48 @@ export function collectPropertyXmlElements(
 	visit(root);
 	return elements;
 }
-/** 把通用 XML 节点写入规范化 XML 文本。 */
-function serializePropertyXmlNode(node: PropertyXmlNode, depth: number): string[] {
-	const indentation = "\t".repeat(depth);
-	if (node.nodeType === "text") {
-		return node.value.length === 0 ? [""] : [indentation + escapeXml(node.value)];
-	}
-
-	const attributes = Object.entries(node.attributes)
-		.map(([name, value]) => " " + name + "=\"" + escapeXml(value) + "\"")
-		.join("");
-	if (node.children.length === 0 && node.name !== "定义") {
-		return [indentation + "<" + node.name + attributes + " />"];
-	}
-	return [
-		indentation + "<" + node.name + attributes + ">",
-		...node.children.flatMap((child) => serializePropertyXmlNode(child, depth + 1)),
-		indentation + "</" + node.name + ">"
-	];
+/** 一次遍历生成规范 XML 和可选的位置映射，不按祖先层级重复扫描已生成文本。 */
+function renderPropertyXml(root: PropertyXmlElement, locations?: Map<PropertyXmlElement, number>): string {
+	const lines: string[] = [];
+	let nextLine = 0;
+	const emit = (text: string): void => {
+		lines.push(text);
+		nextLine += 1 + (locations === undefined ? 0 : text.match(/\r\n|\r|\n/gu)?.length ?? 0);
+	};
+	const visit = (node: PropertyXmlNode, depth: number): void => {
+		const indentation = "\t".repeat(depth);
+		if (node.nodeType === "text") {
+			emit(node.value.length === 0 ? "" : indentation + escapeXml(node.value));
+			return;
+		}
+		locations?.set(node, nextLine);
+		const attributes = Object.entries(node.attributes).map(([name, value]) => " " + name + "=\"" + escapeXml(value) + "\"").join("");
+		if (node.children.length === 0 && node.name !== "定义") {
+			emit(indentation + "<" + node.name + attributes + " />");
+			return;
+		}
+		emit(indentation + "<" + node.name + attributes + ">");
+		for (const child of node.children) visit(child, depth + 1);
+		emit(indentation + "</" + node.name + ">");
+	};
+	visit(root, 0);
+	return [...lines, ""].join("\r\n");
 }
 
 /** 将一个 XML 元素及其完整子树序列化为不含声明的规范 XML。 */
 export function serializePropertyXmlElement(element: PropertyXmlElement): string {
-	return [
-		...serializePropertyXmlNode(element, 0),
-		""
-	].join("\r\n");
+	return renderPropertyXml(element);
 }
 
 /** 将通用属性模型序列化为不含 XML 声明的规范 XML。 */
 export function serializePropertyXml(document: SimplePropertyXmlDocument): string {
-	return [
-		...serializePropertyXmlNode(document.root, 0),
-		""
-	].join("\r\n");
+	return renderPropertyXml(document.root);
+}
+
+/** 序列化当前 XML 树并同时记录节点在这次投影中的行号，不修改源模型或历史行号。 */
+export function serializePropertyXmlWithLocations(document: SimplePropertyXmlDocument): { readonly text: string; readonly elementLines: ReadonlyMap<PropertyXmlElement, number> } {
+	const elementLines = new Map<PropertyXmlElement, number>();
+	return { text: renderPropertyXml(document.root, elementLines), elementLines };
 }
 
 /** 把通用 XML 节点写回 Simple 属性代码。 */
@@ -1025,7 +1099,7 @@ function serializeSimplePropertyNode(
 				...node.children.flatMap(
 					(child) => serializeSimplePropertyNode(child, depth + 1, indentationUnit)
 				),
-				indentation + "$结束 $定义"
+				indentation + "$结束 $定义" + (node.attributes["结束注释"] === undefined ? "" : " '" + (node.attributes["结束注释"].length === 0 ? "" : " " + node.attributes["结束注释"]))
 			];
 		}
 		case "赋值": {
@@ -1078,7 +1152,7 @@ export function serializeSimplePropertySource(
 		...document.root.children.flatMap(
 			(node) => serializeSimplePropertyNode(node, 1, formatting.indentation)
 		),
-		"$结束 $属性",
+		"$结束 $属性" + (document.root.attributes["结束注释"] === undefined ? "" : " '" + (document.root.attributes["结束注释"].length === 0 ? "" : " " + document.root.attributes["结束注释"])),
 		""
 	].join(formatting.lineEnding);
 }
@@ -1168,6 +1242,7 @@ export function inspectSimplePropertyXml(source: string): SimplePropertyXmlParse
 			continue;
 		}
 		if (text === "$结束 $属性") {
+			if (comment !== undefined) root = clonePropertyXmlElement(root, { ...root.attributes, "结束注释": comment });
 			continue;
 		}
 
@@ -1205,6 +1280,11 @@ export function inspectSimplePropertyXml(source: string): SimplePropertyXmlParse
 
 		if (text === "$结束 $定义") {
 			const component = componentStack.pop();
+			if (component !== undefined && comment !== undefined) {
+				const parent = componentStack.at(-1) ?? root;
+				const index = parent.children.indexOf(component);
+				(parent.children as PropertyXmlNode[])[index] = clonePropertyXmlElement(component, { ...component.attributes, "结束注释": comment });
+			}
 			if (component === undefined) {
 				issues.push("第 " + line + " 行存在没有起始定义的结束标记。");
 				damaged = true;

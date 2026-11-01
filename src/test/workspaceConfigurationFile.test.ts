@@ -6,7 +6,13 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import { parse } from "jsonc-parser";
-import { updateWorkspaceConfigurationJsonc } from "../workspaceConfigurationFile";
+import { readWorkspaceConfigurationJsonc, updateWorkspaceConfigurationJsonc } from "../workspaceConfigurationFile";
+
+test("读取工程项目配置支持空文件、注释和嵌套设置，并拒绝损坏内容", () => {
+	for (const source of ["", "  \r\n", "// 尚未配置项目\n"]) assert.equal(readWorkspaceConfigurationJsonc(source, ["es4a.projects"]), undefined);
+	assert.deepEqual(readWorkspaceConfigurationJsonc('{"settings":{"es4a.projects":[{"path":"demo"}],},}', ["settings", "es4a.projects"]), [{ path: "demo" }]);
+	assert.throws(() => readWorkspaceConfigurationJsonc('{"settings":', ["settings"]), /有效的 JSONC/u);
+});
 
 test("单文件夹配置保留注释和无关设置", () => {
 	const source = [

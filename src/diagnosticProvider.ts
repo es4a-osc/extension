@@ -8,7 +8,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { analyzeSimpleReferencesAsync } from "./referenceDiagnostics";
 import { refactoringContext } from "./refactoringModel";
-import { serializePropertyXml, resolvePropertyXmlElement, getPropertyXmlAttribute } from "./propertyXml";
+import { serializePropertyXmlWithLocations, resolvePropertyXmlElement, getPropertyXmlAttribute } from "./propertyXml";
+import { createSimpleSourcePositionIndex } from "./simpleSourcePositions";
 import { toSimpleCodeUri, toSimpleSourceUri, type SimpleCodeFileSystemProvider } from "./simpleCodeFileSystem";
 import { toUnitXmlPreviewUri } from "./unitPreview";
 import { mostSpecificSourceRoot } from "./simpleProjectPaths";
@@ -97,21 +98,30 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 			const xmlUri = toUnitXmlPreviewUri(sourceUri);
 			entries.set(codeUri.toString(), { uri: codeUri, diagnostics: [] });
 			entries.set(xmlUri.toString(), { uri: xmlUri, diagnostics: [] });
+			const sourcePositionAt = createSimpleSourcePositionIndex(code);
 			const positionAt = (offset: number): vscode.Position => {
-				const before = code.slice(0, offset).split(/\r\n|\r|\n/u);
-				return new vscode.Position(before.length - 1, before[before.length - 1]!.length);
+				const { line, character } = sourcePositionAt(offset);
+				return new vscode.Position(line, character);
 			};
 			const issues = await analyzeSimpleReferencesAsync(code, this.getSdk(), context, property?.document, assets, cancelled);
 			if (issues === undefined) return false;
-			const xmlLines = property?.document === undefined ? [] : serializePropertyXml(property.document).split(/\r\n|\n/u);
+			const xml = property?.document === undefined ? undefined : serializePropertyXmlWithLocations(property.document);
+			const xmlLines = xml?.text.split(/\r\n|\n/u) ?? [];
+			let deadline = performance.now() + 8;
 			for (const issue of issues) {
+				if (performance.now() >= deadline) {
+					await new Promise<void>((resolve) => setTimeout(resolve, 0));
+					if (cancelled()) return false;
+					deadline = performance.now() + 8;
+				}
 				let uri = codeUri;
 				let range = new vscode.Range(positionAt(issue.start), positionAt(issue.end));
 				if (issue.propertyPath !== undefined && property?.document !== undefined) {
 					const element = resolvePropertyXmlElement(property.document, issue.propertyPath.slice(0, -"/@值".length));
-					const lineNumber = Number(element?.temporary.get("sourceLine")) - Number(property.document.root.temporary.get("sourceLine"));
+					const lineNumber = element === undefined ? undefined : xml?.elementLines.get(element);
+					if (lineNumber === undefined) continue;
 					const line = xmlLines[lineNumber];
-					if (line === undefined || lineNumber < 0) continue;
+					if (line === undefined) continue;
 					const valueStart = line.indexOf('值="') + 3;
 					if (valueStart < 3) continue;
 					uri = xmlUri;

@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-12
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -72,7 +72,7 @@ async function withProject(action: (value: {
 }
 
 suite("重构异步一致性", () => {
-	suiteSetup(async () => { await vscode.extensions.getExtension("es4a.es4a")!.activate(); });
+	suiteSetup(async () => { await vscode.extensions.getExtension(testExtensionId())!.activate(); });
 
 	for (const kind of ["成功", "路径冲突", "刷新失败", "路径及刷新都失败"] as const) test(`重构${kind}时，忙碌和完成事件覆盖实际语义刷新，错误不被后续刷新掩盖`, async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-refactor-refresh-"));

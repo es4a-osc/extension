@@ -12,6 +12,7 @@ AGENTS.md
 debug.log
 dist/**/*.map
 esbuild.js
+scripts/generateSyntax.js
 .vscode-test.js
 extension.code-workspace
 package-lock.json

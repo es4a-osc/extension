@@ -82,6 +82,7 @@ export class SimpleRenameProvider implements vscode.RenameProvider, vscode.Dispo
 				for (const span of change.edits) edit.replace(code.uri, new vscode.Range(code.positionAt(span.start), code.positionAt(span.end)), span.replacement);
 			}
 			for (const unit of value.units.filter((unit) => unit === value.current || changes.some((change) => change.unit === unit))) await unit.assertUnchanged();
+			for (const unit of value.units) unit.assertCurrent();
 			return token.isCancellationRequested || request !== this.request ? undefined : edit;
 		}
 		const changes = await this.refactoring.planComponentRename(value.units, value.owner, value.componentPath, newName);
@@ -99,6 +100,7 @@ export class SimpleRenameProvider implements vscode.RenameProvider, vscode.Dispo
 					const receipt = await this.documents.preparePropertyRefactor(vscode.Uri.file(change.unit.filePath), change.propertyDocument, change.userCode, false, { from: value.target.name, to: newName.trim() }, async () => {
 						if (this.refactoring.isBusy || request !== this.request) throw new Error("重命名计划已经过期，请重试。");
 						for (const unit of affected) await unit.assertUnchanged();
+						for (const unit of affected) unit.assertCurrent();
 					});
 					receipts.push(receipt);
 					edit.renameFile(receipt.before, receipt.after, { overwrite: false }, { label: "重构组件名称及 XML 锚点引用", needsConfirmation: false });
@@ -107,6 +109,7 @@ export class SimpleRenameProvider implements vscode.RenameProvider, vscode.Dispo
 			// XML 资源校验先执行，拒绝过期属性状态时不能先改到代码引用。
 			for (const code of codes) replaceChangedText(edit, code.document, code.userCode);
 			for (const unit of affected) await unit.assertUnchanged();
+			for (const unit of affected) unit.assertCurrent();
 			if (token.isCancellationRequested || request !== this.request) { for (const receipt of receipts) receipt.dispose(); return undefined; }
 			this.pending = receipts;
 			return edit;

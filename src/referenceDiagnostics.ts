@@ -3,13 +3,15 @@
 xhwsd@qq.com 2026-10-10
 */
 
-import { buildCompilerTokenRules } from "./compilerTokens";
-import { createSimpleSourceAnalysis, resolveSimpleBinding, resolveSimpleQualifier } from "./completionModel";
+import { buildLanguageTokenRules } from "./compilerTokens";
+import { createSimpleSourceAnalysis, isSimpleResourceRoot, resolveSimpleBinding, resolveSimpleQualifier } from "./completionModel";
 import { findSimpleDefinition } from "./definitionModel";
 import { resolveSimpleDefinitionName, type SimpleProjectSemanticContext } from "./simpleUnitSymbols";
 import { collectPropertyXmlElements, findPropertyXmlElementPath, getPropertyXmlAttribute, type SimplePropertyXmlDocument } from "./propertyXml";
 import { findSimpleAssetReferences, type RefactoringUnit } from "./refactoringModel";
 import type { Sdk } from "./sdk";
+import { isSimpleIdentifier, scanSimpleSource, simpleSourceStatements, type SimpleSourceToken } from "./simpleSourceLexical";
+import { isSimpleEventTarget } from "./simpleSourceSyntax";
 
 export interface SimpleReferenceDiagnostic {
 	readonly code: "unknownName" | "unknownType" | "unknownMember" | "unknownResource" | "unknownRelation" | "unknownAsset";
@@ -19,13 +21,26 @@ export interface SimpleReferenceDiagnostic {
 	readonly propertyPath?: string;
 }
 
+/** 用户代码和 XML 值共用完整令牌的限定名，不在正则中维护另一套标识符规则。 */
+function* qualifiedNames(tokens: readonly SimpleSourceToken[]): Generator<readonly SimpleSourceToken[]> {
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index]!;
+		if (token.kind !== "word" || !isSimpleIdentifier(token.text)) continue;
+		const parts = [token];
+		while (tokens[index + 1]?.text === "." && tokens[index + 2]?.kind === "word" && isSimpleIdentifier(tokens[index + 2]!.text)) {
+			index += 2;
+			parts.push(tokens[index]!);
+		}
+		yield parts;
+	}
+}
+
 /** 只分析用户代码及 XML 模型；没有 SDK 时不把 SDK 名称误报为无效变量。 */
 function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, context: SimpleProjectSemanticContext, property?: SimplePropertyXmlDocument, assets?: ReadonlySet<string>): Generator<void, readonly SimpleReferenceDiagnostic[]> {
 	const diagnostics: SimpleReferenceDiagnostic[] = [];
 	const analysis = createSimpleSourceAnalysis(source, sdk, context);
-	const masked = analysis.sanitized;
 	const definitions = analysis.definitions;
-	const rules = buildCompilerTokenRules(sdk);
+	const rules = buildLanguageTokenRules();
 	const compilerNames = new Set(rules.map((rule) => rule.text));
 	const compilerTypes = new Set(rules.filter((rule) => rule.type === "type").map((rule) => rule.text));
 	const objectEvents = new Set(sdk?.manifests.find((manifest) => manifest.kind === "compiler")
@@ -33,40 +48,40 @@ function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, cont
 		.find((definition) => definition.kind === "type" && definition.name === "对象")
 		?.events?.map((event) => event.name));
 	const knownType = (name: string): boolean => compilerTypes.has(name) || resolveSimpleDefinitionName(name, definitions) !== undefined;
-	const types: Array<{ start: number; end: number }> = [];
-	/* 类型前的合法续行属于声明分隔，不能将其下划线误报为类型名称。 */
-	for (const match of masked.matchAll(/(?:^|[ \t])为[ \t]+(?:_\r?\n[ \t]*)*([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*)/gmu)) {
-		yield;
-		const name = match[1]!;
-		const start = match.index + match[0].lastIndexOf(name);
-		types.push({ start, end: start + name.length });
-		if (sdk !== undefined && !knownType(name)) diagnostics.push({ code: "unknownType", start, end: start + name.length, message: `找不到类型“${name}”。` });
-	}
 	if (sdk !== undefined) {
-		let typeIndex = 0;
-		/* 先完整消费数字和合法续行符，避免把数字前缀 H 或行尾 _ 当成名称。 */
-		for (const match of masked.matchAll(/(&H[0-9A-Fa-f]+|(?<![\p{L}\p{N}_])_(?=\r?\n))|(?<![\p{L}\p{N}_])[\p{L}_][\p{L}\p{N}_]*(?:[ \t]*\.[ \t]*[\p{L}_][\p{L}\p{N}_]*)*/gu)) {
+		for (const statement of simpleSourceStatements(analysis.syntax.tokens)) for (const tokens of qualifiedNames(statement)) {
 			yield;
-			if (match[1] !== undefined) continue;
-			const start = match.index;
-			const end = start + match[0].length;
-			while (types[typeIndex] !== undefined && types[typeIndex]!.end <= start) typeIndex += 1;
-			const type = types[typeIndex];
-			if (type !== undefined && start >= type.start && end <= type.end) continue;
-			const parts = match[0].split(/[ \t]*\.[ \t]*/u);
+			const start = tokens[0]!.start;
+			const end = tokens.at(-1)!.end;
+			const parts = tokens.map((token) => token.text);
 			const name = parts[0]!;
-			const lineStart = masked.lastIndexOf("\n", start - 1) + 1;
-			const prefix = masked.slice(lineStart, start);
-			/* 声明名及语法注解由对应解析边界负责；别名 RHS 仍检查引用目标。 */
-			if (/^[ \t]*(?:(?:静态|公开|私有)[ \t]+)*(?:变量|常量|过程|函数|属性|别名)[ \t]*$/u.test(prefix)
-				|| compilerNames.has(match[0]) || (parts.length === 1 && compilerNames.has(name)) || /^[$@]/u.test(masked[start - 1] ?? "")) continue;
+			const fullName = parts.join(".");
+			if (analysis.syntax.declarationAt(start) !== undefined || /^[$@]/u.test(source[start - 1] ?? "")) continue;
+			if (analysis.syntax.roleAt(start) === "type") {
+				if (!knownType(fullName)) diagnostics.push({ code: "unknownType", start, end, message: `找不到类型“${fullName}”。` });
+				continue;
+			}
+			if (parts.length === 1 && compilerNames.has(name)) continue;
+			// 括号、数组元素及调用结果后的成员使用表达式接收者，不能当作独立名称。
+			if (analysis.memberAt(start) !== undefined) {
+				for (const token of tokens) {
+					const access = analysis.memberAt(token.start);
+					if (access?.receiver === undefined) break;
+					if (access.receiver.reference.manifest.kind === "compiler" && access.receiver.reference.definition.name === "变体型") break;
+					if (findSimpleDefinition(source, token.start, sdk, context, analysis) !== undefined) continue;
+					diagnostics.push({ code: "unknownMember", start: token.start, end: token.end, message: `“${access.receiver.reference.definition.name}”没有成员“${token.text}”。` });
+					break;
+				}
+				continue;
+			}
 			if (parts.length > 1) {
 				const member = parts[parts.length - 1]!;
-				const memberStart = end - member.length;
+				const memberStart = tokens.at(-1)!.start;
 				/* 编译器先识别当前单元的加载／初始化处理器，不按根组件或静态成员查找。仅声明行适用。 */
+				const declaration = analysis.syntax.declarationAt(memberStart);
 				if (parts.length === 2 && name === context.currentUnit?.name && objectEvents.has(member)
-					&& /^[ \t]*事件[ \t]+$/u.test(prefix) && /^[ \t]*\(/u.test(masked.slice(end))) continue;
-				if (name === "R" && parts.length === 2 && resolveSimpleBinding(source, start, "R", context, analysis) === undefined) {
+					&& declaration?.kind === "event" && declaration.owner === name) continue;
+				if (name === "R" && parts.length === 2 && isSimpleResourceRoot(analysis, start, context)) {
 					if (!context.resources?.symbols.some((value) => value.name === member)) diagnostics.push({ code: "unknownResource", start: memberStart, end, message: `找不到资源“R.${member}”。` });
 					continue;
 				}
@@ -77,9 +92,7 @@ function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, cont
 				/* 变体或尚未推断的实例成员由正式编译决定，避免误报。 */
 				if (binding?.typeName === "变体型" || (resolved === undefined && binding !== undefined && !knownType(binding.typeName))) continue;
 				diagnostics.push({ code: resolved === undefined ? "unknownName" : "unknownMember", start: resolved === undefined ? start : memberStart, end, message: resolved === undefined ? `找不到名称“${qualifier}”。` : `“${qualifier}”没有成员“${member}”。` });
-			} else if (findSimpleDefinition(source, start, sdk, context, analysis) === undefined && !knownType(name)) {
-				/* 孤立标签及过程参数名称不按一般表达式处理。 */
-				if (/^[ \t]*标签[ \t]*$/u.test(prefix) || /(?:^|[ \t])转到[ \t]*$/u.test(prefix)) continue;
+			} else if (findSimpleDefinition(source, start, sdk, context, analysis) === undefined && (isSimpleEventTarget(analysis.syntax, start) || !knownType(name))) {
 				diagnostics.push({ code: "unknownName", start, end, message: `找不到名称“${name}”。` });
 			}
 		}
@@ -90,10 +103,11 @@ function* analyzeSimpleReferenceSteps(source: string, sdk: Sdk | undefined, cont
 			const name = getPropertyXmlAttribute(element, "属性");
 			if (name !== "基础对象" && name !== "实现接口") continue;
 			const value = getPropertyXmlAttribute(element, "值") ?? "";
-			for (const match of value.matchAll(/[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*/gu)) {
-				if (definitions.has(match[0])) continue;
+			for (const statement of simpleSourceStatements(scanSimpleSource(value))) for (const tokens of qualifiedNames(statement)) {
+				const qualifiedName = tokens.map((token) => token.text).join(".");
+				if (definitions.has(qualifiedName)) continue;
 				const elementPath = findPropertyXmlElementPath(property, element);
-				diagnostics.push({ code: "unknownRelation", start: match.index, end: match.index + match[0].length, propertyPath: elementPath === undefined ? undefined : elementPath + "/@值", message: `找不到${name === "基础对象" ? "基础对象" : "实现接口"}“${match[0]}”。` });
+				diagnostics.push({ code: "unknownRelation", start: tokens[0]!.start, end: tokens.at(-1)!.end, propertyPath: elementPath === undefined ? undefined : elementPath + "/@值", message: `找不到${name === "基础对象" ? "基础对象" : "实现接口"}“${qualifiedName}”。` });
 			}
 		}
 	}

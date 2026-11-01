@@ -1,261 +1,66 @@
 /*
-构建并扫描 Simple 编译器关键字、类型与成员的语义标记规则。
-xhwsd@qq.com 2026-8-27
+按 Simple 语法位置与源码引用生成语义标记，SDK 只补充外部类型和成员。
+xhwsd@qq.com 2026-10-31
 */
 
 import {
-	getEffectiveMembers,
 	isSdkTypeKind,
 	type Sdk,
-	type LibraryMemberGroup
+	type LibraryMemberGroup,
+	type LibraryDefinitionReference
 } from "./sdk";
 import {
-	buildSemanticDefinitionIndex,
 	isSimpleMemberAccessible,
 	resolveSimpleDefinitionName,
-	splitSimpleTopLevelDeclarations,
 	type SimpleProjectSemanticContext
 } from "./simpleUnitSymbols";
-import { resolveSimpleQualifier } from "./completionModel";
-import { findPropertySectionStart } from "./simpleUnitSource";
-import { stripSimpleLineComment } from "./simpleSourceLexical";
+import { createSimpleSourceAnalysis, isSimpleResourceRoot, type ResolvedSimpleQualifier, type SimpleSourceAnalysis } from "./completionModel";
+import { scanSimpleSource, type SimpleSourceToken } from "./simpleSourceLexical";
+import { analyzeSimpleSourceSyntax, simpleDeclarationRole, type SimpleSourceDeclaration } from "./simpleSourceSyntax";
+import { simpleUnitHighlightingInput, type SimpleUnitHighlightingInput } from "./propertyXml";
+import languageFacts from "./simpleLanguageFacts.json";
 
-/** 扩展向 VS Code 提供的全部 Simple 语义令牌类型。 */
+/** 扩展公开的语义类型和修饰符，顺序与 VS Code 图例一致。 */
 export const SIMPLE_SEMANTIC_TOKEN_TYPES = [
-	"simpleDeclaration",
-	"simpleControl",
-	"simpleModifier",
-	"keyword",
-	"type",
-	"operator",
-	"enumMember",
-	"function",
-	"event",
-	"method",
-	"parameter",
-	"property",
-	"variable"
+	"simpleDeclaration", "simpleControl", "simpleModifier", "keyword", "type", "operator",
+	"enumMember", "function", "event", "method", "parameter", "property", "variable"
 ] as const;
-
-/** Simple 语义令牌类型联合。 */
 export type SimpleSemanticTokenType = typeof SIMPLE_SEMANTIC_TOKEN_TYPES[number];
-
-/** 扩展向 VS Code 提供的全部 Simple 语义令牌修饰符。 */
-export const SIMPLE_SEMANTIC_TOKEN_MODIFIERS = [
-	"readonly"
-] as const;
-
-/** Simple 语义令牌修饰符联合。 */
+export const SIMPLE_SEMANTIC_TOKEN_MODIFIERS = ["readonly"] as const;
 export type SimpleSemanticTokenModifier = typeof SIMPLE_SEMANTIC_TOKEN_MODIFIERS[number];
 
-/** 描述一个由清单或当前文档生成的文本着色规则。 */
-export interface CompilerTokenRule {
-	/** 规则生效范围的排他结束偏移；省略时作用于全文。 */
-	readonly end?: number;
-	/** 应用于命中令牌的语义修饰符。 */
+/** 固定语言规则以词法令牌匹配；源码分析规则必须携带精确位置。 */
+export interface SimpleTokenRule {
+	readonly text: string;
+	readonly type: SimpleSemanticTokenType;
 	readonly modifiers?: readonly SimpleSemanticTokenModifier[];
-	/** 令牌前必须出现的点号限定名；省略时不限制。 */
-	readonly qualifier?: string;
-	/** 规则生效范围的起始偏移；省略时作用于全文。 */
 	readonly start?: number;
-	/** 需要完整匹配的源码文本。 */
-	readonly text: string;
-	/** 命中后生成的语义令牌类型。 */
-	readonly type: SimpleSemanticTokenType;
+	readonly end?: number;
 }
 
-/** 描述文档中已识别语义令牌的位置和类型。 */
+/** 交给编辑器的单行 UTF-16 语义令牌。 */
 export interface SimpleSemanticTokenSpan {
-	/** 令牌起始位置在当前行中的 UTF-16 偏移。 */
 	readonly character: number;
-	/** 令牌的 UTF-16 长度。 */
 	readonly length: number;
-	/** 从零开始的行号。 */
 	readonly line: number;
-	/** 应用于令牌的语义修饰符。 */
 	readonly modifiers: readonly SimpleSemanticTokenModifier[];
-	/** 已匹配的源码文本。 */
 	readonly text: string;
-	/** 交给 VS Code 的语义令牌类型。 */
 	readonly type: SimpleSemanticTokenType;
 }
 
-/** 用于判断令牌是否嵌入更长标识符的单字符模式。 */
-const WORD_CHARACTER = /^[\p{L}\p{N}_]$/u;
-
-/** Simple 标识符的完整匹配模式。 */
-const IDENTIFIER = "[\\p{L}][\\p{L}\\p{N}_]*";
-const QUALIFIED_IDENTIFIER = `${IDENTIFIER}(?:\\.${IDENTIFIER})*`;
-
-/** 描述函数、过程、事件或属性在文档中的源码范围。 */
-interface DocumentScope {
-	readonly end: number;
-	readonly start: number;
+/** 从扩展自带的集中语言事实构建固定规则，SDK 加载状态不参与。 */
+export function buildLanguageTokenRules(): readonly SimpleTokenRule[] {
+	return [
+		...Object.values(languageFacts.words).map((word) => ({ text: word.text, type: word.role as SimpleSemanticTokenType })),
+		...languageFacts.operators.map((text) => ({ text, type: "operator" as const }))
+	];
 }
 
-/** 描述已知 SDK 类型的变量、参数或组件实例。 */
-interface TypedDocumentSymbol extends DocumentScope {
-	readonly access: "instance" | "static";
-	readonly name: string;
-	readonly typeName: string;
-}
-
-/**
- * 将 SDK 清单中的通用定义类型映射为 VS Code 语义令牌类型。
- *
- * @param kind SDK 定义的类型标识。
- * @returns 对应的语义令牌类型；不参与着色时返回 `undefined`。
- */
-function semanticType(kind: string | undefined): SimpleSemanticTokenType | undefined {
-	switch (kind) {
-		case "declaration":
-			return "simpleDeclaration";
-		case "control":
-			return "simpleControl";
-		case "modifier":
-			return "simpleModifier";
-		case "keyword":
-		case "$keyword":
-			return "keyword";
-		case "type":
-		case "$source":
-		case "$type":
-			return "type";
-		case "operator":
-			return "operator";
-		case "literal":
-			return "enumMember";
-		default:
-			return undefined;
-	}
-}
-
-/**
- * 计算规则作用范围长度，全文规则排在所有局部规则之后。
- *
- * @param rule 待比较的着色规则。
- * @returns 规则范围长度；全文规则返回正无穷。
- */
-function ruleScopeLength(rule: CompilerTokenRule): number {
-	return rule.start === undefined || rule.end === undefined
-		? Number.POSITIVE_INFINITY
-		: rule.end - rule.start;
-}
-
-/**
- * 按最长文本优先、最小作用域优先排列着色规则。
- *
- * @param left 左侧规则。
- * @param right 右侧规则。
- * @returns 适用于 `Array.sort` 的比较结果。
- */
-function compareRules(left: CompilerTokenRule, right: CompilerTokenRule): number {
-	return right.text.length - left.text.length
-		|| ruleScopeLength(left) - ruleScopeLength(right)
-		|| Number(right.qualifier !== undefined) - Number(left.qualifier !== undefined);
-}
-
-/**
- * 从 SDK 的编译器清单生成动态着色规则。
- *
- * @param sdk 当前已加载的 SDK；未配置时可为空。
- * @returns 按文本长度降序排列的着色规则，保证长关键字优先匹配。
- */
-export function buildCompilerTokenRules(sdk: Sdk | undefined): readonly CompilerTokenRule[] {
-	const compiler = sdk?.manifests.find((manifest) => manifest.kind === "compiler");
-
-	if (compiler === undefined) {
-		return [];
-	}
-
-	const rules = new Map<string, CompilerTokenRule>();
-
-	for (const category of compiler.categories) {
-		for (const definition of category.definitions) {
-			const type = semanticType(definition.kind);
-
-			if (type !== undefined && definition.name.length > 0) {
-				rules.set(definition.name, { text: definition.name, type });
-			}
-		}
-	}
-
-	return [...rules.values()].sort(compareRules);
-}
-
-/**
- * 查找左括号对应的右括号，兼容数组类型中的嵌套括号。
- *
- * @param source 完整文档内容。
- * @param openOffset 左括号偏移。
- * @returns 匹配右括号偏移；括号未闭合时返回 `undefined`。
- */
-function findClosingParenthesis(source: string, openOffset: number): number | undefined {
-	let depth = 0;
-	let inString = false;
-
-	for (let index = openOffset; index < source.length; index += 1) {
-		const current = source[index];
-
-		if (current === "\\" && inString) {
-			index += 1;
-			continue;
-		}
-
-		if (current === "\"") {
-			inString = !inString;
-			continue;
-		}
-
-		if (inString) {
-			continue;
-		}
-
-		if (current === "(") {
-			depth += 1;
-		} else if (current === ")") {
-			depth -= 1;
-
-			if (depth === 0) {
-				return index;
-			}
-		}
-	}
-
-	return undefined;
-}
-
-/**
- * 查找声明对应的 `结束` 组合关键字，并确定局部符号范围。
- *
- * @param source 完整文档内容。
- * @param start 声明起始偏移。
- * @param declarationKind 函数、过程、事件或属性关键字。
- * @returns 包含整个声明体的排他结束偏移。
- */
-function findDeclarationEnd(source: string, start: number, declarationKind: string): number {
-	const ending = new RegExp(`^[ \\t]*结束[ \\t]+${declarationKind}(?=[ \\t'\\r\\n]|$)`, "gmu");
-	ending.lastIndex = start;
-	const match = ending.exec(source);
-	return match === null ? source.length : match.index + match[0].length;
-}
-
-/** 返回完整单元属性区的源码范围；用户代码文档没有属性区时返回 `undefined`。 */
-function propertySectionScope(source: string): DocumentScope | undefined {
-	const start = findPropertySectionStart(source);
-	return start < source.length ? { end: source.length, start } : undefined;
-}
-
-/**
- * 将类库成员分组映射为 VS Code 语义令牌类型和修饰符。
- *
- * @param group 类库成员分组。
- * @returns 可直接合并进着色规则的成员语义信息。
- */
-function memberTokenStyle(group: LibraryMemberGroup): Pick<CompilerTokenRule, "modifiers" | "type"> {
+/** 成员分组保留常量、函数、属性、事件和数据字段的实际身份。 */
+function memberStyle(group: LibraryMemberGroup): Pick<SimpleTokenRule, "type" | "modifiers"> {
 	switch (group) {
 		case "constants":
-			return { modifiers: ["readonly"], type: "variable" };
+			return { type: "variable", modifiers: ["readonly"] };
 		case "events":
 			return { type: "event" };
 		case "functions":
@@ -267,603 +72,220 @@ function memberTokenStyle(group: LibraryMemberGroup): Pick<CompilerTokenRule, "m
 	}
 }
 
+/** 结合访问方式读取已确认的成员；不能把不可访问成员退化为猜测结果。 */
+function resolvedMemberStyle(
+	resolved: ResolvedSimpleQualifier,
+	name: string,
+	analysis: SimpleSourceAnalysis
+): Pick<SimpleTokenRule, "type" | "modifiers"> | undefined {
+	const groups: readonly LibraryMemberGroup[] = resolved.access === "static"
+		? ["constants", "variables", "functions"] : ["constants", "variables", "properties", "functions", "events"];
+	for (const group of groups) {
+		const value = analysis.members(resolved.reference, group, name).find((entry) => isSimpleMemberAccessible(entry.member, group, resolved.access));
+		if (value !== undefined) {
+			return memberStyle(group);
+		}
+	}
+	return undefined;
+}
+
 /**
- * 收集当前文档声明的可调用成员、属性、参数、变量、常量和组件实例。
+ * 根据共享语法与项目符号逐个分类源码位置；不会为某个名字生成全文匹配规则。
  *
- * 局部变量和参数只在所属声明体内生效；同名局部规则优先于全局规则。
- *
- * @param source 当前 Simple 文档内容。
- * @param sdk 当前已加载的 SDK，用于解析组件类型、继承关系和成员。
- * @returns 按文本长度和作用域精度排列的文档符号规则。
+ * @param input 文档边界提供的源码与共享词法结果。
+ * @param sdk 可选 SDK，只用于补充源码以外的符号。
+ * @param context 当前项目的源码单元、继承与组件信息。
+ * @returns 每项都具有精确起止位置的语义规则。
  */
-export function buildDocumentTokenRules(
-	source: string,
-	sdk?: Sdk,
-	context?: SimpleProjectSemanticContext
-): readonly CompilerTokenRule[] {
-	const rules = new Map<string, CompilerTokenRule>();
-	const scopes: DocumentScope[] = [];
-	const typedSymbols: TypedDocumentSymbol[] = [];
-	const semanticDefinitions = buildSemanticDefinitionIndex(sdk, context);
-	const definitions = new Map(semanticDefinitions);
-	for (const manifest of sdk?.manifests ?? []) {
-		for (const category of manifest.categories) {
-			for (const definition of category.definitions) {
-				const typeName = definition.type?.trim();
-				if (typeName !== undefined && typeName.length > 0 && !definitions.has(typeName)) {
-					definitions.set(typeName, { definition, manifest });
-				}
-			}
-		}
-	}
-
-	/** 将规则加入集合，并保留不同类型或作用域的同名定义。 */
-	const addRule = (rule: CompilerTokenRule): void => {
-		const key = [
-			rule.text,
-			rule.type,
-			rule.start ?? "document",
-			rule.end ?? "document",
-			rule.qualifier ?? "unqualified",
-			...(rule.modifiers ?? [])
-		].join(":");
-		rules.set(key, rule);
+function documentTokenRules(input: SimpleUnitHighlightingInput, sdk?: Sdk, context?: SimpleProjectSemanticContext): readonly SimpleTokenRule[] {
+	const parsed = analyzeSimpleSourceSyntax(input.userCode, context?.currentUnit?.unitType === "接口", input.userTokens);
+	const analysis = createSimpleSourceAnalysis(input.userCode, sdk, context, { syntax: parsed, tokens: input.tokens });
+	const syntax = analysis.syntax;
+	const definitions = analysis.definitions;
+	const rules = new Map<number, SimpleTokenRule>();
+	const add = (token: Pick<SimpleSourceToken, "text" | "start" | "end">, style: Pick<SimpleTokenRule, "type" | "modifiers">): void => {
+		rules.set(token.start, { text: token.text, start: token.start, end: token.end, ...style });
 	};
-
-	/*
-	 * 项目资源只形成 R.xxx 的着色规则，不进入通用定义索引，避免顺带改变补全、
-	 * 跳转或其它语言能力。对象和成员都只在完整命中已有资源时着色，未知 R 成员
-	 * 不会仅凭写法获得资源语义。
-	 */
-	if (context?.resources !== undefined) {
-		for (const symbol of context.resources.symbols) {
-			const reference = new RegExp(
-				`(?<![\\p{L}\\p{N}_])(R)[ \\t]*\\.[ \\t]*(${symbol.name})(?![\\p{L}\\p{N}_])`,
-				"gu"
-			);
-			for (const match of source.matchAll(reference)) {
-				if (match.index === undefined) {
-					continue;
-				}
-				const memberStart = match.index + match[0].lastIndexOf(symbol.name);
-				addRule({
-					end: match.index + 1,
-					start: match.index,
-					text: "R",
-					type: "type"
-				});
-				addRule({
-					end: memberStart + symbol.name.length,
-					modifiers: ["readonly"],
-					start: memberStart,
-					text: symbol.name,
-					type: "variable"
-				});
-			}
-		}
-	}
-
-	/**
-	 * 记录已知 SDK 类型的符号，同时为其类型名称建立着色规则。
-	 *
-	 * @param name 变量、参数、组件实例或静态类型限定名。
-	 * @param typeName SDK 定义名称。
-	 * @param scope 符号可见的源码范围。
-	 * @param access 点号访问使用实例成员还是静态成员。
-	 */
-	const addTypedSymbol = (
-		name: string,
-		typeName: string,
-		scope: DocumentScope,
-		access: TypedDocumentSymbol["access"] = "instance"
-	): void => {
-		const normalized = typeName.trim().replace(/\([^()]*\)$/u, "");
-		const aliasTarget = context?.currentUnit?.aliases.find(
-			(alias) => alias.name === normalized
-		)?.target;
-		const resolvedName = aliasTarget ?? normalized;
-		const reference = definitions.get(resolvedName)
-			?? definitions.get(resolvedName.split(".").at(-1) ?? resolvedName);
-
-		if (reference === undefined || !isSdkTypeKind(reference.definition.kind)) {
-			return;
-		}
-
-		addRule({ text: typeName, type: "type" });
-		typedSymbols.push({ ...scope, access, name, typeName: reference.definition.name });
+	const declarationStyle = (declaration: SimpleSourceDeclaration): Pick<SimpleTokenRule, "type" | "modifiers"> => ({
+		type: simpleDeclarationRole(declaration),
+		modifiers: declaration.kind === "constant" ? ["readonly"] : undefined
+	});
+	const typeReference = (name: string): LibraryDefinitionReference | undefined => {
+		return resolveSimpleDefinitionName(name, definitions);
 	};
-	const callableDeclaration = new RegExp(
-		`^[ \\t]*(?:静态[ \\t]+)?(函数|过程|事件|属性)[ \\t]+(${IDENTIFIER})(?:\\.(${IDENTIFIER}))?`,
-		"gmu"
-	);
-
-	for (const match of source.matchAll(callableDeclaration)) {
-		const declarationKind = match[1];
-		const name = match[3] ?? match[2];
-
-		if (declarationKind === undefined || name === undefined || match.index === undefined) {
-			continue;
-		}
-
-		const type: SimpleSemanticTokenType = declarationKind === "事件"
-			? "event"
-			: declarationKind === "属性" ? "property" : "function";
-		addRule({ text: name, type });
-		const scope = {
-			end: findDeclarationEnd(source, match.index, declarationKind),
-			start: match.index
-		};
-		scopes.push(scope);
-
-		if (declarationKind === "属性") {
-			continue;
-		}
-
-		let openOffset = match.index + match[0].length;
-
-		while (openOffset < source.length && /[ \t]/.test(source[openOffset] ?? "")) {
-			openOffset += 1;
-		}
-
-		if (source[openOffset] !== "(") {
-			continue;
-		}
-
-		const closeOffset = findClosingParenthesis(source, openOffset);
-
-		if (closeOffset === undefined) {
-			continue;
-		}
-
-		for (const parameter of splitSimpleTopLevelDeclarations(source.slice(openOffset + 1, closeOffset))) {
-			const parameterMatch = new RegExp(
-				`^(?:(?:传值|传址)[ \\t]+)?(${IDENTIFIER})[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER})`,
-				"u"
-			)
-				.exec(parameter);
-			const parameterName = parameterMatch?.[1];
-			const parameterType = parameterMatch?.[2];
-
-			if (parameterName !== undefined) {
-				addRule({ ...scope, text: parameterName, type: "parameter" });
-
-				if (parameterType !== undefined) {
-					addTypedSymbol(parameterName, parameterType, scope);
-				}
-			}
-		}
-	}
-
-	const dataDeclaration = new RegExp(
-		`^[ \\t]*(?:静态[ \\t]+)?(变量|常量)[ \\t]+([^\\r\\n]*)`,
-		"gmu"
-	);
-
-	for (const match of source.matchAll(dataDeclaration)) {
-		const declarationKind = match[1];
-		const declarationSource = match[2];
-
-		if (declarationKind === undefined || declarationSource === undefined || match.index === undefined) {
-			continue;
-		}
-
-		const localScope = declarationKind === "变量"
-			? scopes
-				.filter((scope) => match.index >= scope.start && match.index < scope.end)
-				.sort((left, right) => (left.end - left.start) - (right.end - right.start))[0]
-			: undefined;
-		const symbolScope = localScope ?? { end: source.length, start: 0 };
-
-		for (const declaration of splitSimpleTopLevelDeclarations(stripSimpleLineComment(declarationSource))) {
-			const declarationMatch = new RegExp(
-				`^(${IDENTIFIER})(?:[ \\t]+为[ \\t]+(${QUALIFIED_IDENTIFIER})|[ \\t]*=[ \\t]*创建[ \\t]+(${QUALIFIED_IDENTIFIER}))`,
-				"u"
-			).exec(declaration);
-			const name = declarationMatch?.[1];
-			const typeName = declarationMatch?.[2] ?? declarationMatch?.[3];
-
-			if (name === undefined) {
-				continue;
-			}
-
-			addRule({
-				...(localScope ?? {}),
-				modifiers: declarationKind === "常量" ? ["readonly"] : undefined,
-				text: name,
-				type: "variable"
-			});
-
-			if (declarationKind === "变量" && typeName !== undefined) {
-				addTypedSymbol(name, typeName, symbolScope);
-			}
-		}
-	}
-
-	const componentMembers = context?.currentUnit?.definition.variables?.filter(
-		(member) => member.component === true
-	) ?? [];
-
-	for (const component of componentMembers) {
-		addRule({ text: component.name, type: "variable" });
-		if (component.type !== undefined) {
-			addTypedSymbol(component.name, component.type, { end: source.length, start: 0 });
-		}
-	}
-
-	for (const alias of context?.currentUnit?.aliases ?? []) {
-		const target = resolveSimpleDefinitionName(alias.name, semanticDefinitions);
-		if (target !== undefined && isSdkTypeKind(target.definition.kind)) {
-			addRule({ text: alias.name, type: "type" });
-			addTypedSymbol(alias.name, alias.name, { end: source.length, start: 0 }, "static");
-		}
-	}
-
-	const propertyScope = propertySectionScope(source);
-	if (propertyScope !== undefined) {
-		const compiler = sdk?.manifests.find((manifest) => manifest.kind === "compiler");
-		for (const definition of compiler?.categories.flatMap((category) => category.definitions) ?? []) {
-			for (const property of definition.properties ?? []) {
-				addRule({ ...propertyScope, text: property.name, type: "property" });
-			}
-		}
-
-		/*
-		 * 布局属性写在容器定义内部，并统一以“布局.xxx”出现，不属于容器组件
-		 * 自身的成员。按点号限定后着色，避免同名普通标识符被误判为属性。
-		 */
-		for (const reference of definitions.values()) {
-			if (reference.definition.kind !== "layout") {
-				continue;
-			}
-			for (const property of getEffectiveMembers(reference, "properties", definitions)) {
-				addRule({
-					...propertyScope,
-					qualifier: "布局",
-					text: property.member.name,
-					type: "property"
-				});
-			}
-		}
-
-		const propertyOwnerNames = new Set<string>();
-		if (context?.currentUnit !== undefined) {
-			propertyOwnerNames.add(context.currentUnit.qualifiedName);
-		}
-		for (const component of componentMembers) {
-			if (component.type !== undefined) {
-				propertyOwnerNames.add(component.type);
-			}
-		}
-		for (const ownerName of propertyOwnerNames) {
-			const reference = definitions.get(ownerName);
-			if (reference === undefined) {
-				continue;
-			}
-			for (const property of getEffectiveMembers(reference, "properties", definitions)) {
-				addRule({ ...propertyScope, text: property.member.name, type: "property" });
-			}
-		}
-	}
-
-	for (const [name, reference] of definitions) {
-		if (resolveSimpleDefinitionName(name, semanticDefinitions) !== reference) continue;
-		const typeName = reference.definition.type?.trim();
-		if (
-			(reference.manifest.kind === "project" || typeName === name)
-			&& source.includes(name)
-		) {
-			addRule({ text: name, type: "type" });
-		}
-	}
-
-	for (const [typeName, reference] of definitions) {
-		if (resolveSimpleDefinitionName(typeName, semanticDefinitions) !== reference) continue;
-		if (
-			isSdkTypeKind(reference.definition.kind)
-			&& new RegExp(`(?<![\\p{L}\\p{N}_])${typeName}[ \\t]*\\.`, "u").test(source)
-		) {
-			addTypedSymbol(typeName, typeName, { end: source.length, start: 0 }, "static");
-		}
-	}
-
-	const currentReference = context?.currentUnit === undefined
-		? undefined
-		: definitions.get(context.currentUnit.qualifiedName);
-	if (currentReference !== undefined) {
-		for (const group of ["constants", "variables", "properties", "functions", "events"] as const) {
-			for (const value of getEffectiveMembers(currentReference, group, definitions)) {
-				addRule({ ...memberTokenStyle(group), text: value.member.name });
-			}
-		}
-	}
-
-	for (const reference of definitions.values()) {
+	const currentReference = context?.currentUnit === undefined ? undefined : definitions.get(context.currentUnit.qualifiedName);
+	const words = analysis.expressionTokens;
+	const languageWords = new Set(Object.values(languageFacts.words).map((word) => word.text));
+	const globals = new Map<string, Pick<SimpleTokenRule, "type" | "modifiers">>();
+	const shadowsResourceR = (offset: number): boolean => {
+		return !isSimpleResourceRoot(analysis, Math.min(offset, input.userCode.length), context);
+	};
+	for (const reference of new Set(definitions.values())) {
 		for (const group of ["constants", "variables", "functions"] as const) {
 			for (const member of reference.definition[group] ?? []) {
-				if (member.global !== true) {
-					continue;
+				if (member.global === true) {
+					globals.set(member.name, group === "functions" ? { type: "function" } : memberStyle(group));
 				}
-
-				const style = group === "functions"
-					? { type: "function" as const }
-					: memberTokenStyle(group);
-				addRule({ ...style, text: member.name });
 			}
 		}
 	}
 
-	for (const symbol of typedSymbols) {
-		const reference = definitions.get(symbol.typeName);
-
-		if (reference === undefined) {
-			continue;
-		}
-
-		const groups: readonly LibraryMemberGroup[] = symbol.access === "static"
-			? ["constants", "variables", "functions"]
-			: ["constants", "variables", "properties", "functions", "events"];
-
-		for (const group of groups) {
-			const style = memberTokenStyle(group);
-
-			for (const value of getEffectiveMembers(reference, group, definitions)) {
-				if (!isSimpleMemberAccessible(value.member, group, symbol.access)) {
-					continue;
-				}
-
-				addRule({
-					...style,
-					end: symbol.end,
-					qualifier: symbol.name,
-					start: symbol.start,
-					text: value.member.name
-				});
-			}
+	/* 属性原文的读取与语法映射封闭在属性边界，用户代码解析只接收用户代码区。 */
+	for (const span of input.properties) {
+		add(span, { type: span.role });
+	}
+	for (const token of syntax.tokens) {
+		const role = syntax.roles.get(token.start);
+		if (role !== undefined) {
+			add(token, { type: role, modifiers: syntax.declarationAt(token.start)?.kind === "constant" ? ["readonly"] : undefined });
 		}
 	}
 
-	/* 多段成员链按完整限定链解析最后一段，覆盖跨单元属性或函数返回值。 */
-	const chainedMember = new RegExp(
-		`(${QUALIFIED_IDENTIFIER})[ \\t]*\\.[ \\t]*(${IDENTIFIER})`,
-		"gu"
-	);
-	for (const match of source.matchAll(chainedMember)) {
-		const qualifier = match[1];
-		const memberName = match[2];
-		if (qualifier === undefined || memberName === undefined || match.index === undefined) {
+	for (let index = 0; index < words.length; index += 1) {
+		const token = words[index]!;
+		if (token.kind !== "word" || rules.has(token.start)) {
 			continue;
 		}
-		const memberStart = match.index + match[0].lastIndexOf(memberName);
-		const resolved = resolveSimpleQualifier(source, memberStart, qualifier, sdk, context);
-		if (resolved === undefined) {
+		const previous = words[index - 1];
+		const next = words[index + 1];
+		const inCode = token.start < input.userCode.length;
+		const local = inCode && previous?.text !== "." ? syntax.resolve(token.text, token.start) : undefined;
+
+		/* 项目资源只在完整命中现有资源且 R 未被源码遮蔽时取得资源身份。 */
+		if (token.text === "R" && previous?.text !== "." && next?.text === "." && !shadowsResourceR(token.start)) {
+			const resource = context?.resources?.symbols.find((value) => value.name === words[index + 2]?.text);
+			if (resource !== undefined) {
+				add(token, { type: "type" });
+				add(words[index + 2]!, { type: "variable", modifiers: ["readonly"] });
+			}
+			continue;
+		}
+		if (previous?.text === "." && words[index - 2]?.text === "R" && words[index - 3]?.text !== "." && !shadowsResourceR(token.start)) {
 			continue;
 		}
 
-		const groups: readonly LibraryMemberGroup[] = resolved.access === "static"
-			? ["constants", "variables", "functions"]
-			: ["constants", "variables", "properties", "functions", "events"];
-		for (const group of groups) {
-			const value = getEffectiveMembers(resolved.reference, group, definitions).find(
-				(candidate) => candidate.member.name === memberName
-			);
-			if (value === undefined) {
+		/* 成员位置先解析点号左侧，局部同名参数不能覆盖本对象或其它实例的成员。 */
+		if (previous?.text === ".") {
+			/* 成员语法先给出稳定底色；元数据只细化，不能删除已确认的语法角色。 */
+			add(token, { type: next?.text === "(" ? "method" : "property" });
+			const resolved = analysis.memberAt(token.start)?.receiver;
+			const style = resolved === undefined ? undefined : resolvedMemberStyle(resolved, token.text, analysis);
+			if (style !== undefined) {
+				add(token, style);
+			} else if (words[index - 2]?.text === "本对象") {
+				const field = syntax.declarationsNamed(token.text).find((value) => value.scope === syntax.root && value.kind !== "alias");
+				if (field !== undefined) {
+					add(token, declarationStyle(field));
+				}
+			}
+			continue;
+		}
+		if (languageWords.has(token.text)) {
+			continue;
+		}
+		if (local !== undefined) {
+			const declaration = local.kind === "functionResult" && next?.text === "("
+				? syntax.declarationsNamed(token.text).find((value) => value.scope === syntax.root && value.kind === "function") ?? local
+				: local;
+			add(token, declarationStyle(declaration));
+			continue;
+		}
+
+		/* 当前单元及其继承成员来自项目符号模型；组件变量也可在没有 SDK 时识别。 */
+		if (currentReference !== undefined) {
+			const access = syntax.callableAt(token.start)?.static === true ? "static" : "instance";
+			const style = resolvedMemberStyle({ access, directCurrentUnit: true, reference: currentReference }, token.text, analysis);
+			if (style !== undefined) {
+				add(token, style.type === "method" ? { type: "function" } : style);
 				continue;
 			}
-			if (!isSimpleMemberAccessible(value.member, group, resolved.access)) {
-				continue;
-			}
-			addRule({ ...memberTokenStyle(group), qualifier, text: memberName });
-			break;
 		}
-	}
-
-	return [...rules.values()].sort(compareRules);
-}
-
-/**
- * 判断命中位置两侧是否满足完整标识符边界。
- *
- * @param source 完整文档文本。
- * @param index 候选令牌的起始偏移。
- * @param token 候选令牌文本。
- * @returns 候选文本没有嵌入更长标识符时返回 `true`。
- */
-function hasTokenBoundary(source: string, index: number, token: string): boolean {
-	const first = token[0];
-	const last = token[token.length - 1];
-	const previous = index === 0 ? undefined : source[index - 1];
-	const nextIndex = index + token.length;
-	const next = nextIndex >= source.length ? undefined : source[nextIndex];
-
-	if (first !== undefined && WORD_CHARACTER.test(first) && previous !== undefined && WORD_CHARACTER.test(previous)) {
-		return false;
-	}
-
-	return !(last !== undefined && WORD_CHARACTER.test(last) && next !== undefined && WORD_CHARACTER.test(next));
-}
-
-/**
- * 判断令牌前是否紧邻指定的点号限定名，允许点号两侧存在水平空白。
- *
- * @param source 完整文档文本。
- * @param index 成员令牌的起始偏移。
- * @param qualifier 期望的变量、组件实例或 SDK 类型名称。
- * @returns 前方限定名完整匹配时返回 `true`。
- */
-function hasQualifier(source: string, index: number, qualifier: string): boolean {
-	let cursor = index;
-
-	while (cursor > 0 && /[ \t\f]/.test(source[cursor - 1] ?? "")) {
-		cursor -= 1;
-	}
-
-	if (source[cursor - 1] !== ".") {
-		return false;
-	}
-
-	cursor -= 1;
-
-	while (cursor > 0 && /[ \t\f]/.test(source[cursor - 1] ?? "")) {
-		cursor -= 1;
-	}
-
-	const qualifierStart = cursor - qualifier.length;
-
-	return qualifierStart >= 0
-		&& source.slice(qualifierStart, cursor) === qualifier
-		&& hasTokenBoundary(source, qualifierStart, qualifier);
-}
-
-/**
- * 在指定偏移处查找第一个满足文本和边界条件的规则。
- *
- * @param source 完整文档文本。
- * @param index 待匹配的起始偏移。
- * @param rulesByFirstCharacter 按首字符分组的着色规则。
- * @returns 首个有效规则；没有匹配时返回 `undefined`。
- */
-function findRuleAt(
-	source: string,
-	index: number,
-	rulesByFirstCharacter: ReadonlyMap<string, readonly CompilerTokenRule[]>
-): CompilerTokenRule | undefined {
-	const current = source[index];
-	const candidates = current === undefined ? undefined : rulesByFirstCharacter.get(current);
-	return candidates?.find((rule) => (
-		(rule.start === undefined || index >= rule.start)
-		&& (rule.end === undefined || index + rule.text.length <= rule.end)
-		&& (rule.qualifier === undefined || hasQualifier(source, index, rule.qualifier))
-		&& source.startsWith(rule.text, index)
-		&& hasTokenBoundary(source, index, rule.text)
-	));
-}
-
-/**
- * 根据相邻令牌修正上下文相关的颜色。
- *
- * `结束` 通常属于流程控制，但在 `结束 函数` 等组合中属于声明结束符。
- *
- * @param source 完整文档文本。
- * @param indexAfterToken 当前令牌结束后的偏移。
- * @param matched 当前已命中的规则。
- * @param rulesByFirstCharacter 按首字符分组的着色规则。
- * @returns 结合后续令牌语境确定的语义令牌类型。
- */
-function contextualType(
-	source: string,
-	indexAfterToken: number,
-	matched: CompilerTokenRule,
-	rulesByFirstCharacter: ReadonlyMap<string, readonly CompilerTokenRule[]>
-): SimpleSemanticTokenType {
-	if (matched.text !== "结束" || matched.type !== "simpleControl") {
-		return matched.type;
-	}
-
-	let nextIndex = indexAfterToken;
-
-	while (nextIndex < source.length && /[ \t\f]/.test(source[nextIndex] ?? "")) {
-		nextIndex += 1;
-	}
-
-	const nextRule = findRuleAt(source, nextIndex, rulesByFirstCharacter);
-	return nextRule?.type === "simpleDeclaration" ? "simpleDeclaration" : matched.type;
-}
-
-/**
- * 扫描 Simple 文本并生成语义令牌，主动跳过注释和字符串内容。
- *
- * @param source 完整文档文本。
- * @param rules SDK 与文档共同生成的匹配规则。
- * @returns 按源码位置排列的语义令牌跨度。
- */
-export function tokenizeSimpleText(
-	source: string,
-	rules: readonly CompilerTokenRule[]
-): readonly SimpleSemanticTokenSpan[] {
-	const rulesByFirstCharacter = new Map<string, CompilerTokenRule[]>();
-
-	for (const rule of rules) {
-		const first = rule.text[0];
-
-		if (first !== undefined) {
-			const values = rulesByFirstCharacter.get(first) ?? [];
-			values.push(rule);
-			rulesByFirstCharacter.set(first, values);
+		/* 限定类型名选择可见的最长前缀，随后成员段仍按成员解析。 */
+		let end = index + 1;
+		while (words[end]?.text === "." && words[end + 1]?.kind === "word") {
+			end += 2;
 		}
-	}
-	for (const values of rulesByFirstCharacter.values()) {
-		values.sort(compareRules);
-	}
-
-	const tokens: SimpleSemanticTokenSpan[] = [];
-	let character = 0;
-	let index = 0;
-	let line = 0;
-
-	while (index < source.length) {
-		const current = source[index];
-
-		if (current === "\n") {
-			index += 1;
-			line += 1;
-			character = 0;
-			continue;
-		}
-
-		if (current === "'") {
-			while (index < source.length && source[index] !== "\n") {
-				index += 1;
-				character += 1;
-			}
-			continue;
-		}
-
-		if (current === "\"") {
-			index += 1;
-			character += 1;
-
-			while (index < source.length) {
-				const stringCharacter = source[index];
-
-				if (stringCharacter === "\\" && index + 1 < source.length) {
-					index += 2;
-					character += 2;
-					continue;
-				}
-
-				index += 1;
-				character += 1;
-
-				if (stringCharacter === "\"" || stringCharacter === "\n") {
-					if (stringCharacter === "\n") {
-						line += 1;
-						character = 0;
+		for (let length = end; length > index; length -= 2) {
+			const name = words.slice(index, length).map((part) => part.text).join("");
+			const reference = typeReference(name);
+			if (reference !== undefined && isSdkTypeKind(reference.definition.kind)) {
+				for (const part of words.slice(index, length)) {
+					if (part.kind === "word") {
+						add(part, { type: "type" });
 					}
-					break;
 				}
+				break;
 			}
+		}
+		if (rules.has(token.start)) {
 			continue;
 		}
-
-		const matched = findRuleAt(source, index, rulesByFirstCharacter);
-
-		if (matched !== undefined) {
-			tokens.push({
-				character,
-				length: matched.text.length,
-				line,
-				modifiers: matched.modifiers ?? [],
-				text: matched.text,
-				type: contextualType(source, index + matched.text.length, matched, rulesByFirstCharacter)
-			});
-			index += matched.text.length;
-			character += matched.text.length;
-			continue;
+		const global = globals.get(token.text);
+		if (global !== undefined) {
+			add(token, global);
+		} else if (inCode && next?.text === "(" && !languageWords.has(token.text)) {
+			add(token, { type: "function" });
 		}
-
-		index += 1;
-		character += 1;
 	}
+	return [...rules.values()].sort((left, right) => left.start! - right.start!);
+}
 
-	return tokens;
+/** 仅构建源码语义位置规则，供需要分别核对固定语法与符号分类的消费者使用。 */
+export function buildDocumentTokenRules(source: string, sdk?: Sdk, context?: SimpleProjectSemanticContext): readonly SimpleTokenRule[] {
+	return documentTokenRules(simpleUnitHighlightingInput(source), sdk, context);
+}
+
+/**
+ * 单次扫描完成用户代码及完整预览的语义着色，所有分析阶段复用同一令牌流。
+ *
+ * @param source 分析源码，由单元边界提供用户代码或完整只读预览。
+ * @param sdk 可选的外部符号信息。
+ * @param context 项目语义快照。
+ * @param visibleSource 编辑器可见原文；与分析原文不同才单独扫描以校验位置。
+ * @returns 可直接交给编辑器的单行语义令牌。
+ */
+export function buildSimpleSemanticTokens(source: string, sdk?: Sdk, context?: SimpleProjectSemanticContext, visibleSource = source): readonly SimpleSemanticTokenSpan[] {
+	const input = simpleUnitHighlightingInput(source);
+	return tokenizeSimpleText(visibleSource, [...buildLanguageTokenRules(), ...documentTokenRules(input, sdk, context)], visibleSource === source ? input.tokens : undefined);
+}
+
+/**
+ * 在词法令牌位置应用语法结果与固定语言规则；字符串和注释交给 TextMate。
+ *
+ * @param source 编辑器可见文本。
+ * @param rules 固定语言规则与精确源码位置规则。
+ * @returns 按行、字符排序且不重叠的语义令牌。
+ */
+export function tokenizeSimpleText(source: string, rules: readonly SimpleTokenRule[], tokens: readonly SimpleSourceToken[] = scanSimpleSource(source)): readonly SimpleSemanticTokenSpan[] {
+	const exact = new Map(rules.filter((rule) => rule.start !== undefined).map((rule) => [rule.start!, rule]));
+	const language = new Map(rules.filter((rule) => rule.start === undefined).map((rule) => [rule.text, rule]));
+	const spans: SimpleSemanticTokenSpan[] = [];
+	let covered = 0;
+	let previous: SimpleSourceToken | undefined;
+	for (let index = 0; index < tokens.length; index += 1) {
+		const token = tokens[index]!;
+		if (token.start < covered || token.kind === "comment" || token.kind === "string") {
+			continue;
+		}
+		if (token.kind === "continuation") {
+			continue;
+		}
+		const fixed = previous?.text === "." ? undefined : language.get(token.text);
+		const rule = exact.get(token.start) ?? fixed;
+		previous = token;
+		if (rule === undefined) {
+			continue;
+		}
+		const end = rule.end ?? token.end;
+		if (end > source.length || source.slice(token.start, end) !== rule.text) {
+			continue;
+		}
+		let type = rule.type;
+		if (token.text === "结束" && language.get(tokens[index + 1]?.text ?? "")?.type === "simpleDeclaration") {
+			type = "simpleDeclaration";
+		}
+		spans.push({ line: token.line, character: token.character, length: end - token.start, text: rule.text, type, modifiers: rule.modifiers ?? [] });
+		covered = end;
+	}
+	return spans;
 }

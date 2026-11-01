@@ -88,7 +88,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 
 	async readProject(project: SimpleProjectInfo): Promise<readonly RefactoringUnitSnapshot[]> {
 		const files = new Map<string, string>();
-		for (const file of (await Promise.all(project.sourceDirectories.map((root) => listSimpleFiles(root)))).flat()) files.set(filePathKey(file), file);
+		for (const file of (await Promise.all(project.sourceDirectories.map((root) => listSimpleFiles(root, undefined, { strict: true })))).flat()) files.set(filePathKey(file), file);
 		return Promise.all([...files.values()].map((file) => this.services.codeDocuments.readRefactoringUnit(vscode.Uri.file(file), mostSpecificSourceRoot(project.sourceDirectories, file)!)));
 	}
 
@@ -97,6 +97,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		if (this.busy) throw new Error("正在重构，请稍后重命名。");
 		const changes = planSimpleComponentProjectRename(units, owner, componentPath, newName.trim(), this.services.getSdk?.());
 		for (const unit of units.filter((unit) => unit === owner || changes.some((change) => change.unit === unit))) await unit.assertUnchanged();
+		for (const unit of units) unit.assertCurrent();
 		return changes;
 	}
 
@@ -112,7 +113,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		const files = new Map<string, string>();
 		for (const move of moves) {
 			const stat = await vscode.workspace.fs.stat(vscode.Uri.file(move.oldFile));
-			const moving = (stat.type & vscode.FileType.Directory) !== 0 ? await listSimpleFiles(move.oldFile) : path.extname(move.oldFile).toLowerCase() === ".simple" ? [move.oldFile] : [];
+			const moving = (stat.type & vscode.FileType.Directory) !== 0 ? await listSimpleFiles(move.oldFile, undefined, { strict: true }) : path.extname(move.oldFile).toLowerCase() === ".simple" ? [move.oldFile] : [];
 			for (const file of moving) files.set(filePathKey(file), file);
 		}
 		return Promise.all([...files.values()].map((file) => this.services.codeDocuments.readRefactoringUnit(vscode.Uri.file(file), mostSpecificSourceRoot(project.sourceDirectories, file)!)));
@@ -284,6 +285,19 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		let originalMain: string | undefined;
 		let updatedMain: string | undefined;
 		const pathRegistrations: vscode.Disposable[] = [];
+		let applying = false;
+		const preparedTexts = new Map<vscode.TextDocument, { readonly source: string; readonly version: number }>();
+		const rememberText = (document: vscode.TextDocument): void => {
+			preparedTexts.set(document, { source: document.getText(), version: document.version });
+		};
+		const assertPreparedTexts = (): void => {
+			for (const [document, prepared] of preparedTexts) {
+				if (document.isClosed || !vscode.workspace.textDocuments.includes(document)
+					|| document.version !== prepared.version || document.getText() !== prepared.source) {
+					throw new Error("关联文档在重构准备期间已变化或重新打开，请按最新状态重试。");
+				}
+			}
+		};
 		const disposeUnapplied = (): void => {
 			for (const receipt of receipts) if (!receipt.isApplied()) receipt.dispose();
 			for (const [index, value] of pathMoves.entries()) {
@@ -344,6 +358,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 				if (!persistMovedCode && change.userCode !== change.unit.userCode) {
 					const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(change.unit.filePath)));
 					if (document.getText() !== change.unit.userCode) throw new Error("关联代码在重构准备期间发生变化。");
+					rememberText(document);
 					documents.push({ document, change });
 				}
 				const changedProperty = change.propertyDocument !== change.unit.property.document;
@@ -356,11 +371,13 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 			for (const file of move?.resources?.textFiles ?? []) {
 				const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file.filePath));
 				if (document.getText() !== file.before) throw new Error("关联资源 XML 在重构准备期间已变化，请按最新状态重试。");
+				rememberText(document);
 				textDocuments.push({ document, file });
 			}
 			if (move !== undefined) {
 				if (project !== undefined && ((move.mainPaths ?? move.paths).length > 0 || move.resources !== undefined)) {
 					const document = await vscode.workspace.openTextDocument(vscode.Uri.file(project.filePath));
+					rememberText(document);
 					const source = await vscode.workspace.fs.readFile(vscode.Uri.file(project.filePath));
 					originalMain = document.getText();
 					if (!document.isDirty && originalMain !== await vscode.workspace.decode(source, { encoding: "utf8" })) throw new Error("项目属性发生外部修改，请按最新状态重试。");
@@ -374,10 +391,13 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 				}
 				addPathEdit();
 			}
+			assertPreparedTexts();
 			for (const { document, change } of documents) replaceChangedText(edit, document, change.userCode);
 			for (const { document, file } of textDocuments) replaceChangedText(edit, document, file.after);
 			if (mainDocument !== undefined && updatedMain !== undefined) replaceChangedText(edit, mainDocument, updatedMain);
 			for (const unit of snapshots.filter((value) => affected.has(filePathKey(value.filePath)))) await unit.assertUnchanged();
+			for (const unit of snapshots.filter((value) => affected.has(filePathKey(value.filePath)))) unit.assertCurrent();
+			assertPreparedTexts();
 			if (prepareOnly) {
 				const prepared: PreparedPathEdit = {
 					rollback: rollbackChanges,
@@ -420,6 +440,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 				this.preparedRenames.set(edit, prepared);
 				return edit;
 			}
+			applying = true;
 			if (!await vscode.workspace.applyEdit(edit)) throw new Error("VS Code 未能应用此次重构。");
 			for (const { change } of documents) {
 				const moved = move?.paths.find((value) => filePathKey(value.oldFile) === filePathKey(change.unit.filePath));
@@ -429,7 +450,11 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 			}
 			return edit;
 		} catch (error) {
-			await rollbackChanges(error);
+			if (applying) await rollbackChanges(error);
+			else {
+				for (const receipt of receipts) receipt.dispose();
+				for (const registration of pathRegistrations) registration.dispose();
+			}
 			throw error;
 		}
 	}

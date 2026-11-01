@@ -37,7 +37,10 @@ import {
 	type LibrarySymbolTarget
 } from "./librarySymbol";
 import { findCallableArgumentCount } from "./signatures";
-import { isSimpleIgnoredOffset } from "./simpleSourceLexical";
+import { SIMPLE_IDENTIFIER_CHARACTER as IDENTIFIER_CHARACTER, simpleIdentifierRange, isSimpleIgnoredOffset } from "./simpleSourceLexical";
+
+/** 悬停不跨越名称末尾的引号或标点；F2 的左侧命中规则由导航入口自行选择。 */
+const identifierRange = (source: string, offset: number) => IDENTIFIER_CHARACTER.test(source[offset] ?? "") ? simpleIdentifierRange(source, offset) : undefined;
 
 /** 一个已由清单或项目源码确认的 Simple 语言标记悬停结果。 */
 export interface SimpleKeywordHoverInfo {
@@ -119,7 +122,7 @@ interface RuntimeMember {
 	readonly owner: LibraryDefinitionReference;
 }
 
-const IDENTIFIER_CHARACTER = /[\p{L}\p{N}_]/u;
+
 
 /** 返回光标所在十六进制整数字面量及其精确十进制值。 */
 function hexadecimalIntegerHover(source: string, offset: number): SimpleKeywordHoverInfo | undefined {
@@ -287,27 +290,7 @@ function qualifierBefore(source: string, start: number): string | undefined {
 }
 
 /** 返回光标所在的完整 Simple 标识符范围。 */
-function identifierRange(
-	source: string,
-	offset: number
-): { readonly end: number; readonly name: string; readonly start: number } | undefined {
-	if (!IDENTIFIER_CHARACTER.test(source[offset] ?? "")) {
-		return undefined;
-	}
 
-	let start = offset;
-	let end = offset + 1;
-
-	while (start > 0 && IDENTIFIER_CHARACTER.test(source[start - 1] ?? "")) {
-		start -= 1;
-	}
-
-	while (end < source.length && IDENTIFIER_CHARACTER.test(source[end] ?? "")) {
-		end += 1;
-	}
-
-	return { end, name: source.slice(start, end), start };
-}
 
 /** 返回当前项目由 res 目录推导出的 R 对象或资源常量悬停。 */
 function projectResourceHover(

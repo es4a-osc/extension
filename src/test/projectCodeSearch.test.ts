@@ -77,3 +77,27 @@ test("普通文本搜索不区分大小写并按代码行返回首个命中范�
 		{ endCharacter: 7, lineNumber: 1, startCharacter: 3 }
 	]);
 });
+
+test("Unicode 大小写扩展后的命中范围仍指向原文，包括扩展字符本身及后续文本", () => {
+	const line = "变量 İ名 为 整数型:目标 = 1:𐐀名 = 2";
+	for (const [query, selected] of [["目标", "目标"], ["i", "İ"], ["İ名", "İ名"], ["𐐨名", "𐐀名"], ["= 1", "= 1"]]) {
+		const match = findProjectCodeMatches([{ filePath: "Example.simple", userCode: line }], query!).matches[0]!;
+		assert.equal(line.slice(match.startCharacter, match.endCharacter), selected);
+		assert.equal(match.startCharacter, line.indexOf(selected!));
+	}
+});
+
+test("Unicode 上下文大小写不漏掉精确子串，兼容扩展字符并按原文先后返回", () => {
+	for (const [line, query, expected] of [
+		["变量 ΟΣΑ 为 整数型", "ΟΣ", "ΟΣ"],
+		["变量 ΣΟΣΑ 为 整数型", "ΣΟΣ", "ΣΟΣ"],
+		["οσΑ ΟΣΑ", "ος", "οσ"],
+		["İ i", "i", "İ"],
+		["[a].* [A].*", "[A].*", "[a].*"]
+	]) {
+		const match = findProjectCodeMatches([{ filePath: "Example.simple", userCode: line! }], query!).matches[0]!;
+		assert.ok(match);
+		assert.equal(line!.slice(match.startCharacter, match.endCharacter), expected);
+		assert.equal(match.startCharacter, line!.indexOf(expected!));
+	}
+});

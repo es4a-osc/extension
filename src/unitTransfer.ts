@@ -125,13 +125,19 @@ export class UnitTransferController implements vscode.Disposable {
 		const oldName = path.basename(source.filePath, path.extname(source.filePath));
 		const copyTarget = await availableCopyTarget(target, oldName);
 		const sourceBytes = await vscode.workspace.fs.readFile(sourceUri);
-		let targetBytes = sourceBytes;
-		if (copyTarget.name !== oldName) {
-			const encoding = detectSimpleSourceEncoding(sourceBytes);
-			const sourceText = await vscode.workspace.decode(sourceBytes, { encoding });
-			const targetText = createCopiedSimpleUnitSource(sourceText, oldName, copyTarget.name);
-			targetBytes = await vscode.workspace.encode(targetText, { encoding });
-		}
+		const sourceRoot = mostSpecificSourceRoot(target.project.sourceDirectories, source.filePath)!;
+		const snapshot = await this.services.codeDocuments.readRefactoringUnit(sourceUri, sourceRoot);
+		const units = this.services.refactoring === undefined ? [snapshot] : await this.services.refactoring.readProject(target.project);
+		const encoding = detectSimpleSourceEncoding(sourceBytes);
+		const sourceText = await vscode.workspace.decode(sourceBytes, { encoding });
+		const targetText = createCopiedSimpleUnitSource(sourceText, oldName, copyTarget.name, {
+			sourceFile: source.filePath, sourceRoot, destinationFile: copyTarget.filePath,
+			destinationRoot: mostSpecificSourceRoot(target.project.sourceDirectories, copyTarget.filePath)!, units, sdk: this.services.getSdk?.()
+		});
+		const targetBytes = await vscode.workspace.encode(targetText, { encoding });
+		await snapshot.assertUnchanged(sourceBytes);
+		snapshot.assertCurrent();
+		this.ensureSaved(source);
 
 		const edit = new vscode.WorkspaceEdit();
 		edit.createFile(vscode.Uri.file(copyTarget.filePath), {

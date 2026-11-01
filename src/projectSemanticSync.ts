@@ -7,15 +7,15 @@ import * as vscode from "vscode";
 import { ProgramTreeProvider, type ProgramTreeNode } from "./programTree";
 import { ProjectSymbolIndex } from "./projectSymbolIndex";
 
-/** 统一项目语义索引的立即刷新、防抖刷新和项目树回写抑制。 */
+/** 合并后台文件与项目操作的语义更新，发布后仅重绘可见单元。 */
 export class ProjectSemanticSyncController implements vscode.Disposable {
-	private refreshingTree = false;
 	private batching = 0;
 	private disposed = false;
 	private revision = 0;
 	private sequence = Promise.resolve();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private readonly treeListener: vscode.Disposable;
+	private readonly fileListener: vscode.Disposable;
 
 	constructor(
 		private readonly programs: ProgramTreeProvider,
@@ -24,6 +24,7 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 		private readonly reportError: (message: string) => void
 	) {
 		this.treeListener = programs.onDidChangeTreeData((node) => this.onTreeChanged(node));
+		this.fileListener = programs.onDidChangeProjectFiles(() => this.schedule());
 	}
 
 	async wait(): Promise<void> {
@@ -72,25 +73,22 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 			await this.symbols.updateProjects(projects, isCurrent);
 			if (!isCurrent()) return;
 			this.refreshLanguageFeatures();
-			this.refreshingTree = true;
-			try {
-				this.programs.refresh();
-			} finally {
-				this.refreshingTree = false;
-			}
+			// 语义快照与目录显示分离，折叠项目树也必须继续更新语言能力。
+			this.programs.refreshVisibleUnits();
 		};
 		this.sequence = this.sequence.then(run, run);
 		await this.sequence;
 	}
 
 	private onTreeChanged(node: ProgramTreeNode | undefined): void {
-		if (node === undefined && !this.refreshingTree) this.schedule();
+		if (node === undefined) this.schedule();
 	}
 
 	dispose(): void {
 		this.disposed = true;
 		this.revision += 1;
 		this.treeListener.dispose();
+		this.fileListener.dispose();
 		if (this.timer !== undefined) {
 			clearTimeout(this.timer);
 			this.timer = undefined;

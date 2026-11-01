@@ -13,6 +13,10 @@ import {
 import { ProgramTreeProvider, type ProgramTreeNode } from "./programTree";
 import { sameFilePath } from "./simpleProjectPaths";
 import { indexSimpleProjectResources } from "./simpleResourceSymbols";
+import { KeyedTaskQueue } from "./keyedTaskQueue";
+import { filePathKey } from "./simpleProjectPaths";
+
+const propertyWrites = new KeyedTaskQueue();
 
 /** “编辑属性”子菜单中允许直接修改的项目字段。 */
 export type EditableProjectProperty =
@@ -26,6 +30,7 @@ export type EditableProjectProperty =
 /** 项目属性编辑完成后需要刷新的扩展状态。 */
 export interface ProjectPropertyEditServices {
 	readonly refreshProjectSemantics: () => Promise<void>;
+	readonly fileSystem?: typeof vscode.workspace.fs;
 }
 
 interface ProjectPropertyDefinition {
@@ -98,6 +103,7 @@ interface ProjectManifestMacroQuickPickItem extends vscode.QuickPickItem {
 }
 
 interface ProjectPropertyFileState {
+	readonly fileSystem: typeof vscode.workspace.fs;
 	readonly bytes: Uint8Array | undefined;
 	readonly document: vscode.TextDocument | undefined;
 	readonly source: string;
@@ -105,7 +111,7 @@ interface ProjectPropertyFileState {
 }
 
 /** 读取当前磁盘文件或已打开文档中的最新项目属性。 */
-async function loadProjectPropertyFile(node: ProgramTreeNode | undefined): Promise<ProjectPropertyFileState> {
+async function loadProjectPropertyFile(node: ProgramTreeNode | undefined, fileSystem = vscode.workspace.fs): Promise<ProjectPropertyFileState> {
 	if (node?.kind !== "project") {
 		throw new Error("请在项目节点上编辑项目属性。");
 	}
@@ -114,8 +120,9 @@ async function loadProjectPropertyFile(node: ProgramTreeNode | undefined): Promi
 	const document = vscode.workspace.textDocuments.find((candidate) => (
 		candidate.uri.scheme === "file" && sameFilePath(candidate.uri.fsPath, uri.fsPath)
 	));
-	const bytes = document === undefined ? await vscode.workspace.fs.readFile(uri) : undefined;
+	const bytes = document === undefined ? await fileSystem.readFile(uri) : undefined;
 	return {
+		fileSystem,
 		bytes,
 		document,
 		source: document?.getText() ?? new TextDecoder("utf-8").decode(bytes),
@@ -131,6 +138,7 @@ async function saveProjectPropertyFile(
 	nextSource: string
 ): Promise<void> {
 	if (state.document !== undefined) {
+		if (state.document.getText() !== state.source) throw new Error("项目属性已变化，请重试。");
 		const lastLine = state.document.lineAt(state.document.lineCount - 1);
 		const edit = new vscode.WorkspaceEdit();
 		edit.replace(
@@ -145,6 +153,11 @@ async function saveProjectPropertyFile(
 			throw new Error("无法保存项目属性。");
 		}
 	} else {
+		const current = await state.fileSystem.readFile(state.uri);
+		if (!Buffer.from(current).equals(Buffer.from(state.bytes!))
+			|| vscode.workspace.textDocuments.some((document) => sameFilePath(document.uri.fsPath, state.uri.fsPath) && document.isDirty)) {
+			throw new Error("项目属性已变化，请重试。");
+		}
 		const hasUtf8Bom = state.bytes !== undefined
 			&& state.bytes.length >= 3
 			&& state.bytes[0] === 0xef
@@ -156,11 +169,24 @@ async function saveProjectPropertyFile(
 			output.set([0xef, 0xbb, 0xbf]);
 			output.set(encoded, 3);
 		}
-		await vscode.workspace.fs.writeFile(state.uri, output);
+		await state.fileSystem.writeFile(state.uri, output);
 	}
 
 	provider.refresh();
 	await services.refreshProjectSemantics();
+}
+
+/** 输入完成后重新读取并合并其它字段；同一字段被修改时拒绝覆盖。 */
+async function saveLatestProjectProperty(
+	provider: ProgramTreeProvider, services: ProjectPropertyEditServices, node: ProgramTreeNode,
+	key: string, value: string, expectedValue: string | undefined
+): Promise<void> {
+	if (node.kind !== "project") throw new Error("请在项目节点上编辑项目属性。");
+	await propertyWrites.run(filePathKey(node.project.filePath), async () => {
+		const state = await loadProjectPropertyFile(node, services.fileSystem);
+		if (parseProjectProperties(state.source)[key] !== expectedValue) throw new Error("该项目属性在输入期间已变化，请重试。");
+		await saveProjectPropertyFile(provider, services, state, updateProjectProperty(state.source, key, value));
+	});
 }
 
 /** 清单宏键固定为“类简名.宏名”，排除编译器自身带点号的固定属性。 */
@@ -302,7 +328,7 @@ export async function editProjectProperty(
 	property: EditableProjectProperty,
 	requestedValue?: string
 ): Promise<void> {
-	const state = await loadProjectPropertyFile(node);
+	const state = await loadProjectPropertyFile(node, services.fileSystem);
 	if (node?.kind !== "project") {
 		return;
 	}
@@ -322,8 +348,7 @@ export async function editProjectProperty(
 		throw new Error("版本号必须是大于或等于 1 的整数。");
 	}
 
-	const nextSource = updateProjectProperty(currentSource, property, value);
-	await saveProjectPropertyFile(provider, services, state, nextSource);
+	await saveLatestProjectProperty(provider, services, node, property, value, parseProjectProperties(currentSource)[property]);
 }
 
 /** 选择或新增一个“类简名.宏名”项目属性，并编辑其清单宏值。 */
@@ -334,7 +359,7 @@ export async function editProjectManifestMacro(
 	requestedKey?: string,
 	requestedValue?: string
 ): Promise<void> {
-	const state = await loadProjectPropertyFile(node);
+	const state = await loadProjectPropertyFile(node, services.fileSystem);
 	const properties = parseProjectProperties(state.source);
 	let key = requestedKey;
 	if (key === undefined) {
@@ -393,10 +418,6 @@ export async function editProjectManifestMacro(
 		throw new Error("清单宏值不能包含换行。");
 	}
 
-	await saveProjectPropertyFile(
-		provider,
-		services,
-		state,
-		updateProjectProperty(state.source, key, value)
-	);
+	if (node?.kind !== "project") return;
+	await saveLatestProjectProperty(provider, services, node, key, value, properties[key]);
 }

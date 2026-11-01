@@ -3,7 +3,7 @@
 xhwsd@qq.com 2026-10-12
 */
 
-import { testSdkPath } from "../testFixtures";
+import { testExtensionId, testSdkPath } from "../testFixtures";
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -79,7 +79,7 @@ suite("原生重构操作", () => {
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		previousSdk = configuration.inspect<string>("sdk.path")?.globalValue;
 		await configuration.update("sdk.path", testSdkPath(), vscode.ConfigurationTarget.Global);
-		await vscode.extensions.getExtension("es4a.es4a")!.activate();
+		await vscode.extensions.getExtension(testExtensionId())!.activate();
 		await vscode.commands.executeCommand("es4a.refreshLibraries");
 		const files = vscode.workspace.getConfiguration("files");
 		previousAutoSave = files.inspect<boolean>("refactoring.autoSave")?.globalValue;
@@ -171,7 +171,8 @@ suite("原生重构操作", () => {
 			assert.equal(await fs.readFile(callerFile, "utf8"), callerSource);
 			await vscode.commands.executeCommand("notifications.clearAll");
 			await rename(editor, "按钮1", "修正按钮");
-			await waitFor(() => caller.getText().includes("a.修正按钮."));
+			// 跨单元通知分别到达，必须等原单元和引用单元都已刷新再断言事务结果。
+			await waitFor(() => caller.getText().includes("a.修正按钮.") && editor.document.getText().includes("事件 修正按钮."));
 			assert.match(editor.document.getText(), /事件 修正按钮\./u);
 			await vscode.commands.executeCommand("undo");
 			assert.equal(editor.document.getText(), getVisibleSimpleUnitUserCode(source));
@@ -208,7 +209,8 @@ suite("原生重构操作", () => {
 			assert.equal(await fs.readFile(file, "utf8"), source);
 			assert.equal(await fs.readFile(callerFile, "utf8"), callerSource);
 			await rename(editor, "按钮1", "最新按钮");
-			await waitFor(() => caller.getText().includes("a.最新按钮."));
+			// 关联代码先更新时，原单元的文件通知仍可能在途；等待两端均已刷新。
+			await waitFor(() => caller.getText().includes("a.最新按钮.") && editor.document.getText().includes("事件 最新按钮."));
 			assert.ok(caller.getText().startsWith("' 预览期间保留\r\n"));
 			assert.match(editor.document.getText(), /事件 最新按钮\./u);
 		});

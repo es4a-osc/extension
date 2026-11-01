@@ -545,6 +545,10 @@ function parseMember(value: unknown, filePath: string): LibraryMember {
 		throw new Error(`${filePath} 中成员 ${name} 的 layouts 必须是非空字符串数组`);
 	}
 	const layouts = value.layouts as readonly string[] | undefined;
+	if (value.params !== undefined && !Array.isArray(value.params)) throw new Error(`${filePath} 中成员 ${name} 的 params 必须是数组`);
+	for (const field of ["type", "return", "description", "editor", "value"] as const) {
+		if (value[field] !== undefined && typeof value[field] !== "string") throw new Error(`${filePath} 中成员 ${name} 的 ${field} 必须是字符串`);
+	}
 	const params = Array.isArray(value.params)
 		? value.params.map((parameter) => parseParameter(parameter, filePath))
 		: undefined;
@@ -570,6 +574,9 @@ function parseMember(value: unknown, filePath: string): LibraryMember {
 function parseParameter(value: unknown, filePath: string): LibraryParameter {
 	if (!isRecord(value)) {
 		throw new Error(`${filePath} 中存在无效参数定义`);
+	}
+	for (const field of ["type", "description"] as const) {
+		if (value[field] !== undefined && typeof value[field] !== "string") throw new Error(`${filePath} 中参数 ${field} 必须是字符串`);
 	}
 
 	return {
@@ -617,9 +624,18 @@ function parseDefinition(value: unknown, filePath: string): LibraryDefinition {
 	}
 
 	const members: Partial<Record<LibraryMemberGroup, readonly LibraryMember[]>> = {};
+	for (const field of ["type", "class", "kind", "description", "icon", "baseObject"] as const) {
+		if (value[field] !== undefined && typeof value[field] !== "string") throw new Error(`${filePath} 中定义 ${String(value.name)} 的 ${field} 必须是字符串`);
+	}
+	for (const field of ["inherits", "interfaces"] as const) {
+		if (value[field] !== undefined && (!Array.isArray(value[field]) || value[field].some((entry) => typeof entry !== "string" || entry.length === 0))) {
+			throw new Error(`${filePath} 中定义 ${String(value.name)} 的 ${field} 必须是非空名称数组`);
+		}
+	}
 
 	for (const group of LIBRARY_MEMBER_GROUPS) {
 		const groupValue = value[group];
+		if (groupValue !== undefined && !Array.isArray(groupValue)) throw new Error(`${filePath} 中定义 ${String(value.name)} 的 ${group} 必须是数组`);
 
 		if (Array.isArray(groupValue)) {
 			members[group] = groupValue.map((member) => parseMember(member, filePath));
@@ -1126,4 +1142,3 @@ export function getEffectivePropertyByProjection(
 	}
 	return undefined;
 }
-

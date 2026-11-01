@@ -4,6 +4,9 @@ xhwsd@qq.com 2026-10-7
 */
 
 import * as path from "node:path";
+import { readFileSync } from "node:fs";
+import { createProjectInfo, parseProjectProperties, type SimpleProjectInfo } from "./project";
+import { findProjectForSource } from "./projectCapability";
 import {
 	isDesignerColumnOrder,
 	type DesignerColumnId,
@@ -15,7 +18,7 @@ import type {
 	WorkspaceProjectRegistry,
 	WorkspaceProjectSettings
 } from "./programProjectPersistence";
-import { filePathKey, isPathInsideOrEqual } from "./simpleProjectPaths";
+import { filePathKey } from "./simpleProjectPaths";
 
 /** 一个 Simple 单元在所属项目中保存的设计器界面偏好。 */
 export interface DesignerDocumentPreference {
@@ -83,20 +86,16 @@ function normalizeDocumentPreference(value: unknown): DesignerDocumentPreference
 /** 从当前工程中选择包含目标单元的最具体项目，并生成项目内相对路径。 */
 function projectBinding(
 	registry: WorkspaceProjectRegistry,
-	sourceFilePath: string
+	sourceFilePath: string,
+	readProject: (file: string) => SimpleProjectInfo
 ): DesignerProjectBinding | undefined {
 	const resolvedSource = path.resolve(sourceFilePath);
-	let selected: WorkspaceProjectEntry | undefined;
-	for (const entry of registry.projectEntries()) {
-		const projectDirectory = path.dirname(entry.projectFile);
-		if (!isPathInsideOrEqual(projectDirectory, resolvedSource)) continue;
-		if (
-			selected === undefined
-			|| projectDirectory.length > path.dirname(selected.projectFile).length
-		) {
-			selected = entry;
-		}
-	}
+	const entries = registry.projectEntries();
+	const projects = entries.flatMap((entry) => {
+		try { return [readProject(entry.projectFile)]; } catch { return []; }
+	});
+	const project = findProjectForSource(projects, resolvedSource);
+	const selected = project === undefined ? undefined : entries.find((entry) => filePathKey(entry.projectFile) === filePathKey(project.filePath));
 	if (selected === undefined) return undefined;
 	return {
 		documentPath: path.relative(path.dirname(selected.projectFile), resolvedSource).replaceAll(path.sep, "/"),
@@ -126,7 +125,10 @@ function settingsWithDesignerDocuments(
 }
 
 /** 创建以 `es4a.projects[*].settings` 为唯一持久化来源的设计器偏好状态。 */
-export function createDesignerPreferenceState(registry: WorkspaceProjectRegistry): DesignerPreferenceState {
+export function createDesignerPreferenceState(
+	registry: WorkspaceProjectRegistry,
+	readProject: (file: string) => SimpleProjectInfo = (file) => createProjectInfo(file, parseProjectProperties(readFileSync(file, "utf8")))
+): DesignerPreferenceState {
 	const unboundDocuments = new Map<string, DesignerDocumentPreference>();
 	const unboundKey = (sourceFilePath: string): string => filePathKey(sourceFilePath);
 	let writeQueue: Promise<void> = Promise.resolve();
@@ -135,12 +137,17 @@ export function createDesignerPreferenceState(registry: WorkspaceProjectRegistry
 		writeQueue = task.catch(() => undefined);
 		return task;
 	};
+	const assertBinding = (file: string, expected: DesignerProjectBinding): void => {
+		const current = projectBinding(registry, file, readProject);
+		if (current === undefined || filePathKey(current.entry.projectFile) !== filePathKey(expected.entry.projectFile)
+			|| current.documentPath !== expected.documentPath) throw new Error("单元所属项目已变化，请按最新项目重试设计器设置。");
+	};
 
 	const updateBoundDocument = (
 		sourceFilePath: string,
 		update: (current: DesignerDocumentPreference) => DesignerDocumentPreference | undefined
 	): Promise<void> => enqueueWrite(async () => {
-		const binding = projectBinding(registry, sourceFilePath);
+		const binding = projectBinding(registry, sourceFilePath, readProject);
 		if (binding === undefined) {
 			const key = unboundKey(sourceFilePath);
 			const updated = update(unboundDocuments.get(key) ?? {});
@@ -148,22 +155,19 @@ export function createDesignerPreferenceState(registry: WorkspaceProjectRegistry
 			else unboundDocuments.set(key, updated);
 			return;
 		}
-		const documents = { ...rawDesignerDocuments(binding.entry.settings) };
-		const updated = update(normalizeDocumentPreference(documents[binding.documentPath]));
-		if (updated === undefined || Object.keys(updated).length === 0) {
-			delete documents[binding.documentPath];
-		} else {
-			documents[binding.documentPath] = updated;
-		}
-		await registry.updateProjectSettings(
-			binding.entry.projectFile,
-			settingsWithDesignerDocuments(binding.entry.settings, documents)
-		);
+		await registry.updateProjectSettings(binding.entry.projectFile, (settings) => {
+			assertBinding(sourceFilePath, binding);
+			const documents = { ...rawDesignerDocuments(settings) };
+			const updated = update(normalizeDocumentPreference(documents[binding.documentPath]));
+			if (updated === undefined || Object.keys(updated).length === 0) delete documents[binding.documentPath];
+			else documents[binding.documentPath] = updated;
+			return settingsWithDesignerDocuments(settings, documents);
+		});
 	});
 
 	return {
 		getDocument(sourceFilePath: string): DesignerDocumentPreference {
-			const binding = projectBinding(registry, sourceFilePath);
+			const binding = projectBinding(registry, sourceFilePath, readProject);
 			return binding === undefined
 				? unboundDocuments.get(unboundKey(sourceFilePath)) ?? {}
 				: normalizeDocumentPreference(rawDesignerDocuments(binding.entry.settings)[binding.documentPath]);
@@ -181,8 +185,8 @@ export function createDesignerPreferenceState(registry: WorkspaceProjectRegistry
 		),
 		moveDocument(oldSourceFilePath: string, newSourceFilePath: string): Promise<void> {
 			return enqueueWrite(async () => {
-				const oldBinding = projectBinding(registry, oldSourceFilePath);
-				const newBinding = projectBinding(registry, newSourceFilePath);
+				const oldBinding = projectBinding(registry, oldSourceFilePath, readProject);
+				const newBinding = projectBinding(registry, newSourceFilePath, readProject);
 				if (oldBinding === undefined || newBinding === undefined) {
 					const oldKey = unboundKey(oldSourceFilePath);
 					const preference = unboundDocuments.get(oldKey);
@@ -195,15 +199,16 @@ export function createDesignerPreferenceState(registry: WorkspaceProjectRegistry
 					throw new Error("设计器界面偏好不能跨 ES4A 项目移动。");
 				}
 				if (oldBinding.documentPath === newBinding.documentPath) return;
-				const documents = { ...rawDesignerDocuments(oldBinding.entry.settings) };
-				const preference = documents[oldBinding.documentPath];
-				if (preference === undefined) return;
-				delete documents[oldBinding.documentPath];
-				documents[newBinding.documentPath] = preference;
-				await registry.updateProjectSettings(
-					oldBinding.entry.projectFile,
-					settingsWithDesignerDocuments(oldBinding.entry.settings, documents)
-				);
+				await registry.updateProjectSettings(oldBinding.entry.projectFile, (settings) => {
+					assertBinding(oldSourceFilePath, oldBinding);
+					assertBinding(newSourceFilePath, newBinding);
+					const documents = { ...rawDesignerDocuments(settings) };
+					const preference = documents[oldBinding.documentPath];
+					if (preference === undefined) return settings;
+					delete documents[oldBinding.documentPath];
+					documents[newBinding.documentPath] = preference;
+					return settingsWithDesignerDocuments(settings, documents);
+				});
 			});
 		},
 		deleteDocument: (sourceFilePath) => updateBoundDocument(sourceFilePath, () => undefined)

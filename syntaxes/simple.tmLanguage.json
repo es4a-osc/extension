@@ -80,11 +80,11 @@
 		"property-section": {
 			"patterns": [
 				{
-					"match": "\\$(?:属性|资源|定义|为|结束)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:\\$定义|\\$结束|\\$属性|\\$资源|\\$为)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "keyword.other.property-section.simple"
 				},
 				{
-					"match": "\\$(?:窗口|对象|接口|服务)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:\\$窗口|\\$接口|\\$对象|\\$服务)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "storage.type.property-section.simple"
 				}
 			]
@@ -92,19 +92,19 @@
 		"keywords": {
 			"patterns": [
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:别名|常量|变量|事件|函数|属性|静态|过程)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:别名|常量|变量|事件|函数|属性|过程)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "storage.type.declaration.simple"
 				},
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:如果|则|否则如果|否则|判断|分支|判断循环|循环|执行|直到|每个|从|至|步进|下个|退出|位于|错误|触发事件|结束)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:否则如果|触发事件|判断循环|分支|执行|每个|否则|结束|错误|退出|循环|如果|下个|位于|判断|步进|直到|从|则|至)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "keyword.control.simple"
 				},
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:传值|传址)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:传址|传值|静态)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "storage.modifier.simple"
 				},
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:创建|本对象|空|类型检验)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:类型检验|本对象|创建)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "keyword.other.expression.simple"
 				},
 				{
@@ -120,7 +120,7 @@
 		"types": {
 			"patterns": [
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:逻辑型|字节型|短整数型|整数型|长整数型|单精度小数型|双精度小数型|对象|文本型|日期时间型|变体型)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:双精度小数型|单精度小数型|日期时间型|长整数型|短整数型|逻辑型|字节型|整数型|文本型|变体型|对象)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "storage.type.simple"
 				}
 			]
@@ -128,19 +128,23 @@
 		"literals": {
 			"patterns": [
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:真|假)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:真|假)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "constant.language.boolean.simple"
+				},
+				{
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:空)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
+					"name": "constant.language.null.simple"
 				}
 			]
 		},
 		"operators": {
 			"patterns": [
 				{
-					"match": "(?<![\\p{L}\\p{N}_])(?:且|或|异或|取反|是|非|匹配|为)(?![\\p{L}\\p{N}_])",
+					"match": "(?<![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}.])(?:匹配|取反|异或|且|为|是|非|或)(?![\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Cf}])",
 					"name": "keyword.operator.word.simple"
 				},
 				{
-					"match": "<>|<=|>=|<<|>>|[+\\-*/%\\\\^&=<>]",
+					"match": "<>|<=|>=|<<|>>|\\+|-|\\*|/|%|\\\\|\\^|&|=|<|>",
 					"name": "keyword.operator.symbol.simple"
 				}
 			]

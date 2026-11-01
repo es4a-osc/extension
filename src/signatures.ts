@@ -5,6 +5,8 @@ xhwsd@qq.com 2026-8-27
 
 import type { Sdk, LibraryMember } from "./sdk";
 import { findAdjacentSimpleDocumentationComment } from "./simpleDocumentation";
+import type { SimpleSourceToken } from "./simpleSourceLexical";
+import { analyzeSimpleSourceSyntax, isSimpleEventTarget, type SimpleSourceSyntax } from "./simpleSourceSyntax";
 
 /** 编辑器中立的正式参数定义。 */
 export interface SignatureParameter {
@@ -20,6 +22,8 @@ export interface SignatureParameter {
 
 /** 编辑器中立的函数、过程或事件签名。 */
 export interface SignatureDefinition {
+	/** 事件只能在触发事件语句中提示，不与普通函数混为同一候选集合。 */
+	readonly event?: true;
 	/** 函数、过程或事件说明。 */
 	readonly description?: string;
 	/** 不包含限定名的调用名称。 */
@@ -34,6 +38,7 @@ export interface SignatureDefinition {
 
 /** 描述光标当前所在的调用和活动参数序号。 */
 export interface CallContext {
+	readonly event?: true;
 	/** 从零开始的活动参数序号。 */
 	readonly activeParameter: number;
 	/** 当前调用名称。 */
@@ -42,62 +47,6 @@ export interface CallContext {
 	readonly nameStart: number;
 	/** 点号调用前的可选限定名。 */
 	readonly qualifier?: string;
-}
-
-/** Simple 标识符允许出现的单个字符。 */
-const IDENTIFIER_CHARACTER = /^[\p{L}\p{N}_]$/u;
-
-/**
- * 按括号层级拆分正式参数列表。
- *
- * @param source 声明括号内的参数文本。
- * @returns 去除首尾空白并保留原始顺序的参数片段。
- */
-function splitParameters(source: string): string[] {
-	const result: string[] = [];
-	let depth = 0;
-	let start = 0;
-
-	// 数组类型可以写成“整数型(,)”，只能切分最外层的参数逗号。
-	for (let index = 0; index < source.length; index += 1) {
-		switch (source[index]) {
-			case "(":
-				depth += 1;
-				break;
-			case ")":
-				depth = Math.max(0, depth - 1);
-				break;
-			case ",":
-				if (depth === 0) {
-					result.push(source.slice(start, index).trim());
-					start = index + 1;
-				}
-				break;
-		}
-	}
-
-	result.push(source.slice(start).trim());
-	return result.filter((value) => value.length > 0);
-}
-
-/**
- * 解析一个 Simple 正式参数，兼容可选的 `传值` 和 `传址` 修饰。
- *
- * @param source 单个正式参数的源码文本。
- * @returns 解析后的参数；语法不匹配时返回 `undefined`。
- */
-function parseParameter(source: string): SignatureParameter | undefined {
-	const match = /^(?:(传值|传址)\s+)?([\p{L}_][\p{L}\p{N}_]*)\s+为\s+(.+)$/u.exec(source);
-
-	if (match === null || match[2] === undefined || match[3] === undefined) {
-		return undefined;
-	}
-
-	return {
-		byRef: match[1] === "传址",
-		name: match[2],
-		type: match[3].trim()
-	};
 }
 
 /**
@@ -157,37 +106,18 @@ export function buildSdkSignatures(sdk: Sdk | undefined): readonly SignatureDefi
  * @param source 当前 Simple 文档内容。
  * @returns 保留源码声明顺序的签名数组。
  */
-export function buildDocumentSignatures(source: string): readonly SignatureDefinition[] {
-	const signatures: SignatureDefinition[] = [];
-	const declaration = /^[ \t]*(?:静态[ \t]+)?(函数|过程|事件)[ \t]+([\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)?)[ \t]*\((.*)\)(?:[ \t]+为[ \t]+([^\r\n']+))?/gmu;
-
-	for (const match of source.matchAll(declaration)) {
-		const declarationKind = match[1];
-		const qualifiedName = match[2];
-
-		if (qualifiedName === undefined) {
-			continue;
-		}
-
-		const nameParts = qualifiedName.split(".");
-		const name = nameParts.at(-1);
-
-		if (name === undefined) {
-			continue;
-		}
-
-		signatures.push({
-			description: findAdjacentSimpleDocumentationComment(source, match.index),
-			name,
-			owner: nameParts.length > 1 ? nameParts[0] : undefined,
-			parameters: splitParameters(match[3] ?? "")
-				.map(parseParameter)
-				.filter((parameter): parameter is SignatureParameter => parameter !== undefined),
-			return: declarationKind === "函数" ? match[4]?.trim() : undefined
-		});
-	}
-
-	return signatures;
+export function buildDocumentSignatures(source: string, syntax: SimpleSourceSyntax = analyzeSimpleSourceSyntax(source)): readonly SignatureDefinition[] {
+	return syntax.declarations.filter((declaration) => declaration.implicit !== true
+		&& ["function", "procedure", "event"].includes(declaration.kind)).map((declaration) => ({
+		description: findAdjacentSimpleDocumentationComment(source, declaration.statementStart),
+		name: declaration.name,
+			...(declaration.kind === "event" ? { event: true as const } : {}),
+		owner: declaration.owner,
+		parameters: (declaration.parameters ?? []).map((parameter) => ({
+			byRef: parameter.passing === "传址", name: parameter.name, type: parameter.typeName
+		})),
+		return: declaration.kind === "function" ? declaration.typeName : undefined
+	}));
 }
 
 /** 扫描到光标时仍未闭合的一层括号及其参数位置。 */
@@ -198,69 +128,19 @@ interface ParenthesisFrame {
 	openOffset: number;
 }
 
-/**
- * 从指定结束偏移向前读取一个完整 Simple 标识符。
- *
- * @param source 完整文档内容。
- * @param end 标识符末尾的排他偏移。
- * @returns 标识符文本及起始偏移；当前位置之前没有标识符时返回 `undefined`。
- */
-function readIdentifierBackward(source: string, end: number): { readonly start: number; readonly text: string } | undefined {
-	let cursor = end;
-
-	while (cursor > 0 && IDENTIFIER_CHARACTER.test(source[cursor - 1] ?? "")) {
-		cursor -= 1;
-	}
-
-	return cursor === end ? undefined : { start: cursor, text: source.slice(cursor, end) };
-}
-
-/**
- * 尝试把一个尚未闭合的括号帧解释为函数调用。
- *
- * @param source 完整文档内容。
- * @param frame 扫描到光标时仍未闭合的括号帧。
- * @returns 调用名称、限定名和活动参数；括号不是调用时返回 `undefined`。
- */
-function callAtFrame(source: string, frame: ParenthesisFrame): CallContext | undefined {
-	let nameEnd = frame.openOffset;
-
-	while (nameEnd > 0 && /[ \t\f]/.test(source[nameEnd - 1] ?? "")) {
-		nameEnd -= 1;
-	}
-
-	const name = readIdentifierBackward(source, nameEnd);
-
-	if (name === undefined) {
-		return undefined;
-	}
-
-	// 函数声明自己的参数列表不是一次调用，不应在声明处弹出参数提示。
-	const lineStart = source.lastIndexOf("\n", name.start - 1) + 1;
-	const linePrefix = source.slice(lineStart, name.start);
-
-	if (/(?:^|\s)(?:静态\s+)?(?:函数|过程|事件|属性)\s*$/u.test(linePrefix)) {
-		return undefined;
-	}
-
-	let qualifier: string | undefined;
-	let qualifierEnd = name.start;
-
-	while (qualifierEnd > 0 && /[ \t\f]/.test(source[qualifierEnd - 1] ?? "")) {
-		qualifierEnd -= 1;
-	}
-
-	if (source[qualifierEnd - 1] === ".") {
-		const qualifierName = readIdentifierBackward(source, qualifierEnd - 1);
-		qualifier = qualifierName?.text;
-	}
-
-	return {
-		activeParameter: frame.activeParameter,
-		name: name.text,
-		nameStart: name.start,
-		qualifier
-	};
+/** 用共享令牌读取调用名和限定名，声明头本身不作为调用。 */
+function callAtFrame(tokens: readonly SimpleSourceToken[], index: number, frame: ParenthesisFrame, syntax: SimpleSourceSyntax): CallContext | undefined {
+	const name = tokens[index - 1];
+	if (name?.kind !== "word") return undefined;
+	const declaration = syntax.declarationAt(name.start);
+	if (declaration !== undefined && declaration.token.start === name.start
+		&& ["function", "procedure", "event", "property"].includes(declaration.kind)) return undefined;
+	const parts: string[] = [];
+	let first = index - 1;
+	while (tokens[first - 1]?.text === "." && tokens[first - 2]?.kind === "word") { parts.unshift(tokens[first - 2]!.text); first -= 2; }
+	return { activeParameter: frame.activeParameter, name: name.text, nameStart: name.start,
+		...(isSimpleEventTarget(syntax, name.start) ? { event: true as const } : {}),
+		qualifier: parts.length === 0 ? undefined : parts.join(".") };
 }
 
 /**
@@ -274,8 +154,12 @@ export function findCallableArgumentCount(
 	identifierEnd: number
 ): number | undefined {
 	let cursor = identifierEnd;
-	while (cursor < source.length && /[ \t\f]/u.test(source[cursor] ?? "")) {
-		cursor += 1;
+	for (;;) {
+		if (/[ \t\f]/u.test(source[cursor] ?? "")) { cursor++; continue; }
+		if (source[cursor] === "_" && (source[cursor + 1] === "\n" || source.slice(cursor + 1, cursor + 3) === "\r\n")) {
+			cursor += source[cursor + 1] === "\n" ? 2 : 3; continue;
+		}
+		break;
 	}
 	if (source[cursor] !== "(") {
 		return undefined;
@@ -334,58 +218,21 @@ export function findCallableArgumentCount(
  * @param offset 光标在文档中的 UTF-16 偏移。
  * @returns 最近调用上下文；不在已知调用括号内时返回 `undefined`。
  */
-export function findCallContext(source: string, offset: number): CallContext | undefined {
-	const frames: ParenthesisFrame[] = [];
-	let inComment = false;
-	let inString = false;
-
-	// 从文档开头扫描到光标，避免把字符串和注释中的括号、逗号计入调用层级。
-	for (let index = 0; index < Math.min(offset, source.length); index += 1) {
-		const current = source[index];
-
-		if (inComment) {
-			if (current === "\n") {
-				inComment = false;
-			}
-			continue;
-		}
-
-		if (inString) {
-			if (current === "\\" && index + 1 < offset) {
-				index += 1;
-			} else if (current === "\"") {
-				inString = false;
-			}
-			continue;
-		}
-
-		if (current === "'") {
-			inComment = true;
-		} else if (current === "\"") {
-			inString = true;
-		} else if (current === "(") {
-			frames.push({ activeParameter: 0, openOffset: index });
-		} else if (current === ")") {
-			frames.pop();
-		} else if (current === "," && frames.length > 0) {
-			const frame = frames[frames.length - 1];
-
-			if (frame !== undefined) {
-				frame.activeParameter += 1;
-			}
-		}
+export function findCallContext(source: string, offset: number, syntax: SimpleSourceSyntax = analyzeSimpleSourceSyntax(source)): CallContext | undefined {
+	const frames: Array<{ readonly index: number; readonly frame: ParenthesisFrame }> = [];
+	const tokens = syntax.tokens.filter((token) => token.kind !== "comment" && token.kind !== "continuation");
+	for (let index = 0; index < tokens.length && tokens[index]!.start < offset; index++) {
+		const token = tokens[index]!;
+		if (token.kind === "separator") frames.length = 0;
+		else if (token.text === "(" && token.kind === "punctuation") frames.push({ index, frame: { activeParameter: 0, openOffset: token.start } });
+		else if (token.text === ")" && token.kind === "punctuation") frames.pop();
+		else if (token.text === "," && token.kind === "punctuation" && frames.length > 0) frames.at(-1)!.frame.activeParameter++;
 	}
-
-	// 括号表达式可能包在调用内部，因此从内向外寻找最近的有效调用名。
-	for (let index = frames.length - 1; index >= 0; index -= 1) {
-		const frame = frames[index];
-		const context = frame === undefined ? undefined : callAtFrame(source, frame);
-
-		if (context !== undefined) {
-			return context;
-		}
+	for (let index = frames.length - 1; index >= 0; index--) {
+		const frame = frames[index]!;
+		const context = callAtFrame(tokens, frame.index, frame.frame, syntax);
+		if (context !== undefined) return context;
 	}
-
 	return undefined;
 }
 
