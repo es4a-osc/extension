@@ -1,5 +1,5 @@
 /*
-把 SDK 提供的项目能力和工具能力装配为通用 VS Code 命令与任务。
+把 SDK 项目能力接入项目终端，其它工具能力使用 VS Code 任务。
 xhwsd@qq.com 2026-9-4
 */
 
@@ -11,6 +11,7 @@ import type { SimpleProjectInfo } from "./project";
 import type { ProgramTreeNode } from "./programTree";
 import type { Sdk, SdkCapability } from "./sdk";
 import { createWindowsSdkCapabilityShell } from "./sdkCapabilityShell";
+import { SdkProjectTerminals, type ProjectProcessResult } from "./sdkProjectTerminal";
 
 /** 快速选择项携带的原始 SDK 能力声明。 */
 interface CapabilityQuickPickItem extends vscode.QuickPickItem {
@@ -90,13 +91,14 @@ async function selectCapability(
 	return (await vscode.window.showQuickPick(items, { placeHolder }))?.capability;
 }
 
-/** 运行指定项目能力，按 SDK 清单注入参数和任务环境变量。 */
+/** 按 SDK 清单解析项目参数，在扩展管理的终端中运行并返回实际结果。 */
 async function runProjectCapability(
+	terminals: SdkProjectTerminals,
 	getSdk: () => Sdk | undefined,
 	project: SimpleProjectInfo | undefined,
 	capabilityId: string,
 	displayName: string
-): Promise<void> {
+): Promise<ProjectProcessResult> {
 	if (project === undefined) {
 		throw new Error("当前标签页不属于已添加的 Simple 项目。");
 	}
@@ -106,20 +108,7 @@ async function runProjectCapability(
 	}
 	const invocation = createProjectCapabilityInvocation(sdk, capabilityId, project);
 	await ensureCommandFile(invocation.command);
-	const task = new vscode.Task(
-		{
-			type: "es4a-project-capability",
-			capability: invocation.id,
-			project: project.filePath
-		},
-		vscode.TaskScope.Global,
-		displayName + "：" + project.name,
-		"ES4A",
-		createSdkCapabilityExecution(invocation.command, invocation.args),
-		[]
-	);
-	configureTask(task, invocation.description);
-	await vscode.tasks.executeTask(task);
+	return terminals.run(invocation.command, invocation.args, displayName + "：" + project.name);
 }
 
 /** 选择并在 SDK 根目录运行不依赖项目的工具能力。 */
@@ -155,6 +144,8 @@ export function registerSdkCapabilityCommands(
 	getSdk: () => Sdk | undefined,
 	getCurrentProject: () => Promise<SimpleProjectInfo | undefined>
 ): void {
+	const terminals = new SdkProjectTerminals();
+	context.subscriptions.push(terminals);
 	const resolveProject = async (node: ProgramTreeNode | undefined): Promise<SimpleProjectInfo | undefined> => {
 		if (node === undefined) {
 			return getCurrentProject();
@@ -164,16 +155,16 @@ export function registerSdkCapabilityCommands(
 		}
 		return node.project;
 	};
-	const compileApplication = async (node?: ProgramTreeNode): Promise<void> => {
+	const compileApplication = async (node?: ProgramTreeNode): Promise<ProjectProcessResult | undefined> => {
 		try {
-			await runProjectCapability(getSdk, await resolveProject(node), "compile", "编译应用");
+			return await runProjectCapability(terminals, getSdk, await resolveProject(node), "compile", "编译应用");
 		} catch (error) {
 			await vscode.window.showErrorMessage("编译应用失败：" + errorMessage(error));
 		}
 	};
-	const debugApplication = async (node?: ProgramTreeNode): Promise<void> => {
+	const debugApplication = async (node?: ProgramTreeNode): Promise<ProjectProcessResult | undefined> => {
 		try {
-			await runProjectCapability(getSdk, await resolveProject(node), "debug", "调试应用");
+			return await runProjectCapability(terminals, getSdk, await resolveProject(node), "debug", "调试应用");
 		} catch (error) {
 			await vscode.window.showErrorMessage("调试应用失败：" + errorMessage(error));
 		}
