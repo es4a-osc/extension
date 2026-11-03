@@ -286,8 +286,16 @@ test("运行库按组件体系和用途排列组件定义", async () => {
 		"图片框", "图片按钮",
 		"水平进度条", "水平滑块条", "垂直滑块条",
 		"列表框", "单选列表框", "多选列表框", "下拉列表框",
-		"进度圈", "画板", "网页浏览框", "视频播放器", "摄像框"
+		"进度圈", "画板", "浏览器", "视频播放器", "摄像框"
 	]);
+	const index = buildDefinitionIndex(sdk.manifests);
+	const browser = index.get("浏览器");
+	assert.ok(browser);
+	assert.equal(browser.definition.type, "simple.runtime.components.浏览器");
+	assert.equal(index.get("simple.runtime.components.浏览器"), browser);
+	assert.equal(isVisualComponentDefinition(browser.definition), true);
+	assert.equal(index.has("网页浏览框"), false);
+	assert.equal(index.has("simple.runtime.components.网页浏览框"), false);
 });
 
 test("新增运行库组件加载中文参数、数组签名及继承成员", async () => {

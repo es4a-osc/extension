@@ -6169,11 +6169,11 @@
 					]
 				},
 				{
-					"name": "网页浏览框",
+					"name": "浏览器",
 					"description": "Simple的浏览器组件。",
 					"icon": "icons/world-www.svg",
 					"kind": "component",
-					"type": "simple.runtime.components.网页浏览框",
+					"type": "simple.runtime.components.浏览器",
 					"inherits": [
 						"simple.runtime.components.可视组件"
 					],
