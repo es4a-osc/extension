@@ -108,7 +108,16 @@ async function runProjectCapability(
 	}
 	const invocation = createProjectCapabilityInvocation(sdk, capabilityId, project);
 	await ensureCommandFile(invocation.command);
-	return terminals.run(invocation.command, invocation.args, displayName + "：" + project.name);
+	// 只为本次调试传递目标，设备发现和安装启动仍由 SDK 统一处理。
+	let environment: NodeJS.ProcessEnv | undefined;
+	if (capabilityId === "debug") {
+		const serial = vscode.workspace.getConfiguration("es4a", vscode.Uri.file(project.filePath))
+			.get<string>("device.serial", "").trim();
+		if (serial !== "") {
+			environment = { ANDROID_SERIAL: serial };
+		}
+	}
+	return terminals.run(invocation.command, invocation.args, displayName + "：" + project.name, environment);
 }
 
 /** 选择并在 SDK 根目录运行不依赖项目的工具能力。 */

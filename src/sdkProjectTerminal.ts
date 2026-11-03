@@ -21,6 +21,7 @@ interface ProjectRun {
 	readonly command: string;
 	readonly args: readonly string[];
 	readonly name: string;
+	readonly environment?: Readonly<NodeJS.ProcessEnv>;
 	readonly resolve: (result: ProjectProcessResult) => void;
 	child?: ChildProcess;
 	cancelled: boolean;
@@ -49,7 +50,7 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 	get running(): boolean { return this.current !== undefined; }
 
 	/** 准备执行；终端尚未打开时，等待 open 后再启动，避免丢失首批输出。 */
-	run(command: string, args: readonly string[], name: string): Promise<ProjectProcessResult> {
+	run(command: string, args: readonly string[], name: string, environment?: Readonly<NodeJS.ProcessEnv>): Promise<ProjectProcessResult> {
 		if (this.disposed) {
 			throw new Error("项目终端已关闭。");
 		}
@@ -57,7 +58,7 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 			throw new Error("项目终端仍在运行。");
 		}
 		return new Promise((resolve) => {
-			this.current = { command, args, name, resolve, cancelled: false };
+			this.current = { command, args, name, environment: environment === undefined ? undefined : { ...environment }, resolve, cancelled: false };
 			if (this.opened) {
 				this.start();
 			}
@@ -84,6 +85,7 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 		try {
 			const child = spawn(shell?.executable ?? run.command, shell === undefined ? [...run.args] : [...shell.args, run.command, ...run.args], {
 				cwd: os.homedir(),
+				env: run.environment === undefined ? undefined : { ...process.env, ...run.environment },
 				windowsHide: true,
 				detached: process.platform !== "win32",
 				stdio: ["pipe", "pipe", "pipe"]
@@ -183,7 +185,7 @@ export class SdkProjectTerminals implements vscode.Disposable {
 	});
 
 	/** 在终端面板运行项目工具，不抢走编辑器焦点。 */
-	run(command: string, args: readonly string[], name: string): Promise<ProjectProcessResult> {
+	run(command: string, args: readonly string[], name: string, environment?: Readonly<NodeJS.ProcessEnv>): Promise<ProjectProcessResult> {
 		let entry = [...this.terminals].find(([, session]) => !session.running);
 		if (entry === undefined) {
 			const session = new SdkProjectTerminal();
@@ -192,7 +194,7 @@ export class SdkProjectTerminals implements vscode.Disposable {
 			entry = [terminal, session];
 		}
 		const [terminal, session] = entry;
-		const result = session.run(command, args, name);
+		const result = session.run(command, args, name, environment);
 		terminal.show(true);
 		return result;
 	}

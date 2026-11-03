@@ -713,6 +713,13 @@
 					"scope": "window",
 					"description": "SDK 根目录的完整绝对路径。建议使用“ES4A: 选择 SDK”命令设置。"
 				},
+				"es4a.device.serial": {
+					"type": "string",
+					"default": "",
+					"scope": "machine-overridable",
+					"pattern": "^\\S*$",
+					"description": "调试安装和启动使用的目标设备序列号，例如 emulator-5554 或 127.0.0.1:5555。留空时沿用 ANDROID_SERIAL 环境变量；仍未指定时优先选择第一台在线模拟器，没有模拟器则选择第一台在线设备。指定设备不可用时直接报错。"
+				},
 				"es4a.designer.columnOrder": {
 					"type": "array",
 					"default": [

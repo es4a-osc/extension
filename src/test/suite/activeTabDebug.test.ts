@@ -24,6 +24,8 @@ suite("活动标签 F5", () => {
 		const sdkDirectory = path.join(directory, "sdk");
 		const configuration = vscode.workspace.getConfiguration("es4a");
 		const previousSdk = configuration.inspect<string>("sdk.path")?.globalValue;
+		const previousSerial = configuration.inspect<string>("device.serial")?.globalValue;
+		let expectedSerial = "emulator-5560";
 		let completed = 0;
 		let driver: WorkbenchDriver | undefined;
 		const source = "事件 主窗口.初始化()\r\n结束 事件\r\n$属性\r\n$资源 $窗口\r\n$定义 主窗口 $为 窗口\r\n$结束 $定义\r\n$结束 $属性\r\n";
@@ -38,12 +40,13 @@ suite("活动标签 F5", () => {
 				"param($Action, $ProjectFile)",
 				"$output = Join-Path (Split-Path -Parent $ProjectFile) 'invocation.json'",
 				"$count = if (Test-Path -LiteralPath $output) { (Get-Content -LiteralPath $output -Raw | ConvertFrom-Json).count } else { 0 }",
-				"$invocation = @{ action = $Action; project = $ProjectFile; count = $count + 1 } | ConvertTo-Json -Compress",
+				"$invocation = @{ action = $Action; project = $ProjectFile; count = $count + 1; serial = [string]$env:ANDROID_SERIAL } | ConvertTo-Json -Compress",
 				"[IO.File]::WriteAllText($output, $invocation)",
 				"exit 0",
 				""
 			].join("\r\n"));
 			await configuration.update("sdk.path", sdkDirectory, vscode.ConfigurationTarget.Global);
+			await configuration.update("device.serial", expectedSerial, vscode.ConfigurationTarget.Global);
 			await vscode.extensions.getExtension(testExtensionId())!.activate();
 			await vscode.commands.executeCommand("es4a.refreshLibraries");
 			await vscode.commands.executeCommand("es4a.internal.addProject", projectFile);
@@ -64,6 +67,7 @@ suite("活动标签 F5", () => {
 				assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "invocation.json"), "utf8")), {
 					action: "debug",
 					project: projectFile,
+					serial: expectedSerial,
 					count
 				});
 			};
@@ -75,6 +79,8 @@ suite("活动标签 F5", () => {
 				await pressF5();
 				assert.equal(vscode.window.tabGroups.activeTabGroup.activeTab?.isPreview, preview, "F5 不应固定临时标签");
 			}
+			expectedSerial = process.env.ANDROID_SERIAL ?? "";
+			await configuration.update("device.serial", "", vscode.ConfigurationTarget.Global);
 			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(sourceUri), { preview: true });
 			assert.equal(vscode.window.activeTextEditor?.document.uri.scheme, "file");
 			await vscode.commands.executeCommand("es4a.programs.focus");
@@ -113,6 +119,7 @@ suite("活动标签 F5", () => {
 			}
 			await vscode.commands.executeCommand("es4a.internal.removeProject", projectFile);
 			await configuration.update("sdk.path", previousSdk, vscode.ConfigurationTarget.Global);
+			await configuration.update("device.serial", previousSerial, vscode.ConfigurationTarget.Global);
 			await vscode.commands.executeCommand("es4a.refreshLibraries");
 			assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
 			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

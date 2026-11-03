@@ -23,6 +23,50 @@ async function waitFor(check: () => Promise<boolean>): Promise<void> {
 }
 
 suite("项目工具终端", () => {
+	test("每次运行独立传递目标设备，不改变宿主环境或泄漏到复用终端", async function () {
+		if (process.platform !== "win32") {
+			return this.skip();
+		}
+		this.timeout(15_000);
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-project-device-"));
+		const session = new SdkProjectTerminal();
+		const previous = process.env.ANDROID_SERIAL;
+		const previousHome = process.env.SystemRoot;
+		let text = "";
+		const subscription = session.onDidWrite((data) => { text += data; });
+		try {
+			const script = path.join(directory, "device.ps1");
+			await fs.writeFile(script, '[Console]::WriteLine("DEVICE=$env:ANDROID_SERIAL|SYSTEM=$env:SystemRoot")\r\nexit 0\r\n');
+			const completion = session.run(script, [], "调试应用：指定设备", { ANDROID_SERIAL: "emulator-5560" });
+			session.open();
+			assert.equal((await completion).exitCode, 0);
+			assert.ok(text.includes(`DEVICE=emulator-5560|SYSTEM=${previousHome ?? ""}`));
+			assert.equal(process.env.ANDROID_SERIAL, previous);
+
+			text = "";
+			assert.equal((await session.run(script, [], "编译应用：继承环境")).exitCode, 0);
+			assert.ok(text.includes(`DEVICE=${previous ?? ""}|SYSTEM=${previousHome ?? ""}`));
+			assert.equal(process.env.ANDROID_SERIAL, previous);
+		} finally {
+			subscription.dispose();
+			session.dispose();
+			assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+			await fs.rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	test("设置界面可搜索目标设备", async function () {
+		this.timeout(15_000);
+		const driver = await WorkbenchDriver.connect();
+		try {
+			await vscode.commands.executeCommand("workbench.action.openSettings", "@id:es4a.device.serial");
+			await driver.waitFor("document.body.innerText.includes('调试安装和启动使用的目标设备序列号')");
+		} finally {
+			driver.dispose();
+			await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+		}
+	});
+
 	test("保留中文与特殊字符参数、错误流和失败退出码，结束后能够再次运行", async function () {
 		if (process.platform !== "win32") {
 			return this.skip();
