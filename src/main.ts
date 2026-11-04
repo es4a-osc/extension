@@ -490,7 +490,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		hoverProvider
 	);
 	const semanticTokensRegistration = vscode.languages.registerDocumentSemanticTokensProvider(
-		readableLanguageDocumentSelector,
+		/* 原生资源管理器打开的文件也使用源码语义着色，不扩展代码修改功能的文档范围。 */
+		[...readableLanguageDocumentSelector, { language: "simple", scheme: "file" }],
 		semanticTokensProvider,
 		SIMPLE_SEMANTIC_TOKENS_LEGEND
 	);

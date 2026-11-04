@@ -12,7 +12,7 @@ export type ProgramTreeExpansionProvider = Pick<ProgramTreeProvider, "getSingleD
 /** 单目录链控制器实际使用的 TreeView 能力。 */
 export type ProgramTreeExpansionView = Pick<
 	vscode.TreeView<ProgramTreeNode>,
-	"onDidCollapseElement" | "onDidExpandElement" | "reveal"
+	"onDidCollapseElement" | "onDidExpandElement" | "reveal" | "visible"
 >;
 
 /** 管理项目树展开交互，并封装活动单元定位期间的自动展开抑制。 */
@@ -54,23 +54,26 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 		this.expansionTask = undefined;
 	}
 
-	/** 定位活动单元，并在定位期间忽略由 `reveal` 产生的展开事件。 */
+	/** 项目树可见时定位活动单元，并忽略定位产生的展开事件。 */
 	async revealActiveUnit(unit: ProgramTreeNode): Promise<void> {
-		await this.revealNode(unit);
+		await this.revealNode(unit, true);
 	}
 
 	/** 选中转到定义命中的真实资源，并抑制定位过程触发的自动展开。 */
 	async revealResource(resource: ProgramTreeNode): Promise<void> {
-		await this.revealNode(resource);
+		await this.revealNode(resource, false);
 	}
 
 	/** 统一执行项目树节点定位，避免 reveal 事件与单目录链展开互相抢占。 */
-	private async revealNode(node: ProgramTreeNode): Promise<void> {
+	private async revealNode(node: ProgramTreeNode, onlyWhenVisible: boolean): Promise<void> {
 		this.cancel();
 		const request = ++this.revealRequest;
 		/* reveal 已开始后无法取消，串行执行可保证旧请求完成后由最新选择收尾。 */
 		const reveal = async (): Promise<void> => {
 			if (request !== this.revealRequest) return;
+
+			/* 执行前重新检查可见性，排队中的自动定位不能把用户切走的侧边栏重新打开。 */
+			if (onlyWhenVisible && !this.view.visible) return;
 			this.revealDepth += 1;
 			try {
 				await this.view.reveal(node, { focus: false, select: true });
@@ -106,6 +109,7 @@ export class ProgramTreeExpansionController implements vscode.Disposable {
 					child === undefined
 					|| request !== this.expansionRequest
 					|| this.expansionTask !== task
+					|| !this.view.visible
 				) {
 					return;
 				}

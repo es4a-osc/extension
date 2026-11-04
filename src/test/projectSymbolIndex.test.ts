@@ -13,6 +13,52 @@ import type { SimpleProjectInfo } from "../project";
 import { ProjectSymbolIndex } from "../projectSymbolIndex";
 import { inspectSimplePropertyXml } from "../propertyXml";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
+import { parseSimpleUnitSymbols } from "../simpleUnitSymbols";
+
+test("原生未保存符号参与跨单元分析并使缓存失效，共享 XML 会话仍优先", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-native-source-symbols-"));
+	const sourceRoot = path.join(directory, "src");
+	const targetFile = path.join(sourceRoot, "Target.simple");
+	const callerFile = path.join(sourceRoot, "Caller.simple");
+	const propertySource = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const callerSource = "变量 数据 为 Target\r\n" + propertySource;
+	try {
+		await fs.mkdir(sourceRoot, { recursive: true });
+		await fs.writeFile(targetFile, "常量 原生成员 为 整数型 = 7\r\n" + propertySource);
+		await fs.writeFile(callerFile, callerSource);
+		const index = new ProjectSymbolIndex();
+		await index.updateProjects([{
+			directory, filePath: path.join(directory, "project.properties"), name: "原生文档符号", properties: {},
+			sourceDirectories: [sourceRoot], assetsDirectory: path.join(directory, "assets"),
+			buildDirectory: path.join(directory, "build"), resourceDirectory: path.join(directory, "res")
+		}]);
+		const cache = { identity: {}, generation: 1 };
+		const native = parseSimpleUnitSymbols("变量 原生成员 为 整数型\r\n" + propertySource, targetFile, sourceRoot);
+		const context = index.contextForFile(callerFile, callerSource, undefined, [], cache, [native]);
+		assert.equal(context?.units?.find((unit) => unit.filePath === targetFile), native);
+		assert.equal(native.definition.variables?.[0]?.name, "原生成员");
+		assert.equal(native.definition.constants?.length ?? 0, 0);
+
+		/* 调用方代次不变时，新符号输入仍必须使上下文缓存失效。 */
+		const next = parseSimpleUnitSymbols("常量 新成员 为 整数型 = 8\r\n" + propertySource, targetFile, sourceRoot);
+		const changed = index.contextForFile(callerFile, callerSource, undefined, [], cache, [next]);
+		assert.equal(changed?.units?.find((unit) => unit.filePath === targetFile)?.definition.constants?.[0]?.name, "新成员");
+		const restored = index.contextForFile(callerFile, callerSource, undefined, [], cache);
+		assert.equal(restored?.units?.find((unit) => unit.filePath === targetFile)?.definition.constants?.[0]?.name, "原生成员");
+
+		/* 同一路径存在 ES4A 代码标签时，仍以其代码和共享 XML 状态为准。 */
+		const shared = {
+			filePath: targetFile, userCode: "变量 会话成员 为 整数型\r\n",
+			property: inspectSimplePropertyXml("$属性\r\n$资源 $窗口\r\n$结束 $属性\r\n")
+		};
+		const sharedContext = index.contextForFile(callerFile, callerSource, undefined, [shared], cache, [native]);
+		const sharedUnit = sharedContext?.units?.find((unit) => unit.filePath === targetFile);
+		assert.equal(sharedUnit?.unitType, "窗口");
+		assert.equal(sharedUnit?.definition.variables?.[0]?.name, "会话成员");
+	} finally {
+		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+});
 
 test("其它打开单元的未保存成员立即参与跨单元定义解析", async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-project-symbols-"));

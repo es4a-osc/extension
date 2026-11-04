@@ -71,6 +71,7 @@ interface CachedSemanticContext {
 	readonly propertyDocument: SimplePropertyXmlParseResult["document"];
 	readonly source: string | undefined;
 	readonly openUnits: readonly OpenSimpleUnitSnapshot[];
+	readonly sourceUnits: readonly SimpleUnitSymbol[];
 }
 
 /** 设计器的未保存 XML 不触发代码版本变化，跨单元上下文仍须验证这些真实输入。 */
@@ -233,15 +234,16 @@ export class ProjectSymbolIndex {
 	/**
 	 * 返回指定文件所属项目的语义上下文。
 	 *
-	 * `currentSource` 用于让当前编辑器的未保存内容立即参与本单元语言能力；其他单元
-	 * 继续使用最近一次项目索引的磁盘快照。
+	 * `currentSource` 提供当前单元内容，`sourceUnits` 补充原生文档的未保存符号；
+	 * 共享 XML 会话的打开单元快照随后覆盖同路径符号，保留既有会话的优先级。
 	 */
 	contextForFile(
 		filePath: string,
 		currentSource?: string,
 		currentProperty?: SimplePropertyXmlParseResult,
 		openUnits: readonly OpenSimpleUnitSnapshot[] = [],
-		cacheKey?: SimpleSemanticContextCacheKey
+		cacheKey?: SimpleSemanticContextCacheKey,
+		sourceUnits: readonly SimpleUnitSymbol[] = []
 	): SimpleProjectSemanticContext | undefined {
 		/* 自动改名会使用编辑前代码建立绑定；同一文档代次不代表分析输入相同。 */
 		const currentFileKey = filePathKey(filePath);
@@ -255,6 +257,8 @@ export class ProjectSymbolIndex {
 				&& cached.propertyDocument === currentProperty?.document
 				&& cached.source === currentSource
 				&& sameOpenUnits(cached.openUnits, openUnits)
+				&& cached.sourceUnits.length === sourceUnits.length
+				&& cached.sourceUnits.every((unit, index) => unit === sourceUnits[index])
 			) {
 				return cached.context;
 			}
@@ -270,7 +274,8 @@ export class ProjectSymbolIndex {
 					projectSnapshotVersion: this.projectSnapshotVersion,
 					propertyDocument: currentProperty?.document,
 					source: currentSource,
-					openUnits
+					openUnits,
+					sourceUnits
 				});
 			}
 			return context;
@@ -294,6 +299,13 @@ export class ProjectSymbolIndex {
 		const unitsByPath = new Map(
 			indexed.units.map((unit) => [filePathKey(unit.filePath), unit] as const)
 		);
+		/* 只接收属于当前项目源码根的原生文档符号，再由共享会话提供最终覆盖。 */
+		for (const unit of sourceUnits) {
+			const sourceRoot = mostSpecificSourceRoot(indexed.project.sourceDirectories, unit.filePath);
+			if (sourceRoot === unit.sourceRoot) {
+				unitsByPath.set(filePathKey(unit.filePath), unit);
+			}
+		}
 		let matchingOpenUnit: SimpleUnitSymbol | undefined;
 		for (const snapshot of openUnits) {
 			const sourceRoot = mostSpecificSourceRoot(

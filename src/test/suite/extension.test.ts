@@ -296,6 +296,7 @@ suite("ES4A 扩展", () => {
 			vscode.ConfigurationTarget.Global
 		);
 		await extension.activate();
+		await vscode.commands.executeCommand("es4a.refreshLibraries");
 	});
 
 	suiteTeardown("恢复集成测试前的 SDK 和工作区设置", async () => {
@@ -4922,6 +4923,7 @@ ${propertySource}`;
 		const view: ProgramTreeExpansionView = {
 			onDidCollapseElement: collapseEmitter.event,
 			onDidExpandElement: expandEmitter.event,
+			visible: true,
 			reveal(element, options): Thenable<void> {
 				reveals.push({ element, options });
 				if (element === activeUnit) {
@@ -5023,6 +5025,7 @@ ${propertySource}`;
 			{
 				onDidCollapseElement: collapseEmitter.event,
 				onDidExpandElement: expandEmitter.event,
+				visible: true,
 				reveal(): Thenable<void> {
 					revealCount += 1;
 					revealFinished?.();

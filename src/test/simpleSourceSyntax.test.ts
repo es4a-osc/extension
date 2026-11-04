@@ -40,6 +40,27 @@ test("无 SDK 时按声明位置区分同名参数、未知类型、函数返回
 	assert.deepEqual(tokens.filter((token) => token.text === "项目值").map((token) => token.type), ["parameter", "parameter"]);
 });
 
+test("递归调用、返回值和常量遮蔽按各自身份着色，完整名称不误匹配前缀", () => {
+	const source = [
+		"常量 上限 为 整数型 = 7",
+		"函数 计算(值 为 整数型) 为 整数型",
+		"计算 = 计算(值 - 1) + 上限",
+		"结束 函数",
+		"过程 运行()",
+		"变量 上限 为 整数型",
+		"上限 = 1",
+		"上限之外 = 上限",
+		"结束 过程",
+		'文本 = "上限 计算 值"',
+		"' 上限 计算 值"
+	].join("\r\n");
+	const tokens = color(source);
+	assert.deepEqual(tokens.filter((token) => token.text === "计算").map((token) => token.type), ["function", "variable", "function"]);
+	assert.deepEqual(tokens.filter((token) => token.text === "上限").map((token) => token.modifiers), [["readonly"], ["readonly"], [], [], []]);
+	assert.equal(tokens.some((token) => token.text === "上限之外"), false);
+	assert.equal(tokens.some((token) => token.line >= 9 && ["上限", "计算", "值"].includes(token.text)), false);
+});
+
 test("冒号与续行声明共享解析，数组和字符串中的逗号不会生成伪声明", () => {
 	const source = [
 		"过程 运行(甲 为 整数型, _",

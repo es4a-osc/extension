@@ -1,5 +1,5 @@
 /*
-维护当前打开的 Simple 用户代码文档，并为语言能力提供共享项目语义上下文。
+维护当前打开的 Simple 单元文档，并为语言能力提供共享项目语义上下文。
 xhwsd@qq.com 2026-9-10
 */
 
@@ -17,6 +17,7 @@ import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
 /** 将打开文档的未保存代码和 XML 会话统一提供给项目语义索引。 */
 export class OpenUnitSemantics {
 	private readonly documents = new Map<string, vscode.TextDocument>();
+	private readonly nativeDocuments = new Set<vscode.TextDocument>();
 	private generation = 0;
 
 	constructor(
@@ -26,6 +27,13 @@ export class OpenUnitSemantics {
 	) {}
 
 	track(document: vscode.TextDocument): void {
+		if (document.uri.scheme === "file" && document.languageId === "simple") {
+			if (!this.nativeDocuments.has(document)) {
+				this.nativeDocuments.add(document);
+				this.generation += 1;
+			}
+			return;
+		}
 		if (document.uri.scheme !== SIMPLE_CODE_SCHEME) return;
 		const sourceUri = toSimpleSourceUri(document.uri);
 		if (sourceUri === undefined) return;
@@ -37,6 +45,9 @@ export class OpenUnitSemantics {
 	}
 
 	forget(document: vscode.TextDocument): void {
+		if (this.nativeDocuments.delete(document)) {
+			this.generation += 1;
+		}
 		const sourceUri = document.uri.scheme === SIMPLE_CODE_SCHEME
 			? toSimpleSourceUri(document.uri)
 			: undefined;
@@ -66,6 +77,14 @@ export class OpenUnitSemantics {
 		const currentProperty = document.uri.scheme === SIMPLE_CODE_SCHEME
 			? this.codeDocuments.getProperty(document)
 			: undefined;
+		/* 原生文件仅派生未保存内容的符号，不建立属性 XML 副本或另存源码缓存。 */
+		const sourceUnits = [...this.nativeDocuments].flatMap((candidate) => {
+			if (!candidate.isDirty) {
+				return [];
+			}
+			const unit = this.projectSymbols.contextForFile(candidate.uri.fsPath, candidate.getText())?.currentUnit;
+			return unit === undefined ? [] : [unit];
+		});
 		const openUnits = [...this.documents.values()].flatMap((candidate) => {
 			const candidateSourceUri = toSimpleSourceUri(candidate.uri);
 			if (candidateSourceUri === undefined) return [];
@@ -87,7 +106,8 @@ export class OpenUnitSemantics {
 			source,
 			currentProperty,
 			openUnits,
-			{ generation: this.generation, identity: document }
+			{ generation: this.generation, identity: document },
+			sourceUnits
 		);
 	}
 }

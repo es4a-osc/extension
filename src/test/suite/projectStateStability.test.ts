@@ -126,6 +126,132 @@ suite("项目树与代码会话稳定性", () => {
 		}
 	});
 
+	test("隐藏项目树时自动定位不唤起视图，可见时正常跟随，显式资源定位仍可打开", async () => {
+		const expanded = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		const collapsed = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		let visible = false;
+		const revealed: ProgramTreeNode[] = [];
+		const view: ProgramTreeExpansionView = {
+			onDidExpandElement: expanded.event,
+			onDidCollapseElement: collapsed.event,
+			get visible() { return visible; },
+			async reveal(node) { revealed.push(node); }
+		};
+		const controller = new ProgramTreeExpansionController(
+			{ async getSingleDirectoryChild() { return undefined; } }, view, assert.fail
+		);
+		const unit: ProgramTreeNode = { kind: "unit", label: "主窗口", filePath: path.resolve("主窗口.simple") };
+		const resource: ProgramTreeNode = { kind: "file", label: "icon.png", filePath: path.resolve("icon.png") };
+		try {
+			/* 编辑器激活不能唤起隐藏的项目树。 */
+			await controller.revealActiveUnit(unit);
+			assert.deepEqual(revealed, []);
+
+			/* 用户已经打开项目树时，保留跟随当前单元的行为。 */
+			visible = true;
+			await controller.revealActiveUnit(unit);
+			assert.deepEqual(revealed, [unit]);
+
+			/* 用户主动执行资源定位时，仍可显示目标视图。 */
+			visible = false;
+			await controller.revealResource(resource);
+			assert.deepEqual(revealed, [unit, resource]);
+		} finally {
+			controller.dispose();
+			expanded.dispose();
+			collapsed.dispose();
+		}
+	});
+
+	test("项目树隐藏后，排队中的活动单元定位不能重新打开视图", async () => {
+		const expanded = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		const collapsed = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		let visible = true;
+		let release!: () => void;
+		let markStarted!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const started = new Promise<void>((resolve) => { markStarted = resolve; });
+		const revealed: string[] = [];
+		const view: ProgramTreeExpansionView = {
+			onDidExpandElement: expanded.event,
+			onDidCollapseElement: collapsed.event,
+			get visible() { return visible; },
+			async reveal(node) {
+				revealed.push(node.label);
+				if (node.label === "First") {
+					markStarted();
+					await gate;
+				}
+			}
+		};
+		const controller = new ProgramTreeExpansionController(
+			{ async getSingleDirectoryChild() { return undefined; } }, view, assert.fail
+		);
+		const node = (label: string): ProgramTreeNode => ({ kind: "unit", label, filePath: path.resolve(label + ".simple") });
+		try {
+			const first = controller.revealActiveUnit(node("First"));
+			await started;
+			const pending = controller.revealActiveUnit(node("Pending"));
+
+			/* 请求入队后用户切走侧边栏，真正执行时必须放弃自动定位。 */
+			visible = false;
+			release();
+			await Promise.all([first, pending]);
+			assert.deepEqual(revealed, ["First"]);
+			assert.equal(controller.isRevealing, false);
+
+			visible = true;
+			await controller.revealActiveUnit(node("Current"));
+			assert.deepEqual(revealed, ["First", "Current"]);
+		} finally {
+			release();
+			controller.dispose();
+			expanded.dispose();
+			collapsed.dispose();
+		}
+	});
+
+	test("单目录链读取期间隐藏项目树，返回后不再自动展开视图", async () => {
+		const expanded = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		const collapsed = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
+		let visible = true;
+		let release!: () => void;
+		let markStarted!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const started = new Promise<void>((resolve) => { markStarted = resolve; });
+		const revealed: ProgramTreeNode[] = [];
+		const child = { kind: "directory" as const, label: "nested", directoryPath: path.resolve("src", "nested"), mode: "units" as const };
+		const view: ProgramTreeExpansionView = {
+			onDidExpandElement: expanded.event,
+			onDidCollapseElement: collapsed.event,
+			get visible() { return visible; },
+			async reveal(node) { revealed.push(node); }
+		};
+		const controller = new ProgramTreeExpansionController({
+			async getSingleDirectoryChild(node) {
+				if (node === child) return undefined;
+				markStarted();
+				await gate;
+				return child;
+			}
+		}, view, assert.fail);
+		try {
+			expanded.fire({ element: { kind: "directory", label: "src", directoryPath: path.resolve("src"), mode: "units" } });
+			await started;
+
+			/* 目录读取完成前切走视图，异步结果不能再唤起项目树。 */
+			visible = false;
+			release();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(revealed, []);
+		} finally {
+			release();
+			controller.dispose();
+			expanded.dispose();
+			collapsed.dispose();
+		}
+	});
+
 	test("快速切换活动单元时旧定位不能覆盖最后一次选择", async () => {
 		const expanded = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
 		const collapsed = new vscode.EventEmitter<vscode.TreeViewExpansionEvent<ProgramTreeNode>>();
@@ -136,6 +262,7 @@ suite("项目树与代码会话稳定性", () => {
 		const gate = new Promise<void>((resolve) => { release = resolve; });
 		const view: ProgramTreeExpansionView = {
 			onDidExpandElement: expanded.event, onDidCollapseElement: collapsed.event,
+			visible: true,
 			reveal: async (node) => {
 				revealed.push(node.label);
 				if (node.label === "First") { reading = true; await gate; }
