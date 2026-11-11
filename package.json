@@ -3,7 +3,7 @@
 	"displayName": "ES4A",
 	"description": "中文安卓应用开发工具。",
 	"icon": "icons/es4a-extension.png",
-	"version": "0.2.5",
+	"version": "0.2.6",
 	"publisher": "paike",
 	"author": {
 		"name": "树先生",
