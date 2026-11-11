@@ -17,6 +17,68 @@ import { splitSimpleUnitSource } from "../simpleUnitSource";
 const CURSOR = "¦";
 const sdkPromise = loadSdk(testSdkPath());
 
+test("初值遮蔽和静态实例调用不产生错误来源的悬停，合法限定读取保留", async () => {
+	const sdk = await sdkPromise;
+	const properties = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	for (const [marked, valid] of [
+		["变量 甲 为 按钮\r\n过程 Run()\r\n变量 甲 为 按钮 = ¦甲\r\n结束 过程", false],
+		["变量 甲 为 按钮\r\n过程 Run()\r\n变量 乙 为 按钮 = ¦甲\r\n变量 甲 为 按钮\r\n结束 过程", false],
+		["变量 甲 为 按钮\r\n过程 Run()\r\n变量 甲 为 按钮 = 本对象.¦甲\r\n结束 过程", true],
+		["函数 取得控件() 为 按钮\r\n结束 函数\r\n静态 过程 Run()\r\n变量 值 为 文本型 = 取得控件().¦文本\r\n结束 过程", false],
+		["静态 函数 取得控件() 为 按钮\r\n结束 函数\r\n静态 过程 Run()\r\n变量 值 为 文本型 = 取得控件().¦文本\r\n结束 过程", true]
+	] as const) {
+		const source = marked.replace(CURSOR, "") + properties;
+		const unit = parseSimpleUnitSymbols(source, "C:\\project\\Test.simple", "C:\\project");
+		const context: SimpleProjectSemanticContext = { currentUnit: unit, manifest: {
+			kind: "project", name: "test", filePath: "C:\\project", directory: "C:\\project", categories: [{ name: "单元", definitions: [unit.definition] }]
+		} };
+		assert.equal(findSimpleKeywordHover(source, marked.indexOf(CURSOR), sdk, context) !== undefined, valid, marked);
+	}
+});
+
+test("合法链式取值使用真实接收者，不将字段错认成全局同名函数", async () => {
+	const sdk = await sdkPromise;
+	const properties = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const target = parseSimpleUnitSymbols("变量 输出信息 为 文本型\r\n" + properties, "C:\\project\\src\\Result.simple", "C:\\project\\src");
+	for (const expression of ["工厂().输¦出信息", "(工厂()).输¦出信息", "对象数组(0).输¦出信息"]) {
+		const marked = `变量 对象数组 为 Result()\r\n函数 工厂() 为 Result\r\n结束 函数\r\n过程 Run()\r\n变量 值 为 文本型\r\n值 = ${expression}\r\n结束 过程\r\n`;
+		const source = marked.replace(CURSOR, "") + properties;
+		const caller = parseSimpleUnitSymbols(source, "C:\\project\\src\\Caller.simple", "C:\\project\\src");
+		const context: SimpleProjectSemanticContext = { currentUnit: caller, units: [caller, target], manifest: {
+			kind: "project", name: "test", directory: "C:\\project", filePath: "C:\\project\\project.properties",
+			categories: [{ name: "单元", definitions: [caller.definition, target.definition] }]
+		} };
+		const result = findSimpleKeywordHover(source, marked.indexOf(CURSOR), sdk, context);
+		assert.equal(result?.signature, "变量 输出信息 为 文本型", expression);
+	}
+	for (const expression of ["对象数组.输¦出信息(\"x\")", "本对象.只写对象.输¦出信息(\"x\")", "本对象.工厂.输¦出信息(\"x\")"]) {
+		const marked = `变量 对象数组 为 Result()\r\n属性 只写对象 为 Result\r\n设置\r\n结束 设置\r\n结束 属性\r\n函数 工厂() 为 Result\r\n结束 函数\r\n过程 Run()\r\n${expression}\r\n结束 过程\r\n`;
+		const source = marked.replace(CURSOR, "") + properties;
+		const caller = parseSimpleUnitSymbols(source, "C:\\project\\src\\Caller.simple", "C:\\project\\src");
+		const context: SimpleProjectSemanticContext = { currentUnit: caller, units: [caller, target], manifest: {
+			kind: "project", name: "test", directory: "C:\\project", filePath: "C:\\project\\project.properties",
+			categories: [{ name: "单元", definitions: [caller.definition, target.definition] }]
+		} };
+		assert.equal(findSimpleKeywordHover(source, marked.indexOf(CURSOR), sdk, context), undefined, expression);
+	}
+});
+
+test("对象与数组成员别名的悬停保留实际声明", async () => {
+	const root = "C:\\project\\src";
+	const properties = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const target = parseSimpleUnitSymbols("变量 成员 为 整数型\r\n" + properties, `${root}\\Result.simple`, root);
+	const holder = parseSimpleUnitSymbols("静态 变量 实例 为 Result\r\n静态 变量 数组 为 Result()\r\n" + properties, `${root}\\Holder.simple`, root);
+	for (const receiver of ["对象别名", "连续别名", "数组别名(0)"]) {
+		const source = `别名 对象别名 = Holder.实例\r\n别名 连续别名 = 对象别名\r\n别名 数组别名 = Holder.数组\r\n过程 Run()\r\n变量 值 为 整数型\r\n值 = ${receiver}.成员\r\n结束 过程\r\n` + properties;
+		const caller = parseSimpleUnitSymbols(source, `${root}\\Caller.simple`, root);
+		const context: SimpleProjectSemanticContext = { currentUnit: caller, units: [caller, target, holder], manifest: {
+			kind: "project", name: "test", directory: root, filePath: "C:\\project\\project.properties",
+			categories: [{ name: "单元", definitions: [caller.definition, target.definition, holder.definition] }]
+		} };
+		assert.equal(findSimpleKeywordHover(source, source.indexOf(`${receiver}.成员`) + receiver.length + 1, undefined, context)?.signature, "变量 成员 为 整数型", receiver);
+	}
+});
+
 /** 在标记位置查询关键字悬停。 */
 async function hover(markedSource: string): Promise<SimpleKeywordHoverInfo | undefined> {
 	const offset = markedSource.indexOf(CURSOR);
@@ -675,6 +737,41 @@ test("项目 res 索引为 R 对象和已有资源提供不含编号的悬停", 
 		findSimpleKeywordHover("' R.drawable_es4a", 5, undefined, context),
 		undefined
 	);
+});
+
+test("R 被局部变量遮蔽时显示实际字段，真正资源仍支持续行悬停", () => {
+	const root = "C:\\project\\src";
+	const properties = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const target = parseSimpleUnitSymbols("变量 drawable_test 为 文本型\r\n" + properties, `${root}\\Result.simple`, root);
+	for (const shadowed of [false, true]) {
+		for (const dot of [".", ". _\r\n"]) {
+			const source = `过程 Run()\r\n${shadowed ? "变量 R 为 Result\r\n" : ""}变量 值 为 对象型\r\n值 = R${dot}drawable_test\r\n结束 过程\r\n` + properties;
+			const caller = parseSimpleUnitSymbols(source, `${root}\\Caller.simple`, root);
+			const context: SimpleProjectSemanticContext = { currentUnit: caller, units: [caller, target], manifest: {
+				kind: "project", name: "test", directory: root, filePath: "C:\\project\\project.properties",
+				categories: [{ name: "单元", definitions: [caller.definition, target.definition] }]
+			}, resources: {
+				objectQualifiedName: "app.SimpleResources", projectDirectory: "C:\\project",
+				symbols: [{ name: "drawable_test", resourceName: "test", resourceType: "drawable", sourceFiles: ["C:\\project\\res\\drawable\\test.png"] }]
+			} };
+			const result = findSimpleKeywordHover(source, source.indexOf("drawable_test") + 1, undefined, context);
+			assert.equal(result?.signature, shadowed ? "变量 drawable_test 为 文本型" : "常量 R.drawable_test 为 整数型", `${shadowed}: ${dot}`);
+		}
+	}
+});
+
+test("清单关键字成员经过续行仍悬停为实际属性，不回退到同名运算符", async () => {
+	const sdk = await sdkPromise;
+	const configured: Sdk = { ...sdk, manifests: [...sdk.manifests, {
+		kind: "library", name: "测试库", directory: "C:\\sdk\\libraries\\audit", filePath: "C:\\sdk\\libraries\\audit\\library.json",
+		categories: [{ name: "对象", definitions: [{ name: "审查对象", type: "audit.Audit", kind: "object", properties: [{ name: "类型检验", type: "整数型", description: "实际属性" }] }] }]
+	}] };
+	for (const gap of [".", ". _\n", ". _\r\n", ". _\r\n _\r\n "]) {
+		const source = `过程 Run()\r\n变量 控件 为 审查对象\r\n变量 数 为 整数型\r\n数 = 控件${gap}类型检验\r\n结束 过程`;
+		const result = findSimpleKeywordHover(source, source.lastIndexOf("类型检验") + 1, configured);
+		assert.equal(result?.signature, "属性 类型检验 为 整数型", gap);
+		assert.equal(result?.description, "实际属性", gap);
+	}
 });
 
 test("没有 SDK 或光标越界时不返回关键字悬停", () => {

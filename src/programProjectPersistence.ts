@@ -83,6 +83,7 @@ function resolveWorkspaceProjectEntries(
 ): readonly WorkspaceProjectEntry[] {
 	if (!Array.isArray(value)) return [];
 	const entries: WorkspaceProjectEntry[] = [];
+	const seen = new Set<string>();
 
 	for (const candidate of value) {
 		if (!isRecord(candidate)) continue;
@@ -93,10 +94,12 @@ function resolveWorkspaceProjectEntries(
 		const resolvedPath = path.isAbsolute(configuredPath)
 			? path.resolve(configuredPath)
 			: path.resolve(baseDirectory!, configuredPath);
+		const projectFile = path.join(resolvedPath, "project.properties");
+		const key = filePathKey(projectFile);
+		if (seen.has(key)) continue;
+		seen.add(key);
 		entries.push({
-			projectFile: path.basename(resolvedPath).toLowerCase() === "project.properties"
-				? resolvedPath
-				: path.join(resolvedPath, "project.properties"),
+			projectFile,
 			settings: workspaceProjectSettings(candidate.settings)
 		});
 	}

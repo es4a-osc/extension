@@ -67,11 +67,13 @@ export class SimpleCodeDocumentRecovery {
 		}
 
 		const key = documentKey(document.uri);
-		if (document.isDirty) {
-			this.entries[key] = { text: document.getText() };
-		} else {
-			delete this.entries[key];
+		if (!document.isDirty) {
+			this.clear(document);
+			return;
 		}
+		const text = document.getText();
+		if (this.entries[key]?.text === text) return;
+		this.entries[key] = { text };
 		this.scheduleWrite();
 	}
 
@@ -116,12 +118,21 @@ export class SimpleCodeDocumentRecovery {
 
 	/** 在扩展宿主关闭前提交最后一次工作区状态写入。 */
 	async flush(): Promise<void> {
-		if (this.writeTimer !== undefined || this.lastWriteFailed) {
-			clearTimeout(this.writeTimer);
-			this.writeTimer = undefined;
-			this.enqueueWrite();
+		while (true) {
+			if (this.writeTimer !== undefined || this.lastWriteFailed) {
+				clearTimeout(this.writeTimer);
+				this.writeTimer = undefined;
+				this.enqueueWrite();
+			}
+			const pending = this.pendingWrite;
+			try {
+				await pending;
+			} catch (error) {
+				// 如果已有更新稿件，先提交它；只有最终一份写入失败才向关闭流程报告。
+				if (this.writeTimer === undefined && pending === this.pendingWrite) throw error;
+			}
+			if (this.writeTimer === undefined && pending === this.pendingWrite) return;
 		}
-		await this.pendingWrite;
 	}
 
 	/** 执行一次恢复，防止代码页和设计器同时解析时重复应用同一正文。 */
@@ -132,8 +143,7 @@ export class SimpleCodeDocumentRecovery {
 		}
 		/* VS Code 自带备份已经恢复时，它比扩展的兜底快照优先，禁止用旧快照覆盖。 */
 		if (document.isDirty) {
-			this.entries[key] = { text: document.getText() };
-			this.scheduleWrite();
+			this.capture(document);
 			return false;
 		}
 

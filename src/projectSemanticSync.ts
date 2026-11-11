@@ -4,8 +4,9 @@ xhwsd@qq.com 2026-9-10
 */
 
 import * as vscode from "vscode";
-import { ProgramTreeProvider, type ProgramTreeNode } from "./programTree";
+import type { ProgramTreeProvider } from "./programTree";
 import { ProjectSymbolIndex } from "./projectSymbolIndex";
+import { filePathKey } from "./simpleProjectPaths";
 
 /** 合并后台文件与项目操作的语义更新，发布后仅重绘可见单元。 */
 export class ProjectSemanticSyncController implements vscode.Disposable {
@@ -14,23 +15,31 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 	private revision = 0;
 	private sequence = Promise.resolve();
 	private timer: ReturnType<typeof setTimeout> | undefined;
-	private readonly treeListener: vscode.Disposable;
+	private readonly changedPaths = new Map<string, boolean>();
+	private refreshAll = false;
 	private readonly fileListener: vscode.Disposable;
 
 	constructor(
 		private readonly programs: ProgramTreeProvider,
 		private readonly symbols: ProjectSymbolIndex,
-		private readonly refreshLanguageFeatures: () => void,
+		private readonly refreshLanguageFeatures: (projectFiles?: readonly string[]) => void,
 		private readonly reportError: (message: string) => void
 	) {
-		this.treeListener = programs.onDidChangeTreeData((node) => this.onTreeChanged(node));
-		this.fileListener = programs.onDidChangeProjectFiles(() => this.schedule());
+		this.fileListener = programs.onDidChangeProjectFiles((change) => this.schedule(change?.paths, change?.contentOnly));
 	}
 
 	async wait(): Promise<void> {
-		/* 用户主动请求定义时，把尚未触发的防抖任务也纳入就绪边界。 */
-		if (this.timer !== undefined) await this.refresh();
-		await this.sequence;
+		// 扫描期间可能再次收到文件事件；就绪边界必须包含等待中新加入的刷新。
+		while (!this.disposed) {
+			if (this.timer !== undefined) {
+				await this.flush();
+			}
+			const pending = this.sequence;
+			await pending;
+			if (this.timer === undefined && pending === this.sequence) {
+				return;
+			}
+		}
 	}
 
 	/** 重构期间不发布中间快照，事务完成后由调用者统一刷新。 */
@@ -39,56 +48,90 @@ export class ProjectSemanticSyncController implements vscode.Disposable {
 		this.revision += 1;
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.timer = undefined;
-		return new vscode.Disposable(() => { this.batching -= 1; });
+		return new vscode.Disposable(() => {
+			this.batching -= 1;
+			this.schedulePending();
+		});
 	}
 
-	schedule(): void {
-		if (this.disposed || this.batching > 0) return;
+	private include(changes: Iterable<readonly [string, boolean]> | undefined): void {
+		if (changes === undefined) {
+			this.refreshAll = true;
+			this.changedPaths.clear();
+		} else if (!this.refreshAll) {
+			for (const [key, contentOnly] of changes) {
+				// 同一路径混合结构和内容事件时，必须按结构变化处理。
+				this.changedPaths.set(key, contentOnly && this.changedPaths.get(key) !== false);
+			}
+		}
+	}
+
+	schedule(paths?: readonly string[], contentOnly = false): void {
+		if (this.disposed) return;
+		this.include(paths?.map((filePath) => [filePathKey(filePath), contentOnly] as const));
+		this.schedulePending();
+	}
+
+	private schedulePending(): void {
+		if (this.disposed || this.batching > 0 || (!this.refreshAll && this.changedPaths.size === 0)) return;
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
-			this.timer = undefined;
-			void this.sync().catch((error: unknown) => {
+			void this.flush().catch((error: unknown) => {
 				const message = error instanceof Error ? error.message : String(error);
 				this.reportError(`刷新项目语义索引失败：${message}`);
 			});
 		}, 150);
 	}
 
-	async refresh(): Promise<void> {
-		if (this.disposed || this.batching > 0) return;
+	async refresh(paths?: readonly string[]): Promise<void> {
+		if (this.disposed) return;
+		this.include(paths?.map((filePath) => [filePathKey(filePath), false] as const));
+		if (this.batching === 0) {
+			await this.flush();
+		}
+	}
+
+	private async flush(): Promise<void> {
 		if (this.timer !== undefined) {
 			clearTimeout(this.timer);
 			this.timer = undefined;
 		}
-		await this.sync();
-	}
-
-	private async sync(): Promise<void> {
-		const revision = this.revision;
-		const isCurrent = (): boolean => !this.disposed && this.batching === 0 && revision === this.revision;
 		const run = async (): Promise<void> => {
-			if (!isCurrent()) return;
-			const projects = await this.programs.getProjects();
-			if (!isCurrent()) return;
-			await this.symbols.updateProjects(projects, isCurrent);
-			if (!isCurrent()) return;
-			this.refreshLanguageFeatures();
-			// 语义快照与目录显示分离，折叠项目树也必须继续更新语言能力。
-			this.programs.refreshVisibleUnits();
+			if (this.disposed || this.batching > 0 || (!this.refreshAll && this.changedPaths.size === 0)) return;
+			const revision = this.revision;
+			const isCurrent = (): boolean => !this.disposed && this.batching === 0 && revision === this.revision;
+			const changes = this.refreshAll ? undefined : [...this.changedPaths];
+			this.refreshAll = false;
+			this.changedPaths.clear();
+			try {
+				const projects = await this.programs.getProjects();
+				const paths = changes?.map(([filePath]) => filePath);
+				const contentChanges = changes === undefined ? undefined : new Set(changes.filter(([, contentOnly]) => contentOnly).map(([filePath]) => filePath));
+				const affected = isCurrent() ? await this.symbols.updateProjects(projects, isCurrent, paths, contentChanges) : [];
+				if (!isCurrent()) {
+					// 重构使本批结果失效，原有外部变更仍须随下一批处理。
+					this.include(changes);
+					this.schedulePending();
+					return;
+				}
+				if (affected?.length !== 0) {
+					this.refreshLanguageFeatures(affected);
+					this.programs.refreshVisibleUnits();
+				}
+			} catch (error) {
+				this.include(changes);
+				throw error;
+			}
 		};
 		this.sequence = this.sequence.then(run, run);
 		await this.sequence;
 	}
 
-	private onTreeChanged(node: ProgramTreeNode | undefined): void {
-		if (node === undefined) this.schedule();
-	}
-
 	dispose(): void {
 		this.disposed = true;
 		this.revision += 1;
-		this.treeListener.dispose();
 		this.fileListener.dispose();
+		this.changedPaths.clear();
 		if (this.timer !== undefined) {
 			clearTimeout(this.timer);
 			this.timer = undefined;

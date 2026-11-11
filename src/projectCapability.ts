@@ -5,7 +5,7 @@ xhwsd@qq.com 2026-9-4
 
 import * as path from "node:path";
 import type { SimpleProjectInfo } from "./project";
-import { mostSpecificSourceRoot } from "./simpleProjectPaths";
+import { mostSpecificSourceRoot, projectSourceRoot } from "./simpleProjectPaths";
 import type { Sdk } from "./sdk";
 
 /** SDK 项目能力执行所需的完整调用信息。 */
@@ -30,7 +30,7 @@ export function findProjectForSource(
 	let selectedProject: SimpleProjectInfo | undefined;
 	let selectedSourceRootLength = -1;
 	for (const project of projects) {
-		const sourceRoot = mostSpecificSourceRoot(project.sourceDirectories, sourceFilePath);
+		const sourceRoot = projectSourceRoot(project, sourceFilePath);
 		if (sourceRoot === undefined) {
 			continue;
 		}

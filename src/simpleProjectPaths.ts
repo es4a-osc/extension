@@ -4,6 +4,7 @@ xhwsd@qq.com 2026-9-2
 */
 
 import * as path from "node:path";
+import type { SimpleProjectInfo } from "./project";
 
 /** 返回可作为 Map 或 Set 键的绝对路径；Windows 下忽略大小写。 */
 export function filePathKey(filePath: string): string {
@@ -45,6 +46,13 @@ export function mostSpecificSourceRoot(
 		}
 	}
 	return selected;
+}
+
+/** 项目构建产物不参与该项目的源码归属，包括已打开文档的符号覆盖。 */
+export function projectSourceRoot(project: SimpleProjectInfo, filePath: string): string | undefined {
+	return isPathInsideOrEqual(project.buildDirectory, filePath)
+		? undefined
+		: mostSpecificSourceRoot(project.sourceDirectories, filePath);
 }
 
 /** 按源码根相对路径和无后缀文件名计算 Simple 单元完整限定名。 */

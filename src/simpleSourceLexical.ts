@@ -15,6 +15,19 @@ export interface SimpleSourceToken {
 	readonly character: number;
 }
 
+/** 跳过名称后的水平空白和合法续行，不越过普通换行或注释。 */
+export function skipSimpleContinuationWhitespace(source: string, offset: number): number {
+	let cursor = offset;
+	for (;;) {
+		if (/[ \t\f]/u.test(source[cursor] ?? "")) { cursor += 1; continue; }
+		if (source[cursor] === "_" && (source[cursor + 1] === "\n" || source.slice(cursor + 1, cursor + 3) === "\r\n")) {
+			cursor += source[cursor + 1] === "\n" ? 2 : 3;
+			continue;
+		}
+		return cursor;
+	}
+}
+
 /** 按 UTF-16 位置定位令牌；名称末尾的查询可以明确选择左侧令牌。 */
 export function simpleSourceTokenIndex(tokens: readonly SimpleSourceToken[], offset: number, includeEnd = false): number {
 	let low = 0;

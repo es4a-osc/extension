@@ -48,6 +48,7 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 	private current: ProjectRun | undefined;
 
 	get running(): boolean { return this.current !== undefined; }
+	get available(): boolean { return !this.disposed && !this.running; }
 
 	/** 准备执行；终端尚未打开时，等待 open 后再启动，避免丢失首批输出。 */
 	run(command: string, args: readonly string[], name: string, environment?: Readonly<NodeJS.ProcessEnv>): Promise<ProjectProcessResult> {
@@ -91,6 +92,12 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 				stdio: ["pipe", "pipe", "pipe"]
 			});
 			run.child = child;
+			child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+				// 工具退出时可能仍有排队的输入。管道关闭不会改变进程的实际退出结果。
+				if (this.current === run && !run.cancelled && error.code !== "EOF" && error.code !== "EPIPE" && error.code !== "ERR_STREAM_DESTROYED") {
+					this.writeEmitter.fire(`无法向项目工具发送输入：${error.message}\r\n`);
+				}
+			});
 			for (const stream of [child.stdout, child.stderr]) {
 				stream?.setEncoding("utf8");
 				stream?.on("data", terminalWriter((data) => this.writeEmitter.fire(data)));
@@ -126,8 +133,12 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 	handleInput(data: string): void {
 		if (data.includes("\x03")) {
 			this.cancel();
-		} else {
-			this.current?.child?.stdin?.write(data);
+			return;
+		}
+		const run = this.current;
+		const input = run?.child?.stdin;
+		if (run !== undefined && !run.cancelled && input?.writable) {
+			input.write(data);
 		}
 	}
 
@@ -179,6 +190,7 @@ export class SdkProjectTerminal implements vscode.Pseudoterminal, vscode.Disposa
 /** 编译和调试共用空闲终端；并行执行时分别显示，避免混合日志。 */
 export class SdkProjectTerminals implements vscode.Disposable {
 	private readonly terminals = new Map<vscode.Terminal, SdkProjectTerminal>();
+	private disposed = false;
 	private readonly closeSubscription = vscode.window.onDidCloseTerminal((terminal) => {
 		this.terminals.get(terminal)?.dispose();
 		this.terminals.delete(terminal);
@@ -186,7 +198,8 @@ export class SdkProjectTerminals implements vscode.Disposable {
 
 	/** 在终端面板运行项目工具，不抢走编辑器焦点。 */
 	run(command: string, args: readonly string[], name: string, environment?: Readonly<NodeJS.ProcessEnv>): Promise<ProjectProcessResult> {
-		let entry = [...this.terminals].find(([, session]) => !session.running);
+		if (this.disposed) throw new Error("项目终端已关闭。");
+		let entry = [...this.terminals].find(([, session]) => session.available);
 		if (entry === undefined) {
 			const session = new SdkProjectTerminal();
 			const terminal = vscode.window.createTerminal({ name, pty: session, isTransient: true });
@@ -201,6 +214,7 @@ export class SdkProjectTerminals implements vscode.Disposable {
 
 	/** 扩展生命周期结束时停止全部项目执行并关闭终端。 */
 	dispose(): void {
+		this.disposed = true;
 		this.closeSubscription.dispose();
 		for (const [terminal, session] of this.terminals) {
 			session.dispose();

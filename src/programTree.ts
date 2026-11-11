@@ -81,6 +81,11 @@ export interface ErrorNode {
 /** 项目树中可显示的全部节点。 */
 export type ProgramTreeNode = ProjectNode | GroupNode | DirectoryNode | FileNode | ErrorNode;
 
+interface ProjectRoots {
+	readonly nodes: readonly (ProjectNode | ErrorNode)[];
+	readonly projects: readonly SimpleProjectInfo[];
+}
+
 /** 判断节点是否为项目的“单元”根节点。 */
 export function isUnitsNode(node: ProgramTreeNode | undefined): node is GroupNode & { readonly kind: "units" } {
 	return node?.kind === "units";
@@ -235,10 +240,16 @@ export class ProgramTreeProvider implements
 	private readonly changeEmitter = new vscode.EventEmitter<ProgramTreeNode | undefined>();
 	private readonly parents = new WeakMap<ProgramTreeNode, ProgramTreeNode>();
 	private projectFiles: string[];
+	private projectRevision = 0;
+	private projectRead: Promise<ProjectRoots> | undefined;
+	private disposed = false;
 	private readonly projectOperations = new KeyedTaskQueue();
-	private readonly projectFilesChanged = new vscode.EventEmitter<void>();
+	private readonly projectFilesChanged = new vscode.EventEmitter<{ readonly paths: readonly string[]; readonly contentOnly?: boolean } | undefined>();
 	private readonly treeRefresh = new ProgramTreeRefreshController((node) => this.changeEmitter.fire(node));
-	private readonly fileWatcher = new ProjectFileWatcher(() => this.projectFilesChanged.fire(), () => this.refresh());
+	private readonly fileWatcher = new ProjectFileWatcher(
+		(filePath, contentOnly) => this.projectFilesChanged.fire({ paths: [filePath], contentOnly }),
+		(filePath) => this.refresh(undefined, filePath)
+	);
 	private unitMoveHandler?: UnitMoveHandler;
 	private pathMoveHandler?: PathMoveHandler;
 
@@ -253,10 +264,13 @@ export class ProgramTreeProvider implements
 	 * 创建项目树 Provider，并恢复当前工作区已添加的项目。
 	 *
 	 * @param state 可选工作区状态；测试或临时实例可以不持久化。
+	 * @param knownUnitMetadata 已打开单元和项目索引提供的属性元数据。
+	 * @param readProject 项目配置的读取边界。
 	 */
 	constructor(
 		private readonly state?: ProgramProjectState,
-		private readonly knownUnitMetadata?: (filePath: string) => SimpleUnitMetadata | undefined
+		private readonly knownUnitMetadata?: (filePath: string) => SimpleUnitMetadata | undefined,
+		private readonly readProject = loadSimpleProject
 	) {
 		const storedValue: unknown = state?.get<unknown>(PROGRAM_PROJECT_FILES_STATE_KEY, []);
 		this.projectFiles = Array.isArray(storedValue)
@@ -290,14 +304,14 @@ export class ProgramTreeProvider implements
 				return false;
 			}
 
-			await loadSimpleProject(resolvedPath);
+			await this.readProject(resolvedPath);
 			// 读取项目期间配置可能被外部更新，提交前重新合并并再次检查重复。
 			currentFiles = this.currentProjectFiles();
 			if (currentFiles.some((candidate) => filePathKey(candidate) === filePathKey(resolvedPath))) return false;
 			const updated = [...currentFiles, resolvedPath];
 			await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, updated, currentFiles);
 			this.projectFiles = this.state === undefined ? updated : [...this.currentProjectFiles()];
-			this.refresh();
+			this.refresh(undefined, resolvedPath);
 			return true;
 		});
 	}
@@ -322,7 +336,7 @@ export class ProgramTreeProvider implements
 
 			await this.state?.update(PROGRAM_PROJECT_FILES_STATE_KEY, remainingFiles, currentFiles);
 			this.projectFiles = this.state === undefined ? remainingFiles : [...this.currentProjectFiles()];
-			this.refresh();
+			this.refresh(undefined, filePath);
 			return true;
 		});
 	}
@@ -457,10 +471,13 @@ export class ProgramTreeProvider implements
 		await this.moveProjects(filePaths, targetFilePath);
 	}
 
-	/** 显式项目操作可以重读项目列表，指定节点只更新实际可见的显示分支。 */
-	refresh(node?: ProgramTreeNode): void {
+	/** 根刷新可传入已知的变化路径；指定节点时只更新可见的显示分支。 */
+	refresh(node?: ProgramTreeNode, ...changedPaths: string[]): void {
 		if (node === undefined) {
+			this.projectRevision += 1;
+			this.projectRead = undefined;
 			this.changeEmitter.fire(undefined);
+			this.projectFilesChanged.fire(changedPaths.length > 0 ? { paths: changedPaths } : undefined);
 		} else {
 			this.treeRefresh.request(node);
 		}
@@ -499,18 +516,37 @@ export class ProgramTreeProvider implements
 
 	/** 返回当前项目列表，供项目级语言索引复用同一组 `project.properties` 绑定。 */
 	async getProjects(): Promise<readonly SimpleProjectInfo[]> {
-		const projects = await Promise.all(this.projectFiles.map(async (filePath) => {
+		return (await this.readProjectRoots()).projects;
+	}
+
+	/** 项目树和后台索引共享同批配置读取，只有当前配置能更新后台监听。 */
+	private async readProjectRoots(): Promise<ProjectRoots> {
+		while (!this.disposed) {
+			const revision = this.projectRevision;
+			const task = this.projectRead ?? this.loadProjectRoots(this.projectFiles, revision);
+			this.projectRead = task;
 			try {
-				return await loadSimpleProject(filePath);
-			} catch {
-				// 项目树会显示对应错误节点；语言索引忽略当前不可读取的项目。
-				return undefined;
+				const result = await task;
+				if (!this.disposed && revision === this.projectRevision) return result;
+			} finally {
+				if (this.projectRead === task) this.projectRead = undefined;
+			}
+		}
+		return { nodes: [], projects: [] };
+	}
+
+	private async loadProjectRoots(files: readonly string[], revision: number): Promise<ProjectRoots> {
+		const nodes = await Promise.all(files.map(async (filePath): Promise<ProjectNode | ErrorNode> => {
+			try {
+				const project = await this.readProject(filePath);
+				return { kind: "project", label: project.name, project };
+			} catch (error) {
+				return { kind: "error", label: path.basename(path.dirname(filePath)), message: errorMessage(error), projectFilePath: filePath };
 			}
 		}));
-
-		const valid = projects.filter((project): project is SimpleProjectInfo => project !== undefined);
-		this.fileWatcher.update(valid, this.projectFiles);
-		return valid;
+		const projects = nodes.flatMap((node) => node.kind === "project" ? [node.project] : []);
+		if (!this.disposed && revision === this.projectRevision) this.fileWatcher.update(projects, files);
+		return { nodes, projects };
 	}
 
 	/** 返回当前 Provider 实例生成节点的父级，供 VS Code 自动展开并定位树项。 */
@@ -765,26 +801,7 @@ export class ProgramTreeProvider implements
 	/** 按节点类型延迟加载下一层项目、目录或文件。 */
 	async getChildren(element?: ProgramTreeNode): Promise<ProgramTreeNode[]> {
 		if (element === undefined) {
-			const nodes = await Promise.all(this.projectFiles.map(async (filePath): Promise<ProgramTreeNode> => {
-				try {
-					const project = await loadSimpleProject(filePath);
-					return {
-						kind: "project",
-						label: project.name,
-						project
-					};
-				} catch (error) {
-					return {
-						kind: "error",
-						label: path.basename(path.dirname(filePath)),
-						message: errorMessage(error),
-						projectFilePath: filePath
-					};
-				}
-			}));
-			this.fileWatcher.update(nodes.flatMap((node) => (
-				node.kind === "project" ? [node.project] : []
-			)), this.projectFiles);
+			const { nodes } = await this.readProjectRoots();
 			return this.treeRefresh.roots(nodes);
 		}
 
@@ -1078,7 +1095,8 @@ export class ProgramTreeProvider implements
 			const entries = await listProgramDirectory(
 				directoryPath,
 				mode,
-				this.knownUnitMetadata
+				this.knownUnitMetadata,
+				mode === "units" && project !== undefined ? [project.buildDirectory] : []
 			);
 			return entries.map((entry): ProgramTreeNode => {
 				if (entry.kind === "directory") {
@@ -1122,6 +1140,8 @@ export class ProgramTreeProvider implements
 
 	/** 释放树刷新事件资源。 */
 	dispose(): void {
+		this.disposed = true;
+		this.projectRead = undefined;
 		this.treeRefresh.dispose();
 		this.fileWatcher.dispose();
 		this.projectFilesChanged.dispose();

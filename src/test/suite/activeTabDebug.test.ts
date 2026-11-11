@@ -12,6 +12,9 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveActiveTabUnitSourceUri } from "../../main";
 import { toSimpleCodeUri, toSimpleDesignerUri } from "../../simpleCodeFileSystem";
+import { filePathKey } from "../../simpleProjectPaths";
+import { loadSimpleProject } from "../../programResources";
+import type { ProjectProcessResult } from "../../sdkProjectTerminal";
 import { toUnitContentPreviewUri, toUnitXmlPreviewUri } from "../../unitPreview";
 import { WorkbenchDriver } from "./workbenchDriver";
 
@@ -64,9 +67,10 @@ suite("活动标签 F5", () => {
 				assert.equal(count, completed + 1, "F5 应进入 ES4A 当前标签调试命令");
 				completed = count;
 				// 真实进程只传项目文件；脚本自行定位产物，不接受外部 APK 路径。
-				assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "invocation.json"), "utf8")), {
+				const invocation = JSON.parse(await fs.readFile(path.join(directory, "invocation.json"), "utf8"));
+				assert.deepEqual({ ...invocation, project: filePathKey(invocation.project) }, {
 					action: "debug",
-					project: projectFile,
+					project: filePathKey(projectFile),
 					serial: expectedSerial,
 					count
 				});
@@ -109,11 +113,29 @@ suite("活动标签 F5", () => {
 			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(otherUri), { preview: true });
 			assert.equal(resolveActiveTabUnitSourceUri(vscode.window.tabGroups.activeTabGroup.activeTab), undefined, "其它文件不能沿用之前的 Simple 标签");
 			assert.equal(await fs.readFile(sourceUri.fsPath, "utf8"), source);
+
+			// 正式命令进入同一构建目录时，即使同时提交也要等前一个进程完全结束。
+			await fs.writeFile(path.join(sdkDirectory, "utils", "project", "project.ps1"), [
+				"param($Action, $ProjectFile)",
+				"$trace = Join-Path (Split-Path -Parent $ProjectFile) 'build-order.txt'",
+				"[IO.File]::AppendAllText($trace, \"$Action-start`n\")",
+				"Start-Sleep -Milliseconds 500",
+				"[IO.File]::AppendAllText($trace, \"$Action-end`n\")",
+				"exit 0", ""
+			].join("\r\n"));
+			const projectNode = { kind: "project", project: await loadSimpleProject(projectFile) };
+			const builds = await Promise.all([
+				vscode.commands.executeCommand<ProjectProcessResult>("es4a.compileApplication", projectNode),
+				vscode.commands.executeCommand<ProjectProcessResult>("es4a.debugApplication", projectNode)
+			]);
+			assert.deepEqual(builds.map((result) => result?.exitCode), [0, 0]);
+			const order = (await fs.readFile(path.join(directory, "build-order.txt"), "utf8")).trim();
+			assert.match(order, /^(?:compile-start\ncompile-end\ndebug-start\ndebug-end|debug-start\ndebug-end\ncompile-start\ncompile-end)$/u);
 		} finally {
 			await driver?.key("Escape");
 			driver?.dispose();
 			for (const terminal of vscode.window.terminals) {
-				if (terminal.name.startsWith("调试应用：当前标签调试")) {
+				if (/^(?:编译|调试)应用：当前标签调试/u.test(terminal.name)) {
 					terminal.dispose();
 				}
 			}

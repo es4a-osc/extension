@@ -43,6 +43,34 @@ suite("扩展连续操作可靠性", () => {
 		assert.ok(JSON.stringify(saved).includes("最新修改"));
 	});
 
+	for (const firstFails of [false, true]) test(`恢复写入期间收到的最新内容会在同一次 flush 保存（首次${firstFails ? "失败" : "成功"}）`, async () => {
+		let enter!: () => void;
+		let release!: () => void;
+		const started = new Promise<void>((resolve) => { enter = resolve; });
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const snapshots: unknown[] = [];
+		const recovery = new SimpleCodeDocumentRecovery({ keys: () => [], get: () => undefined, update: async (_key, value) => {
+			snapshots.push(value);
+			if (snapshots.length === 1) {
+				enter();
+				await gate;
+				if (firstFails) throw new Error("首次写入失败");
+			}
+		} });
+		let text = "首次内容";
+		const document = { uri: toSimpleCodeUri(vscode.Uri.file(path.join(os.tmpdir(), "recovery-flush.simple"))), isDirty: true,
+			getText: () => text } as vscode.TextDocument;
+		recovery.capture(document);
+		const flushing = recovery.flush();
+		await started;
+		text = "写入期间到达的内容";
+		recovery.capture(document);
+		release();
+		await flushing;
+		assert.equal(snapshots.length, 2);
+		assert.match(JSON.stringify(snapshots[1]), /写入期间到达的内容/u);
+	});
+
 	test("真实单元复制保留同名局部绑定，并且不改源文件", async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-reliable-copy-"));
 		const programs = new ProgramTreeProvider();

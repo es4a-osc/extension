@@ -55,7 +55,7 @@ import {
 import { showProjectCodeSearch } from "./projectCodeSearchCommand";
 import { moveUnitToDirectory } from "./unitMove";
 import { UnitTransferController } from "./unitTransfer";
-import { closeSimpleUnitTabsInDirectories } from "./simpleUnitTabs";
+import { closeSimpleUnitTabsInDirectories, removeSimpleProjectWithTabs } from "./simpleUnitTabs";
 import { listSimpleFiles } from "./simpleFileDiscovery";
 import {
 	editProjectManifestMacro,
@@ -436,7 +436,7 @@ async function createUnit(
 		Buffer.from(source, "utf8")
 	);
 	codeDocuments.notifySourceCreated(unitUri);
-	provider.refresh();
+	provider.refresh(undefined, unitUri.fsPath);
 	await vscode.window.showTextDocument(toSimpleCodeUri(unitUri));
 }
 
@@ -622,7 +622,7 @@ async function createProject(
 
 	codeDocuments.notifySourceCreated(mainUnitFile);
 	if (!await provider.addProject(projectFile.fsPath)) {
-		provider.refresh();
+		provider.refresh(undefined, projectFile.fsPath);
 	}
 	await vscode.window.showTextDocument(toSimpleCodeUri(mainUnitFile));
 	if (requested === undefined) {
@@ -661,7 +661,7 @@ async function createUnitFolder(
 	}
 
 	await vscode.workspace.fs.createDirectory(folderUri);
-	provider.refresh();
+	provider.refresh(undefined, folderUri.fsPath);
 }
 
 /** 将用户选择的本地文件复制到项目 Assets 根目录。 */
@@ -713,7 +713,7 @@ async function importResources(
 	for (const item of imports) {
 		await vscode.workspace.fs.copy(item.sourceUri, item.targetUri, { overwrite: false });
 	}
-	provider.refresh();
+	provider.refresh(undefined, node.directoryPath);
 }
 
 /** 将 Assets 或 Res 下的普通文件另存到用户选择的位置。 */
@@ -802,7 +802,7 @@ async function createResourceFolder(
 	}
 
 	await vscode.workspace.fs.createDirectory(folderUri);
-	provider.refresh();
+	provider.refresh(undefined, folderUri.fsPath);
 }
 
 /** 参考 VS Code 项目资源管理器，通过一个行内入口选择要创建的单元或文件夹。 */
@@ -885,7 +885,9 @@ async function renameTreeFolder(
 	}
 
 	const movedUnits = node.mode === "units"
-		? (await listSimpleFiles(node.directoryPath)).map((filePath) => ({
+		? (await listSimpleFiles(node.directoryPath, undefined, {
+			excludedDirectories: node.project === undefined ? [] : [node.project.buildDirectory], strict: true
+		})).map((filePath) => ({
 			newUri: vscode.Uri.file(path.join(targetUri.fsPath, path.relative(node.directoryPath, filePath))),
 			oldUri: vscode.Uri.file(filePath)
 		}))
@@ -921,7 +923,7 @@ async function renameTreeFolder(
 		services.codeDocuments.notifySourceMoved(oldUri, newUri);
 		await services.moveDesignerSourceState(oldUri, newUri);
 	}
-	provider.refresh();
+	provider.refresh(undefined, sourceUri.fsPath, targetUri.fsPath);
 	await reopenFolderTabs(bindings, targetUri.fsPath);
 }
 
@@ -937,13 +939,7 @@ async function removeProject(provider: ProgramTreeProvider, node: ProgramTreeNod
 		return;
 	}
 
-	const sourceDirectories = node?.kind === "project"
-		? node.project.sourceDirectories
-		: [path.dirname(projectFilePath)];
-	if (!await closeSimpleUnitTabsInDirectories(sourceDirectories)) {
-		return;
-	}
-	await provider.removeProject(projectFilePath);
+	await removeSimpleProjectWithTabs(provider, projectFilePath);
 }
 
 /** 在系统文件资源管理器中打开节点所在目录，并选中对应文件。 */
@@ -1129,7 +1125,7 @@ async function deleteProject(provider: ProgramTreeProvider, node: ProgramTreeNod
 		return;
 	}
 
-	if (!await closeSimpleUnitTabsInDirectories(projectNode.project.sourceDirectories)) {
+	if (!await closeSimpleUnitTabsInDirectories([projectNode.project.directory])) {
 		return;
 	}
 	const projectUri = vscode.Uri.file(projectNode.project.directory);
@@ -1165,7 +1161,9 @@ async function deleteTreeFolder(
 		}
 	}
 	const unitUris = node.mode === "units"
-		? (await listSimpleFiles(node.directoryPath)).map((filePath) => vscode.Uri.file(filePath))
+		? (await listSimpleFiles(node.directoryPath, undefined, {
+			excludedDirectories: node.project === undefined ? [] : [node.project.buildDirectory], strict: true
+		})).map((filePath) => vscode.Uri.file(filePath))
 		: [];
 	if (!await closeFolderTabs(node.directoryPath)) {
 		return;
@@ -1186,7 +1184,7 @@ async function deleteTreeFolder(
 		services.codeDocuments.notifySourceDeleted(sourceUri);
 		await services.deleteDesignerSourceState(sourceUri);
 	}
-	provider.refresh();
+	provider.refresh(undefined, node.directoryPath);
 }
 
 /** 确认后把一个真实 `.simple` 单元文件移至系统回收站。 */
@@ -1228,7 +1226,7 @@ async function deleteUnit(
 	});
 	services.codeDocuments.notifySourceDeleted(sourceUri);
 	await services.deleteDesignerSourceState(sourceUri);
-	provider.refresh();
+	provider.refresh(undefined, sourceUri.fsPath);
 }
 
 /** 确认后把资源树中的普通文件移至系统回收站。 */
@@ -1257,7 +1255,7 @@ async function deleteResourceFile(
 	await vscode.workspace.fs.delete(vscode.Uri.file(node.filePath), {
 		useTrash: true
 	});
-	provider.refresh();
+	provider.refresh(undefined, node.filePath);
 }
 
 /** 确认后把构建目录中的普通文件移至系统回收站。 */
@@ -1286,7 +1284,7 @@ async function deleteBuildFile(
 	await vscode.workspace.fs.delete(vscode.Uri.file(node.filePath), {
 		useTrash: true
 	});
-	provider.refresh();
+	provider.refresh(undefined, node.filePath);
 }
 
 /** 重命名资源树中的普通文件，文件名输入包含原扩展名。 */
@@ -1355,7 +1353,7 @@ async function renameResourceFile(
 		}
 		throw error;
 	}
-	provider.refresh();
+	provider.refresh(undefined, sourceUri.fsPath, targetUri.fsPath);
 	if (relatedTabs.length > 0) {
 		await vscode.commands.executeCommand("vscode.open", targetUri, { preview: false });
 	}
@@ -1500,7 +1498,7 @@ async function renameUnit(
 	}
 	services.codeDocuments.notifySourceMoved(sourceUri, targetUri);
 	await services.moveDesignerSourceState(sourceUri, targetUri);
-	provider.refresh();
+	provider.refresh(undefined, sourceUri.fsPath, targetUri.fsPath);
 	for (const kind of reopenKinds) {
 		await reopenUnitTab(kind, targetUri);
 	}
@@ -1568,7 +1566,7 @@ export function registerProgramCommands(
 		try { await relationServices.refactoring.renamePath(source.project, sourcePath, destination, mode); }
 		catch (error) { await reopenFolderTabs(bindings, sourcePath); throw error; }
 		await reopenFolderTabs(bindings, destination);
-		provider.refresh();
+		provider.refresh(undefined, sourcePath, destination);
 	};
 	provider.setPathMoveHandler((source, target) => runAction("移动项目路径", () => moveProjectPath(source, target)));
 	context.subscriptions.push(vscode.commands.registerCommand("es4a.internal.moveProjectPath", moveProjectPath));

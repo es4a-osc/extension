@@ -28,7 +28,7 @@ import { KeyedTaskQueue } from "./keyedTaskQueue";
 export interface ProjectRefactoringServices {
 	readonly codeDocuments: SimpleCodeFileSystemProvider;
 	readonly getSdk?: () => Sdk | undefined;
-	readonly refreshProjectSemantics: () => Promise<void>;
+	readonly refreshProjectSemantics: (paths?: readonly string[]) => Promise<void>;
 	readonly beginSemanticBatch?: () => vscode.Disposable;
 }
 
@@ -46,6 +46,7 @@ interface RefactoringPathMove {
 interface PreparedPathEdit {
 	readonly dispose: () => void;
 	readonly rollback: (error: unknown) => Promise<void>;
+	readonly changedPaths: readonly string[];
 	completion?: Promise<void>;
 	stage?: (text: string, synchronizing?: boolean) => void;
 }
@@ -88,7 +89,9 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 
 	async readProject(project: SimpleProjectInfo): Promise<readonly RefactoringUnitSnapshot[]> {
 		const files = new Map<string, string>();
-		for (const file of (await Promise.all(project.sourceDirectories.map((root) => listSimpleFiles(root, undefined, { strict: true })))).flat()) files.set(filePathKey(file), file);
+		for (const file of (await Promise.all(project.sourceDirectories.map((root) => listSimpleFiles(root, undefined, {
+			excludedDirectories: [project.buildDirectory], strict: true
+		})))).flat()) files.set(filePathKey(file), file);
 		return Promise.all([...files.values()].map((file) => this.services.codeDocuments.readRefactoringUnit(vscode.Uri.file(file), mostSpecificSourceRoot(project.sourceDirectories, file)!)));
 	}
 
@@ -113,7 +116,9 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		const files = new Map<string, string>();
 		for (const move of moves) {
 			const stat = await vscode.workspace.fs.stat(vscode.Uri.file(move.oldFile));
-			const moving = (stat.type & vscode.FileType.Directory) !== 0 ? await listSimpleFiles(move.oldFile, undefined, { strict: true }) : path.extname(move.oldFile).toLowerCase() === ".simple" ? [move.oldFile] : [];
+			const moving = (stat.type & vscode.FileType.Directory) !== 0 ? await listSimpleFiles(move.oldFile, undefined, {
+				excludedDirectories: [project.buildDirectory], strict: true
+			}) : path.extname(move.oldFile).toLowerCase() === ".simple" ? [move.oldFile] : [];
 			for (const file of moving) files.set(filePathKey(file), file);
 		}
 		return Promise.all([...files.values()].map((file) => this.services.codeDocuments.readRefactoringUnit(vscode.Uri.file(file), mostSpecificSourceRoot(project.sourceDirectories, file)!)));
@@ -121,13 +126,15 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 
 	/** 原生参与者负责确认和应用；关联文本保留未保存状态，再刷新语义及标签。 */
 	async renamePath(project: SimpleProjectInfo, oldFile: string, newFile: string, kind: "units" | "resources"): Promise<void> {
+		const changedPaths = [oldFile, newFile];
 		await this.run(async (stage) => {
 			if (filePathKey(oldFile) === filePathKey(newFile)) return;
 			const moves = [{ oldFile, newFile }];
 			const edit = await this.prepareNativePathEdits(project, moves, kind);
+			changedPaths.push(...this.preparedRenames.get(edit)!.changedPaths);
 			stage("等待文件重构确认…");
 			await this.applyPathEdit(edit, moves, stage);
-		});
+		}, changedPaths);
 	}
 
 	/** 命令预检完成后复用同一计划，避免参与者再次扫描或跳过自身发起的操作。 */
@@ -165,7 +172,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 			const changes = synchronize ? this.renamedUnitContents(units, planSimpleUnitPaths(units, paths, this.services.getSdk?.()), paths) : [];
 			const edit = await this.commit(undefined, units, changes, { oldFile, newFile, kind, paths, native: true }, true);
 			await this.applyPathEdit(edit, [{ oldFile, newFile }], stage);
-		});
+		}, [oldFile, newFile]);
 	}
 
 	private renamedUnitContents(units: readonly RefactoringUnit[], initial: readonly SimpleUnitChange[], paths: readonly SimpleUnitPathChange[]): SimpleUnitChange[] {
@@ -221,7 +228,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		await this.run(async (stage) => {
 			stage("正在重构关联引用…");
 			await this.commit(project, units, changes);
-		});
+		}, changes.map((change) => change.unit.filePath));
 	}
 
 	private assertResourceDestination(project: SimpleProjectInfo, before: string, after: string): void {
@@ -401,6 +408,11 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 			if (prepareOnly) {
 				const prepared: PreparedPathEdit = {
 					rollback: rollbackChanges,
+					changedPaths: [
+						...pathMoves.flatMap((value) => [value.oldFile, value.newFile]),
+						...changes.map((value) => value.unit.filePath),
+						...(move?.resources?.textFiles.map((value) => value.filePath) ?? [])
+					],
 					dispose: () => {
 						registration.dispose();
 						this.preparedRenames.delete(edit);
@@ -433,7 +445,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 					};
 					if (this.requestedPathEdits.get(pathMovesKey(pathMoves)) === edit) prepared.completion = finish(prepared.stage!);
 					else {
-						prepared.completion = this.run(finish);
+						prepared.completion = this.run(finish, prepared.changedPaths);
 						void prepared.completion.catch((error: unknown) => { void vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); });
 					}
 				});
@@ -459,7 +471,7 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 		}
 	}
 
-	private async run(action: (stage: (text: string, synchronizing?: boolean) => void) => Promise<void>): Promise<void> {
+	private async run(action: (stage: (text: string, synchronizing?: boolean) => void) => Promise<void>, paths: readonly string[]): Promise<void> {
 		await this.operations.run("项目重构", async () => {
 			this.busy = true;
 			const batch = this.services.beginSemanticBatch?.();
@@ -476,13 +488,13 @@ export class SimpleProjectRefactoring implements vscode.Disposable {
 				if (visible) this.status.text = "$(sync~spin) " + label;
 				batch?.dispose();
 				refreshStarted = true;
-				await this.services.refreshProjectSemantics();
+				await this.services.refreshProjectSemantics(paths);
 				completed = true;
 			} catch (error) {
 				if (!refreshStarted) {
 					batch?.dispose();
 					// 失败后仍尝试恢复语言上下文；刷新失败不能盖掉原始事务错误。
-					try { await this.services.refreshProjectSemantics(); } catch { /* 保留原始错误供命令入口报告。 */ }
+					try { await this.services.refreshProjectSemantics(paths); } catch { /* 保留原始错误供命令入口报告。 */ }
 				}
 				throw error;
 			} finally {

@@ -200,18 +200,9 @@ export function toSimpleSourceUri(uri: vscode.Uri): vscode.Uri | undefined {
 		return undefined;
 	}
 	const prefix = "source=";
-	const query = uri.query.startsWith(prefix)
-		? uri.query
-		: (() => {
-			try {
-				return decodeURIComponent(uri.query);
-			} catch {
-				return uri.query;
-			}
-		})();
-	if (query.startsWith(prefix)) {
+	if (uri.path.endsWith("(设计器)") && uri.query.startsWith(prefix)) {
 		try {
-			const sourceUri = vscode.Uri.parse(decodeURIComponent(query.slice(prefix.length)));
+			const sourceUri = vscode.Uri.parse(decodeURIComponent(uri.query.slice(prefix.length)));
 			return sourceUri.scheme === "file" && path.extname(sourceUri.fsPath).toLowerCase() === ".simple"
 				? sourceUri
 				: undefined;
@@ -220,20 +211,15 @@ export function toSimpleSourceUri(uri: vscode.Uri): vscode.Uri | undefined {
 		}
 	}
 
-	// 新 URI 直接从可逆显示路径还原；也兼容旧版本遗留的 `.simple` 虚拟路径。
-	const displaySuffix = ["(代码)", "(设计器)"].find((suffix) => uri.path.endsWith(suffix));
-	const sourcePath = displaySuffix === undefined
-		? uri.path
-		: `${uri.path.slice(0, -displaySuffix.length)}.simple`;
-	const sourceUri = uri.with({
+	const suffix = "(代码)";
+	if (uri.query.length !== 0 || !uri.path.endsWith(suffix)) {
+		return undefined;
+	}
+	return uri.with({
 		fragment: "",
-		path: sourcePath,
-		query: "",
+		path: `${uri.path.slice(0, -suffix.length)}.simple`,
 		scheme: "file"
 	});
-	return path.extname(sourceUri.fsPath).toLowerCase() === ".simple"
-		? sourceUri
-		: undefined;
 }
 
 /**
@@ -253,10 +239,11 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 	private readonly propertyDirtyTransactions = new Set<string>();
 	private readonly sourceWatchers = new Map<string, SourceWatcher>();
 	private readonly propertyReceipts = new Map<string, PropertyRefactorReceipt>();
-	private readonly propertyRefactorEmitter = new vscode.EventEmitter<{ readonly sourceUri: vscode.Uri; readonly componentRename?: { readonly from: string; readonly to: string } }>();
+	private readonly propertyReplaced = new vscode.EventEmitter<{ readonly sourceUri: vscode.Uri; readonly componentRename?: { readonly from: string; readonly to: string } }>();
 
 	readonly onDidChangeFile = this.changeEmitter.event;
-	readonly onDidRefactorProperty = this.propertyRefactorEmitter.event;
+	/** 磁盘重读或重构替换共享 XML 后通知关联视图。 */
+	readonly onDidReplaceProperty = this.propertyReplaced.event;
 
 	/** 未打开单元只创建此次操作的临时快照，不留项目级 XML 缓存。 */
 	async readRefactoringUnit(sourceUri: vscode.Uri, sourceRoot: string): Promise<RefactoringUnitSnapshot> {
@@ -409,7 +396,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			receipt.assertPrepared = undefined;
 			receipt.state = state;
 			if (receipt.persistUserCode) this.changeEmitter.fire([{ type: vscode.FileChangeType.Changed, uri: toSimpleCodeUri(receipt.sourceUri) }]);
-			this.propertyRefactorEmitter.fire({ sourceUri: receipt.sourceUri, componentRename: receipt.componentRename === undefined ? undefined
+			this.propertyReplaced.fire({ sourceUri: receipt.sourceUri, componentRename: receipt.componentRename === undefined ? undefined
 				: state === "after" ? receipt.componentRename : { from: receipt.componentRename.to, to: receipt.componentRename.from } });
 		});
 	}
@@ -1075,6 +1062,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 			sourceEncoding: encoding,
 			userCodeSnapshot: userCode
 		});
+		if (existing !== undefined) this.propertyReplaced.fire({ sourceUri });
 		return vscode.workspace.encode(userCode, { encoding });
 	}
 
@@ -1229,7 +1217,7 @@ export class SimpleCodeFileSystemProvider implements vscode.FileSystemProvider, 
 		this.documentSessions.clear();
 		this.propertyDirtyTransactions.clear();
 		this.propertyReceipts.clear();
-		this.propertyRefactorEmitter.dispose();
+		this.propertyReplaced.dispose();
 		this.changeEmitter.dispose();
 	}
 

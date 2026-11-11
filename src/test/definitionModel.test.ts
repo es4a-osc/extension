@@ -19,6 +19,17 @@ import { splitSimpleUnitSource } from "../simpleUnitSource";
 const CURSOR = "¦";
 const SOURCE_ROOT = "C:\\project\\src";
 
+test("局部初值禁用名称不跳到外层字段，显式本对象限定仍定位实际字段", () => {
+	for (const [reference, valid] of [["¦甲", false], ["本对象.¦甲", true]] as const) {
+		const marked = `变量 甲 为 文本型\r\n过程 Run()\r\n变量 甲 为 文本型 = ${reference}\r\n结束 过程`;
+		const source = marked.replace(CURSOR, "");
+		const unit = parseSimpleUnitSymbols(source, `${SOURCE_ROOT}\\Test.simple`, SOURCE_ROOT);
+		const target = findSimpleDefinition(source, marked.indexOf(CURSOR), undefined, contextFor(unit, [unit]));
+		assert.equal(target !== undefined, valid);
+		if (valid) assert.equal(target?.targetOffset, source.indexOf("甲"));
+	}
+});
+
 /** 为项目单元补充唯一短名称，并建立当前文档语义上下文。 */
 function contextFor(current: SimpleUnitSymbol, units: readonly SimpleUnitSymbol[]): SimpleProjectSemanticContext {
 	const manifest: LibraryManifest = {

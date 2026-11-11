@@ -39,9 +39,9 @@
 
 1. 在 VS Code 扩展市场安装 [ES4A](https://marketplace.visualstudio.com/items?itemName=paike.es4a)。
 2. [下载完整 SDK](https://dwz.wsd.cx/es4a-sdk)并解压。
-3. 在 ES4A“类库”视图中选择 SDK 根目录。
+3. 在 ES4A “类库”视图中选择 SDK 根目录。
 4. 在“项目”视图中新建 Simple 项目，或添加已有项目、示例的 `project.properties`。
-5. 连接安卓设备或启动模拟器，按 `F5` 构建运行。
+5. 连接安卓设备或启动模拟器，按 `F5` 构建调试运行。
 
 SDK 自带示例：
 
@@ -51,10 +51,10 @@ SDK 自带示例：
 语法和项目开发说明见 [SDK 文档](https://gitee.com/es4a/sdk/blob/main/docs/README.md)。
 
 
-## 小技巧
+## 快捷提示
 
-- 按 `Ctrl+K`、`Ctrl+S` 查看或修改快捷键。
-- 在变量或组件名称处按 `F2`，重命名并同步关联引用。
+- 在变量或组件名处按 `F2`，重命名并同步关联引用。
+- 在标识符处按 `Ctrl + I`显示匹配建议，选择后替换整个标识符。
 
 
 ## 相关链接

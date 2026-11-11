@@ -101,6 +101,28 @@ suite("项目工具终端", () => {
 		}
 	});
 
+	test("脚本退出时未读完的终端输入不影响退出结果或后续执行", async function () {
+		if (process.platform !== "win32") return this.skip();
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-terminal-input-"));
+		const script = path.join(directory, "exit.ps1");
+		const session = new SdkProjectTerminal();
+		try {
+			await fs.writeFile(script, "exit 7\r\n");
+			session.open();
+			const running = session.run(script, [], "编译应用：关闭输入测试");
+			// 脚本不读输入，等待写入的内容会在进程退出时遇到已关闭的管道。
+			session.handleInput("x".repeat(4 * 1024 * 1024));
+			assert.equal((await running).exitCode, 7);
+			await fs.writeFile(script, "exit 0\r\n");
+			assert.equal((await session.run(script, [], "再次编译")).exitCode, 0);
+		} finally {
+			session.dispose();
+			assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+			assert.ok(path.basename(directory).startsWith("es4a-terminal-input-"));
+			await fs.rm(directory, { recursive: true, force: true });
+		}
+	});
+
 	test("Ctrl+C 和关闭终端均停止脚本及其子进程", async function () {
 		if (process.platform !== "win32") {
 			return this.skip();

@@ -13,8 +13,122 @@ import { SimpleCodeFileSystemProvider, toSimpleCodeUri } from "../../simpleCodeF
 import { ProjectSemanticSyncController } from "../../projectSemanticSync";
 import { ProjectSymbolIndex } from "../../projectSymbolIndex";
 import { ProgramTreeExpansionController, type ProgramTreeExpansionView } from "../../programTreeExpansion";
+import { createProjectInfo } from "../../project";
+import { OpenUnitSemantics } from "../../openUnitSemantics";
 
 suite("项目树与代码会话稳定性", () => {
+	test("树与语义请求共享配置读取，迟到的旧源码根不能覆盖新配置", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-config-revision-"));
+		const file = path.join(directory, "project.properties");
+		let current = createProjectInfo(file, { source: "./old" });
+		let reads = 0;
+		let held = false;
+		let markStarted!: () => void;
+		let release!: () => void;
+		const started = new Promise<void>((resolve) => { markStarted = resolve; });
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const provider = new ProgramTreeProvider(undefined, undefined, async () => {
+			reads += 1;
+			const result = current;
+			if (held) {
+				held = false;
+				markStarted();
+				await gate;
+			}
+			return result;
+		});
+		try {
+			await provider.addProject(file);
+			await fs.mkdir(path.join(directory, "new"));
+			held = true;
+			const pendingTree = provider.getChildren();
+			await started;
+			const pendingSymbols = provider.getProjects();
+			assert.equal(reads, 2, "树和语义只能发起一次配置读取");
+			current = createProjectInfo(file, { source: "./new" });
+			provider.refresh(undefined, file);
+			assert.deepEqual(await provider.getProjects(), [current]);
+			release();
+			assert.deepEqual(await pendingSymbols, [current]);
+			assert.deepEqual(await pendingTree, [{ kind: "project", label: current.name, project: current }]);
+		} finally {
+			release();
+			provider.dispose();
+			assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+			assert.ok(path.basename(directory).startsWith("es4a-config-revision-"));
+			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
+	test("另一个原生脏文档只解析一次，版本变化后立即替换其符号", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-native-symbol-cache-"));
+		const project = createProjectInfo(path.join(directory, "project.properties"), {});
+		const source = project.sourceDirectories[0]!;
+		const caller = { uri: vscode.Uri.file(path.join(source, "Caller.simple")), languageId: "simple" } as vscode.TextDocument;
+		let version = 1;
+		let reads = 0;
+		let code = "常量 原始数值 为 整数型 = 1\r\n";
+		const target = {
+			uri: vscode.Uri.file(path.join(source, "Target.simple")), languageId: "simple", isDirty: true,
+			get version() { return version; },
+			getText: () => { reads += 1; return code; }
+		} as vscode.TextDocument;
+		const symbols = new ProjectSymbolIndex();
+		const documents = new SimpleCodeFileSystemProvider();
+		const semantics = new OpenUnitSemantics(documents, symbols, () => undefined);
+		try {
+			await symbols.updateProjects([project]);
+			semantics.track(target);
+			const first = semantics.contextForDocument(caller, "变量 实例 为 Target\r\n");
+			assert.equal(first?.units?.find((unit) => unit.name === "Target")?.definition.constants?.[0]?.name, "原始数值");
+			assert.equal(semantics.contextForDocument(caller, "变量 实例 为 Target\r\n"), first);
+			assert.equal(reads, 1);
+			version += 1;
+			code = "常量 新数值 为 整数型 = 2\r\n";
+			const updated = semantics.contextForDocument(caller, "变量 实例 为 Target\r\n");
+			assert.equal(updated?.units?.find((unit) => unit.name === "Target")?.definition.constants?.[0]?.name, "新数值");
+			assert.equal(reads, 2);
+		} finally {
+			documents.dispose();
+			assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+			assert.ok(path.basename(directory).startsWith("es4a-native-symbol-cache-"));
+			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
+	test("等待语义刷新时新收到的防抖事件也必须发布后才返回", async () => {
+		let enter!: () => void;
+		let release!: () => void;
+		const entered = new Promise<void>((resolve) => { enter = resolve; });
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		class DelayedPrograms extends ProgramTreeProvider {
+			private first = true;
+			override async getProjects() {
+				if (this.first) {
+					this.first = false;
+					enter();
+					await gate;
+				}
+				return [];
+			}
+		}
+		const programs = new DelayedPrograms();
+		let published = 0;
+		const controller = new ProjectSemanticSyncController(programs, new ProjectSymbolIndex(), () => { published++; }, assert.fail);
+		try {
+			const first = controller.refresh();
+			await entered;
+			const waiting = controller.wait();
+			controller.schedule();
+			release();
+			await Promise.all([first, waiting]);
+			assert.equal(published, 2);
+		} finally {
+			release();
+			controller.dispose();
+			programs.dispose();
+		}
+	});
 	test("嵌套源码根、重叠资源目录和共享源码的项目具有不同且稳定的树项身份", async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-tree-identities-"));
 		const provider = new ProgramTreeProvider();

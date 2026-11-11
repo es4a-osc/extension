@@ -220,6 +220,7 @@ export function findSimpleDefinition(
 		return owner === undefined ? undefined : effectiveMemberTarget(owner, ["events"], range.name, definitions, range, "instance");
 	}
 	const access = current.memberAt(range.start);
+	if (qualifier === undefined && access === undefined && current.syntax.isBlocked(range.name, range.start)) return undefined;
 	if (access?.receiver !== undefined) {
 		return effectiveMemberTarget(access.receiver.reference,
 			access.receiver.access === "static" ? ["constants", "variables", "functions"] : ["constants", "variables", "properties", "functions", "events"],

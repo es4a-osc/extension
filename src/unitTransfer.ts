@@ -5,6 +5,7 @@ xhwsd@qq.com 2026-9-9
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { SimpleProjectInfo } from "./project";
 import type { DirectoryNode, FileNode, ProgramTreeProvider } from "./programTree";
 import { listSimpleFiles } from "./simpleFileDiscovery";
 import {
@@ -30,12 +31,14 @@ interface UnitClipboardEntry {
 
 /** 枚举项目内所有单元的限定名，供复制时同时规避路径和限定名冲突。 */
 async function projectQualifiedNames(
-	sourceDirectories: readonly string[]
+	project: SimpleProjectInfo
 ): Promise<ReadonlySet<string>> {
 	const names = new Set<string>();
-	const groups = await Promise.all(sourceDirectories.map((sourceRoot) => listSimpleFiles(sourceRoot)));
+	const groups = await Promise.all(project.sourceDirectories.map((sourceRoot) => listSimpleFiles(sourceRoot, undefined, {
+		excludedDirectories: [project.buildDirectory], strict: true
+	})));
 	for (const filePath of groups.flat()) {
-		const sourceRoot = mostSpecificSourceRoot(sourceDirectories, filePath);
+		const sourceRoot = mostSpecificSourceRoot(project.sourceDirectories, filePath);
 		if (sourceRoot !== undefined) {
 			names.add(simpleQualifiedName(sourceRoot, filePath));
 		}
@@ -57,7 +60,7 @@ async function availableCopyTarget(
 		throw new Error("粘贴路径不属于当前项目配置的源码目录。");
 	}
 
-	const qualifiedNames = await projectQualifiedNames(project.sourceDirectories);
+	const qualifiedNames = await projectQualifiedNames(project);
 	for (let increment = 0; ; increment += 1) {
 		const name = copyNameCandidate(preferredName, increment);
 		const filePath = path.join(target.directoryPath, `${name}.simple`);
@@ -148,8 +151,8 @@ export class UnitTransferController implements vscode.Disposable {
 			throw new Error("VS Code 未能创建复制的单元文件。");
 		}
 		this.services.codeDocuments.notifySourceCreated(vscode.Uri.file(copyTarget.filePath));
-		this.provider.refresh();
-		await this.services.refreshProjectSemantics();
+		this.provider.refresh(undefined, copyTarget.filePath);
+		await this.services.refreshProjectSemantics([copyTarget.filePath]);
 	}
 
 	/** 清空扩展内部状态；不会改动系统文本剪贴板。 */

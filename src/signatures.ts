@@ -5,7 +5,7 @@ xhwsd@qq.com 2026-8-27
 
 import type { Sdk, LibraryMember } from "./sdk";
 import { findAdjacentSimpleDocumentationComment } from "./simpleDocumentation";
-import type { SimpleSourceToken } from "./simpleSourceLexical";
+import { scanSimpleSource, skipSimpleContinuationWhitespace, type SimpleSourceToken } from "./simpleSourceLexical";
 import { analyzeSimpleSourceSyntax, isSimpleEventTarget, type SimpleSourceSyntax } from "./simpleSourceSyntax";
 
 /** 编辑器中立的正式参数定义。 */
@@ -153,55 +153,29 @@ export function findCallableArgumentCount(
 	source: string,
 	identifierEnd: number
 ): number | undefined {
-	let cursor = identifierEnd;
-	for (;;) {
-		if (/[ \t\f]/u.test(source[cursor] ?? "")) { cursor++; continue; }
-		if (source[cursor] === "_" && (source[cursor + 1] === "\n" || source.slice(cursor + 1, cursor + 3) === "\r\n")) {
-			cursor += source[cursor + 1] === "\n" ? 2 : 3; continue;
-		}
-		break;
-	}
+	const cursor = skipSimpleContinuationWhitespace(source, identifierEnd);
 	if (source[cursor] !== "(") {
 		return undefined;
 	}
 
-	let depth = 1;
+	let depth = 0;
 	let commaCount = 0;
 	let hasArgument = false;
-	let inComment = false;
-	let inString = false;
-	for (let index = cursor + 1; index < source.length; index += 1) {
-		const current = source[index];
-		if (inComment) {
-			if (current === "\n" || current === "\r") {
-				inComment = false;
-			}
-			continue;
-		}
-		if (inString) {
-			if (current === "\\") {
-				index += 1;
-			} else if (current === "\"") {
-				inString = false;
-			}
-			continue;
-		}
-		if (current === "'") {
-			inComment = true;
-		} else if (current === "\"") {
-			inString = true;
-			if (depth === 1) hasArgument = true;
-		} else if (current === "(") {
+	// 与调用位置共用词法令牌；合法续行不是实参，普通换行也不能跨语句寻找右括号。
+	for (const token of scanSimpleSource(source.slice(cursor))) {
+		if (token.kind === "comment" || token.kind === "continuation") continue;
+		if (token.kind === "separator") return undefined;
+		if (token.text === "(" && token.kind === "punctuation") {
 			if (depth === 1) hasArgument = true;
 			depth += 1;
-		} else if (current === ")") {
+		} else if (token.text === ")" && token.kind === "punctuation") {
 			depth -= 1;
 			if (depth === 0) {
 				return hasArgument ? commaCount + 1 : 0;
 			}
-		} else if (current === "," && depth === 1) {
+		} else if (token.text === "," && token.kind === "punctuation" && depth === 1) {
 			commaCount += 1;
-		} else if (depth === 1 && !/\s/u.test(current ?? "")) {
+		} else if (depth === 1) {
 			hasArgument = true;
 		}
 	}

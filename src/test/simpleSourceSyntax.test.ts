@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { buildLanguageTokenRules, buildDocumentTokenRules, tokenizeSimpleText } from "../compilerTokens";
 import { createSimpleSourceAnalysis, resolveSimpleBinding } from "../completionModel";
 import { scanSimpleSource, simpleSourceStatements } from "../simpleSourceLexical";
-import { analyzeSimpleSourceSyntax } from "../simpleSourceSyntax";
+import { analyzeSimpleSourceSyntax, simpleCreatedType } from "../simpleSourceSyntax";
 import { parseSimpleUnitSymbols } from "../simpleUnitSymbols";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 import { listSimpleFiles } from "../simpleFileDiscovery";
@@ -82,7 +82,7 @@ test("冒号与续行声明共享解析，数组和字符串中的逗号不会�
 	assert.equal(resolveSimpleBinding(source, source.indexOf("数量 = 甲"), "数组", undefined, analysis)?.typeName, "整数型(2, 3)");
 });
 
-test("嵌套分支、循环和错误分支中的变量仅在所属作用域及声明后可见", () => {
+test("分支沿编译器父链查找前支变量，循环体变量在离开循环后不可见", () => {
 	const source = [
 		"变量 值 为 文本型",
 		"过程 运行()",
@@ -108,13 +108,44 @@ test("嵌套分支、循环和错误分支中的变量仅在所属作用域及�
 		"结束 过程"
 	].join("\n");
 	const analysis = createSimpleSourceAnalysis(source, undefined);
-	for (const [text, expected] of [["值 = 1", "文本型"], ["值 = 2", "整数型"], ["值 = 3", "文本型"]] as const) {
+	for (const [text, expected] of [["值 = 1", "文本型"], ["值 = 2", "整数型"], ["值 = 3", "整数型"]] as const) {
 		assert.equal(resolveSimpleBinding(source, source.indexOf(text), "值", undefined, analysis)?.typeName, expected);
 	}
 	assert.ok(resolveSimpleBinding(source, source.indexOf("临时 = 1"), "临时", undefined, analysis));
 	assert.equal(resolveSimpleBinding(source, source.indexOf("临时 = 2"), "临时", undefined, analysis), undefined);
 	assert.ok(resolveSimpleBinding(source, source.indexOf("错误值 = 1"), "错误值", undefined, analysis));
-	assert.equal(resolveSimpleBinding(source, source.indexOf("错误值 = 2"), "错误值", undefined, analysis), undefined);
+	assert.ok(resolveSimpleBinding(source, source.indexOf("错误值 = 2"), "错误值", undefined, analysis));
+});
+
+test("完整创建、数组及组件创建可推断类型，比较结果不能沿用创建类型", () => {
+	for (const [source, expected] of [
+		["创建 A", "A"], ["创建 A(3)", "A(3)"], ["创建 A 位于 容器", "A"],
+		["创建 A 是 空", undefined], ["创建 A(3) 是 空", undefined], ["创建 A & \"文本\"", undefined],
+		["创建 A(3", undefined], ["创建 A 位于", undefined]
+	] as const) {
+		assert.equal(simpleCreatedType(scanSimpleSource(source), source), expected, source);
+	}
+});
+
+test("局部初值遵循 InitializerScope，自身或后续同名变量不能回退成外层字段", () => {
+	for (const declaration of ["变量 值 为 文本型 = 值", "变量 首值 为 文本型 = 值\n变量 值 为 文本型"]) {
+		const source = `变量 值 为 整数型\n过程 Run()\n${declaration}\n结束 过程`;
+		const syntax = analyzeSimpleSourceSyntax(source);
+		assert.equal(syntax.resolve("值", source.indexOf("= 值") + 2), undefined, declaration);
+	}
+	const source = "过程 Run()\n变量 前值 为 整数型 = 1\n变量 后值 为 整数型 = 前值\n结束 过程";
+	assert.equal(analyzeSimpleSourceSyntax(source).resolve("前值", source.lastIndexOf("前值"))?.typeName, "整数型");
+});
+
+test("执行循环的结束条件按编译器使用外层作用域，循环体仍保留自己的局部变量", () => {
+	for (const keyword of ["直到", "判断循环"]) {
+		const source = `过程 Run()\r\n变量 值 为 文本型\r\n执行\r\n变量 值 为 整数型\r\n值 = 1\r\n${keyword} 值 = \"结束\"\r\n结束 过程`;
+		const syntax = analyzeSimpleSourceSyntax(source);
+		assert.equal(syntax.resolve("值", source.indexOf("值 = 1"))?.typeName, "整数型");
+		assert.equal(syntax.resolve("值", source.lastIndexOf("值 ="))?.typeName, "文本型", keyword);
+		assert.equal(syntax.blocksAt(source.indexOf(keyword)).at(-1)?.kind, "do", keyword);
+		assert.equal(syntax.blocksAt(source.lastIndexOf("值 =")).some((frame) => frame.kind === "do"), false, keyword);
+	}
 });
 
 test("成员位置不会被同名参数覆盖，关键字成员与普通运算符保持区分", () => {

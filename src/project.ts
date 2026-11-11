@@ -91,6 +91,9 @@ function unescapeProperty(value: string): string {
 		if (unicode !== undefined) {
 			return String.fromCharCode(Number.parseInt(unicode, 16));
 		}
+		if (escaped === "u") {
+			throw new Error("project.properties 包含无效的 Unicode 转义，\\u 后须为四位十六进制数字。");
+		}
 
 		switch (escaped) {
 			case "t":

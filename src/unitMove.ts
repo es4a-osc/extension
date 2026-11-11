@@ -29,7 +29,7 @@ export interface UnitMoveServices {
 	readonly getSdk?: () => Sdk | undefined;
 	readonly refactoring?: SimpleProjectRefactoring;
 	readonly codeDocuments: SimpleCodeFileSystemProvider;
-	readonly refreshProjectSemantics: () => Promise<void>;
+	readonly refreshProjectSemantics: (paths?: readonly string[]) => Promise<void>;
 }
 
 /** 移动后需要按新路径恢复、但不能由 WorkspaceEdit 自动迁移的标签类型。 */
@@ -136,7 +136,7 @@ export async function moveUnitToDirectory(
 		throw error;
 	}
 
-	provider.refresh();
+	provider.refresh(undefined, source.filePath, targetFilePath);
 	for (const { kind } of movedTabs) {
 		await reopenMovedUnitTab(kind, targetUri);
 	}

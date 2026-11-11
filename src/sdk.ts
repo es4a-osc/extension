@@ -747,43 +747,20 @@ function definitionIdentity(definition: LibraryDefinition): string {
 	return definition.type?.trim() || definition.name;
 }
 
-/** 从完整限定名中提取定义短名称；短名称本身不触发兼容匹配。 */
-function qualifiedDefinitionName(identity: string): string | undefined {
-	const separator = identity.lastIndexOf(".");
-	return separator < 0 || separator === identity.length - 1
-		? undefined
-		: identity.slice(separator + 1);
-}
-
-/** 完整限定名没有直接索引时，仅在短名称唯一的情况下兼容旧定义。 */
-function uniqueDefinitionByQualifiedName<T>(
-	identity: string,
-	definitionsByName: ReadonlyMap<string, readonly T[]>
-): T | undefined {
-	const name = qualifiedDefinitionName(identity);
-	if (name === undefined) return undefined;
-	const candidates = definitionsByName.get(name);
-	return candidates?.length === 1 ? candidates[0] : undefined;
-}
-
 /**
  * 将各清单声明的直接父级一次性展开为完整继承链。
  *
- * 完整运行时类型名优先，短名称只用于兼容既有清单。没有对应定义的父类型仍作为
- * 终点保留，例如未导出为 Simple 对象的组件容器标记接口。
+ * 父级按清单声明的身份精确查找。没有对应定义的父类型仍作为终点保留，
+ * 例如未导出为 Simple 对象的组件容器标记接口。
  */
 export function resolveManifestInheritance(
 	manifests: readonly LibraryManifest[],
 	issues: string[]
 ): readonly LibraryManifest[] {
 	const definitions = new Map<string, LibraryDefinition>();
-	const definitionsByName = new Map<string, LibraryDefinition[]>();
 	for (const manifest of manifests) {
 		for (const category of manifest.categories) {
 			for (const definition of category.definitions) {
-				const candidates = definitionsByName.get(definition.name) ?? [];
-				candidates.push(definition);
-				definitionsByName.set(definition.name, candidates);
 				for (const key of [definition.type, definition.name]) {
 					if (key !== undefined && key.length > 0 && !definitions.has(key)) {
 						definitions.set(key, definition);
@@ -817,8 +794,7 @@ export function resolveManifestInheritance(
 			}
 		};
 		for (const parentIdentity of definition.inherits ?? []) {
-			const parent = definitions.get(parentIdentity)
-				?? uniqueDefinitionByQualifiedName(parentIdentity, definitionsByName);
+			const parent = definitions.get(parentIdentity);
 			if (parent === undefined) {
 				append(parentIdentity);
 				continue;
@@ -1008,32 +984,16 @@ export function buildDefinitionIndex(
 	manifests: readonly LibraryManifest[]
 ): ReadonlyMap<string, LibraryDefinitionReference> {
 	const definitions = new Map<string, LibraryDefinitionReference>();
-	const definitionsByName = new Map<string, LibraryDefinitionReference[]>();
-	const references: LibraryDefinitionReference[] = [];
 
 	for (const manifest of manifests) {
 		for (const category of manifest.categories) {
 			for (const definition of category.definitions) {
 				const reference = { definition, manifest };
-				references.push(reference);
-				const candidates = definitionsByName.get(definition.name) ?? [];
-				candidates.push(reference);
-				definitionsByName.set(definition.name, candidates);
 				for (const key of [definition.name, definition.type]) {
 					if (key !== undefined && key.length > 0 && !definitions.has(key)) {
 						definitions.set(key, reference);
 					}
 				}
-			}
-		}
-	}
-
-	for (const reference of references) {
-		for (const parentIdentity of reference.definition.inherits ?? []) {
-			if (definitions.has(parentIdentity)) continue;
-			const parent = uniqueDefinitionByQualifiedName(parentIdentity, definitionsByName);
-			if (parent !== undefined) {
-				definitions.set(parentIdentity, parent);
 			}
 		}
 	}

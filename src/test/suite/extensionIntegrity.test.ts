@@ -527,6 +527,17 @@ suite("扩展集中完整性回归", () => {
 		assert.equal(await run("函数 _\n计算(参数 为 整数型, "), undefined);
 		const source = "过程 计算(文本 为 文本型)\n结束 过程\n过程 测试()\n计算 _\n(";
 		assert.deepEqual((await run(source))?.signatures.map((signature) => signature.label), ["计算(文本 为 文本型)"]);
+
+		/* 没有项目上下文的 Provider 也必须遵循相同静态语境与局部遮蔽。 */
+		for (const body of ["静态 过程 测试()\n计算(", "过程 测试()\n变量 计算 为 整数型()\n计算("]) {
+			const text = "过程 计算(参数 为 整数型)\n结束 过程\n" + body;
+			const document = await vscode.workspace.openTextDocument({ language: "simple", content: text });
+			const cancellation = new vscode.CancellationTokenSource();
+			try {
+				assert.equal(new SimpleSignatureHelpProvider().provideSignatureHelp(document, document.positionAt(text.length), cancellation.token,
+					{ isRetrigger: false, triggerKind: vscode.SignatureHelpTriggerKind.Invoke, triggerCharacter: undefined, activeSignatureHelp: undefined }), undefined);
+			} finally { cancellation.dispose(); }
+		}
 	});
 
 	test("无限定调用保留本地及基类重载，同参数个数的派生成员覆盖基类", async () => {

@@ -5,14 +5,21 @@ xhwsd@qq.com 2026-9-2
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { isPathInsideOrEqual } from "./simpleProjectPaths";
+
+/** 扫描只排除项目明确声明的生成目录，不按文件夹名称猜测用途。 */
+export interface SimpleFileDiscoveryOptions {
+	readonly strict?: boolean;
+	readonly excludedDirectories?: readonly string[];
+}
 
 /** 不跟随符号链接枚举单元；搜索可跳过不可读子树，重构要求完整扫描。 */
 export async function listSimpleFiles(
 	directoryPath: string,
 	isCancelled: () => boolean = () => false,
-	options: { readonly strict?: boolean } = {}
+	options: SimpleFileDiscoveryOptions = {}
 ): Promise<readonly string[]> {
-	if (isCancelled()) {
+	if (isCancelled() || options.excludedDirectories?.some((directory) => isPathInsideOrEqual(directory, directoryPath))) {
 		return [];
 	}
 

@@ -40,9 +40,9 @@ export class ProjectFileWatcher {
 	private disposed = false;
 
 	/** 分别通知文件语义变化与项目配置变化，避免普通文件事件重建项目根。 */
-	constructor(private readonly changed: () => void, private readonly configured: () => void) {}
+	constructor(private readonly changed: (filePath: string, contentOnly?: boolean) => void, private readonly configured: (filePath: string) => void) {}
 
-	/** 同步分析入口；Assets 没有语义索引，显示监听由项目树自行维护。 */
+	/** 同步源码、资源及资产引用的分析入口，显示监听仍由项目树自行维护。 */
 	update(projects: readonly SimpleProjectInfo[], projectFiles: readonly string[] = projects.map((project) => project.filePath)): void {
 		this.projects = projects;
 		const desired = new Set<string>();
@@ -51,7 +51,7 @@ export class ProjectFileWatcher {
 				this.watch(`config:${filePathKey(file)}`, existingParent(path.dirname(file)), file, false, desired);
 			}
 			for (const project of projects) {
-				for (const root of [...project.sourceDirectories, project.resourceDirectory]) {
+				for (const root of [...project.sourceDirectories, project.resourceDirectory, project.assetsDirectory]) {
 					this.watch(`source:${filePathKey(root)}`, existingParent(root), root, true, desired);
 				}
 			}
@@ -74,11 +74,14 @@ export class ProjectFileWatcher {
 		previous?.watcher.close();
 		this.watches.delete(key);
 		try {
-			const watcher = fs.watch(directory, { persistent: false, recursive }, (_event, name) => {
+			const watcher = fs.watch(directory, { persistent: false, recursive }, (event, name) => {
+				if (this.watches.get(key)?.watcher !== watcher) {
+					return;
+				}
 				const changed = name === null ? undefined : path.join(directory, name);
 				if (!recursive) {
 					if (changed === undefined || isPathInsideOrEqual(changed, target)) {
-						this.configured();
+						this.configured(target);
 					}
 					return;
 				}
@@ -86,19 +89,30 @@ export class ProjectFileWatcher {
 					if (!isPathInsideOrEqual(target, changed) && !isPathInsideOrEqual(changed, target)) {
 						return;
 					}
-					if (this.projects.some((project) => isPathInsideOrEqual(project.buildDirectory, changed))) {
+					const owners = this.projects.filter((project) => (
+						[...project.sourceDirectories, project.resourceDirectory, project.assetsDirectory]
+							.some((root) => sameFilePath(root, target))
+					));
+					// 一个项目的构建目录可能包含另一个项目的源码，不能据此屏蔽后者。
+					if (owners.length > 0 && owners.every((project) => isPathInsideOrEqual(project.buildDirectory, changed))) {
 						return;
 					}
 				}
-				this.changed();
+				// 系统没有给出文件名时，按该监听入口刷新，仍可定位影响范围。
+				this.changed(changed ?? target, changed !== undefined && event === "change");
 			});
 			this.watches.set(key, { directory, watcher });
 			watcher.on("error", () => {
-				if (this.watches.get(key)?.watcher === watcher) {
-					this.watches.delete(key);
+				if (this.watches.get(key)?.watcher !== watcher) {
+					return;
 				}
+				this.watches.delete(key);
 				watcher.close();
-				this.changed();
+				if (recursive) {
+					this.changed(target);
+				} else {
+					this.configured(target);
+				}
 			});
 		} catch {
 			// 不可读目录由项目树展示；后续文件事件或主动刷新会重新尝试监听。

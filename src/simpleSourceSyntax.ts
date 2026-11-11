@@ -18,6 +18,7 @@ export interface SimpleSourceBlock {
 	readonly start: number;
 	readonly getterSeen?: boolean;
 	readonly setterSeen?: boolean;
+	readonly declarationOnly?: boolean;
 }
 
 /** 语法关键字与块身份的唯一对应关系。 */
@@ -40,6 +41,7 @@ export interface SimpleSourceDeclaration {
 	readonly name: string;
 	readonly token: SimpleSourceToken;
 	readonly statementStart: number;
+	readonly statementEnd?: number;
 	readonly scope: SimpleSourceScope;
 	readonly visibleFrom: number;
 	readonly static: boolean;
@@ -51,6 +53,8 @@ export interface SimpleSourceDeclaration {
 	readonly target?: string;
 	readonly passing?: "传值" | "传址";
 	readonly initializer?: string;
+	readonly initializerStart?: number;
+	readonly initializerEnd?: number;
 	readonly createdTypeName?: string;
 	readonly parameters?: readonly SimpleSourceDeclaration[];
 	readonly body?: SimpleSourceScope;
@@ -67,6 +71,8 @@ export interface SimpleSourceSyntax {
 	declarationsNamed(name: string): readonly SimpleSourceDeclaration[];
 	roleAt(offset: number): SimpleSourceRole | undefined;
 	resolve(name: string, offset: number): SimpleSourceDeclaration | undefined;
+	/** 初值禁止读取自身或后续局部变量；调用方不得回退到同名外层符号。 */
+	isBlocked(name: string, offset: number): boolean;
 	callableAt(offset: number): SimpleSourceDeclaration | undefined;
 	blocksAt(offset: number): readonly SimpleSourceBlock[];
 }
@@ -84,6 +90,8 @@ interface SyntaxFrame {
 	setterSeen?: boolean;
 	scope: SimpleSourceScope;
 	readonly declaration?: SimpleSourceDeclaration;
+	readonly branches?: readonly SimpleSourceScope[];
+	readonly declarationOnly?: boolean;
 }
 
 /** 按最外层逗号拆分，数组维数、调用和字符串中的逗号保留在原片段中。 */
@@ -106,7 +114,7 @@ function splitTokens(tokens: readonly SimpleSourceToken[]): readonly (readonly S
 }
 
 /** 查找当前逻辑语句中的配对右括号；不越过未续行的下一语句。 */
-function closingParenthesis(tokens: readonly SimpleSourceToken[], start: number): number {
+export function closingParenthesis(tokens: readonly SimpleSourceToken[], start: number): number {
 	let depth = 0;
 	for (let index = start; index < tokens.length; index += 1) {
 		if (tokens[index]!.text === "(") {
@@ -119,7 +127,7 @@ function closingParenthesis(tokens: readonly SimpleSourceToken[], start: number)
 }
 
 /** 读取点号限定名；类型段只包含名称，数组维数另行读取。 */
-function nameEnd(tokens: readonly SimpleSourceToken[], start: number): number {
+export function nameEnd(tokens: readonly SimpleSourceToken[], start: number): number {
 	if (tokens[start]?.kind !== "word") {
 		return start;
 	}
@@ -147,6 +155,19 @@ function readType(tokens: readonly SimpleSourceToken[], start: number, roles: Ma
 	}
 	const close = Math.min(tokens.length - 1, closingParenthesis(tokens, end));
 	return name + source.slice(tokens[end]!.start, tokens[close]!.end).replace(/_\r?\n/gu, " ");
+}
+
+/** 只从完整创建表达式推断类型，创建后的比较等运算不能冒充被创建对象。 */
+export function simpleCreatedType(tokens: readonly SimpleSourceToken[], source: string): string | undefined {
+	if (tokens[0]?.text !== "创建") return undefined;
+	let end = nameEnd(tokens, 1);
+	if (end === 1) return undefined;
+	if (tokens[end]?.text === "(") {
+		end = closingParenthesis(tokens, end) + 1;
+		if (end > tokens.length) return undefined;
+	}
+	if (end !== tokens.length && !(tokens[end]?.text === "位于" && end + 1 < tokens.length)) return undefined;
+	return readType(tokens, 1, new Map(), source);
 }
 
 /** 只识别当前括号层级的语法标记，尺寸或调用参数里的等号不属于声明初值。 */
@@ -242,6 +263,13 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 	};
 	const frames: SyntaxFrame[] = [];
 	const snapshots: { start: number; blocks: readonly SimpleSourceBlock[] }[] = [{ start: 0, blocks: [] }];
+	const recordBlocks = (start: number): void => {
+		snapshots.push({ start, blocks: frames.map((frame) => ({
+			kind: BLOCK_KINDS[frame.kind]!, header: frame.header, start: frame.scope.start,
+			getterSeen: frame.getterSeen, setterSeen: frame.setterSeen,
+			declarationOnly: frame.declarationOnly || frame.declaration?.kind === "event" && frame.declaration.owner === undefined
+		})) });
+	};
 	const separators = tokens.filter((token) => token.kind === "separator");
 	let separatorIndex = 0;
 	let header = "";
@@ -249,6 +277,7 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 	const closeFrom = (index: number, end: number): void => {
 		for (const frame of frames.splice(index)) {
 			frame.scope.end = end;
+			for (const branch of frame.branches ?? []) branch.end = end;
 			const property = [...frames].reverse().find((value) => value.kind === "属性");
 			if (property !== undefined && frame.kind === "获取") {
 				property.getterSeen = true;
@@ -294,13 +323,17 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 				continue;
 			}
 
-			/* 关闭块时登记物理范围；分支采用并列作用域，避免局部变量泄漏到其它分支。 */
-			if (keyword === "结束" || keyword === "下个" || (keyword === "直到" || keyword === "判断循环") && frames.at(-1)?.kind === "执行") {
+			/* 关闭范围与编译器恢复作用域的时机一致，保留分支之间的真实父链。 */
+			const postCondition = (keyword === "直到" || keyword === "判断循环") && frames.at(-1)?.kind === "执行";
+			if (keyword === "结束" || keyword === "下个" || postCondition) {
 				const ending = keyword === "下个" ? "循环" : keyword === "结束" ? statement[head + 1]?.text : "执行";
 				const index = frames.findLastIndex((frame) => frame.kind === ending);
 				if (index >= 0) {
 					frames[index]!.scope.closed = true;
-					closeFrom(index, statement.at(-1)!.end);
+					// 编译器先离开执行循环体的作用域，再解析结尾条件。
+					const outerCondition = postCondition || keyword === "下个";
+					closeFrom(index, outerCondition ? first.start : statement.at(-1)!.end);
+					if (outerCondition) recordBlocks(first.end);
 				}
 				continue;
 			}
@@ -308,9 +341,11 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 				const kind = keyword === "分支" ? [...frames].reverse().find((frame) => frame.kind === "判断" || frame.kind === "错误")?.kind : "如果";
 				const index = frames.findLastIndex((frame) => frame.kind === kind);
 				if (index >= 0 && kind !== undefined) {
-					const parent = frames[index]!.scope.parent ?? root;
-					closeFrom(index, first.start);
-					frames.push({ kind, header, scope: { start: first.start, end: source.length + 1, parent } });
+					const previous = frames[index]!;
+					closeFrom(index + 1, first.start);
+					frames[index] = { kind, header,
+						branches: [...(previous.branches ?? []), previous.scope],
+						scope: { start: first.start, end: source.length + 1, parent: previous.scope } };
 				}
 				continue;
 			}
@@ -322,6 +357,8 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 					closeFrom(previous, first.start);
 				}
 				const end = nameEnd(statement, head + 1);
+				// 尚未输入事件成员时，拥有者不能被误登记成同名事件声明。
+				if (keyword === "事件" && statement[end]?.text === ".") continue;
 				const token = statement[end - 1];
 				if (end === head + 1 || token === undefined) {
 					continue;
@@ -342,9 +379,7 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 					bodyOffset
 				};
 				add(declaration);
-				if (!interfaceUnit) {
-					frames.push({ kind: keyword, header, scope: body, declaration });
-				}
+				frames.push({ kind: keyword, header, scope: body, declaration, declarationOnly: interfaceUnit });
 				if (statement[end]?.text === "(") {
 					for (const group of splitTokens(statement.slice(end + 1, close))) {
 						const passing = group[0]?.text === "传值" || group[0]?.text === "传址" ? group[0].text : undefined;
@@ -382,13 +417,15 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 						continue;
 					}
 					const equal = topLevelToken(group, "=");
-					const createdTypeName = equal >= 0 && group[equal + 1]?.text === "创建" ? readType(group, equal + 2, roles, source) : undefined;
+					const createdTypeName = equal < 0 ? undefined : simpleCreatedType(group.slice(equal + 1), source);
 					const typeName = group[1]?.text === "为" ? readType(group, 2, roles, source)
 						: createdTypeName;
 					add({
 						kind: keyword === "常量" ? "constant" : "variable", name: token.text, token, scope: scope(),
-						visibleFrom: scope() === root ? 0 : group.at(-1)!.end, statementStart: first.start, static: staticDeclaration, typeName,
+						visibleFrom: scope() === root ? 0 : group.at(-1)!.end, statementStart: first.start, statementEnd: boundary, static: staticDeclaration, typeName,
 						createdTypeName,
+						initializerStart: equal < 0 ? undefined : group[equal]!.end,
+						initializerEnd: equal < 0 ? undefined : statement.find((value) => value.start >= group.at(-1)!.end && value.text === ",")?.start ?? boundary,
 						initializer: equal < 0 ? undefined : source.slice(group[equal]!.end, group.at(-1)!.end).trim().replace(/_\r?\n/gu, " ")
 					});
 				}
@@ -405,10 +442,7 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 			}
 
 		} finally {
-			snapshots.push({ start: boundary, blocks: frames.map((frame) => ({
-				kind: BLOCK_KINDS[frame.kind]!, header: frame.header, start: frame.scope.start,
-				getterSeen: frame.getterSeen, setterSeen: frame.setterSeen
-			})) });
+			recordBlocks(boundary);
 		}
 	}
 
@@ -416,8 +450,17 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 		const current = tokens[simpleSourceTokenIndex(tokens, offset)];
 		return current?.kind === "word" ? current : tokens[simpleSourceTokenIndex(tokens, offset, true)];
 	};
+	const isBlocked = (name: string, offset: number): boolean => {
+		const initializer = declarations.find((value) => value.scope !== root && value.kind === "variable" && value.initializerStart !== undefined
+			&& offset >= value.initializerStart && offset < (value.initializerEnd ?? value.token.end));
+		if (initializer === undefined) return false;
+		// InitializerScope 先查最近符号再检查声明顺序，不退回同名外层字段、类型或全局成员。
+		const visible = (byName.get(name) ?? []).filter((value) => value.scope.start <= offset && offset < value.scope.end)
+			.sort((left, right) => scopeDepth(right.scope) - scopeDepth(left.scope))[0];
+		return visible?.kind === "variable" && visible.scope !== root && visible.token.start >= initializer.token.start;
+	};
 	return {
-		tokens, declarations, roles, root,
+		tokens, declarations, roles, root, isBlocked,
 		declarationAt(offset, name) {
 			const token = byStart.get(offset) ?? byStart.get(wordAt(offset)?.start ?? -1);
 			return name === undefined || token?.name === name ? token : undefined;
@@ -456,6 +499,7 @@ export function analyzeSimpleSourceSyntax(source: string, interfaceUnit = false,
 			return snapshots[low]!.blocks;
 		},
 		resolve(name, offset) {
+			if (isBlocked(name, offset)) return undefined;
 			let result: SimpleSourceDeclaration | undefined;
 			for (const declaration of byName.get(name) ?? []) {
 				if (offset < declaration.visibleFrom || offset < declaration.scope.start || offset >= declaration.scope.end) {

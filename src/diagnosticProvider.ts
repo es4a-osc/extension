@@ -11,8 +11,8 @@ import { refactoringContext } from "./refactoringModel";
 import { serializePropertyXmlWithLocations, resolvePropertyXmlElement, getPropertyXmlAttribute } from "./propertyXml";
 import { createSimpleSourcePositionIndex } from "./simpleSourcePositions";
 import { toSimpleCodeUri, toSimpleSourceUri, type SimpleCodeFileSystemProvider } from "./simpleCodeFileSystem";
-import { toUnitXmlPreviewUri } from "./unitPreview";
-import { mostSpecificSourceRoot } from "./simpleProjectPaths";
+import { toUnitPreviewSourceUri, toUnitXmlPreviewUri } from "./unitPreview";
+import { filePathKey, mostSpecificSourceRoot } from "./simpleProjectPaths";
 import { findProjectForSource } from "./projectCapability";
 import type { SimpleProjectInfo } from "./project";
 import type { ProgramTreeProvider } from "./programTree";
@@ -27,6 +27,7 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private fullRefresh = false;
 	private readonly changedDocuments = new Set<string>();
+	private readonly changedProjects = new Set<string>();
 	private disposed = false;
 
 	constructor(
@@ -36,8 +37,18 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 		private readonly symbols: ProjectSymbolIndex,
 		private readonly getSdk: () => Sdk | undefined,
 		private readonly readContext: (document: vscode.TextDocument, source: string) => SimpleProjectSemanticContext | undefined,
-		private readonly reportError: (message: string) => void
+		private readonly reportError: (message: string) => void,
+		private readonly waitForSemantics: () => Promise<void> = () => Promise.resolve()
 	) {}
+
+	/** 重查受影响项目，保留其他项目的诊断。 */
+	scheduleProjects(projectFiles: readonly string[]): void {
+		if (this.disposed || projectFiles.length === 0) return;
+		for (const file of projectFiles) {
+			this.changedProjects.add(filePathKey(file));
+		}
+		this.schedule();
+	}
 
 	schedule(full = false, uri?: vscode.Uri): void {
 		if (this.disposed) return;
@@ -59,6 +70,9 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 		if (this.refactoring.isBusy) return; // 完成事件会重新安排；不展示中间状态的错误。
 		const generation = this.generation;
 		const cancelled = (): boolean => this.disposed || generation !== this.generation || this.refactoring.isBusy;
+		// 已添加项目的索引尚未发布时，不得用独立单元上下文诊断完整限定名。
+		await this.waitForSemantics();
+		if (cancelled()) return;
 		const pending = new Set(this.changedDocuments);
 		const entries = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
 		const add = (uri: vscode.Uri, diagnostic: vscode.Diagnostic): void => {
@@ -68,7 +82,7 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 			entries.set(key, entry);
 		};
 		const assetIndexes = new Map<string, ReadonlySet<string>>();
-		const failedProjects: SimpleProjectInfo[] = [];
+		const failedProjects = new Set<string>();
 		const assetsFor = async (project: SimpleProjectInfo): Promise<ReadonlySet<string>> => {
 			const known = assetIndexes.get(project.filePath);
 			if (known !== undefined) return known;
@@ -137,44 +151,46 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 			return true;
 		};
 		const full = this.fullRefresh;
-		this.fullRefresh = false;
-		if (full) {
-			for (const project of await this.programs.getProjects()) {
-				try {
-					const units = await this.refactoring.readProject(project);
-					const assets = await assetsFor(project);
-					// 一个项目的单元符号只解析一次，按单元让出线程；不建立项目 XML 缓存。
-					const symbols: SimpleUnitSymbol[] = [];
-					for (const unit of units) {
-						if (cancelled()) { this.fullRefresh = true; return; }
-						symbols.push(parseSimpleUnitSymbolsFromModel(unit.userCode, unit.property, unit.filePath, unit.sourceRoot));
-						await new Promise<void>((resolve) => setTimeout(resolve, 0));
-					}
-					for (const unit of units) {
-						if (generation !== this.generation || this.refactoring.isBusy) { this.fullRefresh = true; return; }
-						const resources = this.symbols.contextForFile(unit.filePath)?.resources;
-						if (!await analyze(unit.filePath, unit.userCode, refactoringContext(unit, units, resources, symbols), unit.property, assets)) { this.fullRefresh = true; return; }
-						await new Promise<void>((resolve) => setTimeout(resolve, 0));
-					}
-				} catch (error: unknown) {
-					if (cancelled()) { this.fullRefresh = true; return; }
-					// 一个项目读取失败不能阻断其它项目，也不能用不完整结果清除其原有诊断。
-					for (const [key, entry] of entries) {
-						const source = toSimpleSourceUri(entry.uri);
-						if (source !== undefined && findProjectForSource([project], source.fsPath) !== undefined) entries.delete(key);
-					}
-					failedProjects.push(project);
-					this.fullRefresh = true;
-					this.reportError(`更新项目引用诊断失败（${project.filePath}）：${String(error)}`);
+		const projectFiles = new Set(this.changedProjects);
+		if (!full && projectFiles.size === 0 && pending.size === 0) return;
+		const projects = await this.programs.getProjects();
+		if (cancelled()) return;
+		const targets = full ? projects : projects.filter((project) => projectFiles.has(filePathKey(project.filePath)));
+		for (const project of targets) {
+			try {
+				const units = await this.refactoring.readProject(project);
+				const assets = await assetsFor(project);
+				const resources = this.symbols.resourcesForProject(project.filePath);
+				// 一个项目的单元符号只解析一次，按单元让出线程；不建立项目 XML 缓存。
+				const symbols: SimpleUnitSymbol[] = [];
+				for (const unit of units) {
+					if (cancelled()) return;
+					symbols.push(parseSimpleUnitSymbolsFromModel(unit.userCode, unit.property, unit.filePath, unit.sourceRoot));
+					await new Promise<void>((resolve) => setTimeout(resolve, 0));
 				}
+				for (const unit of units) {
+					if (cancelled()) return;
+					if (findProjectForSource(projects, unit.filePath) !== project) continue;
+					if (!await analyze(unit.filePath, unit.userCode, refactoringContext(unit, units, resources, symbols), unit.property, assets)) return;
+					await new Promise<void>((resolve) => setTimeout(resolve, 0));
+				}
+			} catch (error: unknown) {
+				if (cancelled()) return;
+				// 一个项目读取失败不能阻断其它项目，也不能用不完整结果清除其原有诊断。
+				for (const [key, entry] of entries) {
+					const source = toSimpleSourceUri(entry.uri) ?? toUnitPreviewSourceUri(entry.uri);
+					if (source !== undefined && findProjectForSource(projects, source.fsPath) === project) entries.delete(key);
+				}
+				failedProjects.add(filePathKey(project.filePath));
+				this.reportError(`更新项目引用诊断失败（${project.filePath}）：${String(error)}`);
 			}
-		} else {
-			const projects = await this.programs.getProjects();
+		}
+		if (!full) {
 			for (const value of pending) {
 				if (cancelled()) return;
 				const source = toSimpleSourceUri(vscode.Uri.parse(value));
 				const project = source === undefined ? undefined : findProjectForSource(projects, source.fsPath);
-				if (source === undefined || project === undefined) continue;
+				if (source === undefined || project === undefined || projectFiles.has(filePathKey(project.filePath))) continue;
 				const document = this.documents.getOpenDocument(source);
 				// 仅设计器打开时仍从共享 XML 会话读取；不为诊断制造代码标签。
 				const snapshot = document === undefined ? await this.documents.readRefactoringUnit(source, mostSpecificSourceRoot(project.sourceDirectories, source.fsPath)!) : undefined;
@@ -184,23 +200,32 @@ export class SimpleDiagnosticProvider implements vscode.Disposable {
 				if (context !== undefined && !await analyze(source.fsPath, code, context, property, await assetsFor(project))) return;
 			}
 		}
-		if (generation !== this.generation || this.refactoring.isBusy) { this.fullRefresh ||= full; return; }
-		if (full) {
-			if (failedProjects.length > 0) this.collection.forEach((uri, diagnostics) => {
-				const source = toSimpleSourceUri(uri);
-				if (source !== undefined && findProjectForSource(failedProjects, source.fsPath) !== undefined) {
-					entries.set(uri.toString(), { uri, diagnostics: [...diagnostics] });
+		if (cancelled()) return;
+		// 删除、改名后的旧诊断只在本批已成功读取的项目中清除。
+		if (full || projectFiles.size > 0) {
+			const stale: vscode.Uri[] = [];
+			this.collection.forEach((uri) => {
+				if (entries.has(uri.toString())) return;
+				const source = toSimpleSourceUri(uri) ?? toUnitPreviewSourceUri(uri);
+				const project = source === undefined ? undefined : findProjectForSource(projects, source.fsPath);
+				const key = project === undefined ? undefined : filePathKey(project.filePath);
+				if ((full || (key !== undefined && projectFiles.has(key))) && (key === undefined || !failedProjects.has(key))) {
+					stale.push(uri);
 				}
 			});
-			this.collection.clear();
+			for (const uri of stale) this.collection.delete(uri);
 		}
 		for (const entry of entries.values()) this.collection.set(entry.uri, entry.diagnostics);
 		for (const uri of pending) this.changedDocuments.delete(uri);
+		this.fullRefresh = false;
+		this.changedProjects.clear();
+		for (const key of failedProjects) this.changedProjects.add(key);
 	}
 
 	dispose(): void {
 		this.disposed = true;
 		this.changedDocuments.clear();
+		this.changedProjects.clear();
 		this.generation += 1;
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.collection.dispose();

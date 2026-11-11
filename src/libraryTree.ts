@@ -372,6 +372,8 @@ export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryNode>
 	private loading = true;
 	private parents = new WeakMap<LibraryNode, LibraryNode | undefined>();
 	private refreshTask: Promise<void> | undefined;
+	private refreshVersion = 0;
+	private disposed = false;
 	private sdk: Sdk | undefined;
 
 	/** SDK 或加载状态变化时通知 VS Code 刷新类库树。 */
@@ -385,41 +387,38 @@ export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryNode>
 
 	/** 释放树数据变更事件资源。 */
 	dispose(): void {
+		this.disposed = true;
 		this.changed.dispose();
 	}
 
-	/** 丢弃旧树状态，并在需要显示类库树时读取当前内存 SDK。 */
+	/** 显式刷新读取当前快照，迟到的旧读取不能覆盖后一次请求。 */
 	refresh(): Promise<void> {
-		if (this.refreshTask !== undefined) {
-			return this.refreshTask;
-		}
-		const task = this.performRefresh();
+		if (this.disposed) return Promise.resolve();
+		const version = ++this.refreshVersion;
+		const task = Promise.resolve().then(() => this.performRefresh(version));
 		this.refreshTask = task;
-		return task.finally(() => {
-			if (this.refreshTask === task) {
-				this.refreshTask = undefined;
-			}
-		});
-	}
-
-	/** 执行一次 SDK 快照读取；并发刷新统一复用同一任务。 */
-	private async performRefresh(): Promise<void> {
 		this.loading = true;
 		this.changed.fire(undefined);
+		return task;
+	}
 
+	/** 发布一次完整的 SDK 树状态，成功、空结果与失败走同一提交边界。 */
+	private async performRefresh(version: number): Promise<void> {
+		let sdk: Sdk | undefined;
+		let failure: string | undefined;
 		try {
-			this.sdk = await this.readSdk();
-			this.failure = undefined;
-			this.definitions = undefined;
-			this.parents = new WeakMap();
+			sdk = await this.readSdk();
 		} catch (error) {
-			this.sdk = undefined;
-			this.definitions = undefined;
-			this.failure = error instanceof Error ? error.message : String(error);
-		} finally {
-			this.loading = false;
-			this.changed.fire(undefined);
+			failure = error instanceof Error ? error.message : String(error);
 		}
+		if (this.disposed || version !== this.refreshVersion) return;
+		this.sdk = sdk;
+		this.failure = failure;
+		this.definitions = undefined;
+		this.parents = new WeakMap();
+		this.refreshTask = undefined;
+		this.loading = false;
+		this.changed.fire(undefined);
 	}
 
 	/**
@@ -615,8 +614,8 @@ export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryNode>
 
 	/** 仅在类库树尚未初始化时读取 SDK，避免显示视图时重复刷新。 */
 	async ensureLoaded(): Promise<void> {
-		if (this.loading) {
-			await this.refresh();
+		while (!this.disposed && this.loading) {
+			await (this.refreshTask ?? this.refresh());
 		}
 	}
 

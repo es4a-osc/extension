@@ -14,6 +14,120 @@ import { ProjectSymbolIndex } from "../projectSymbolIndex";
 import { inspectSimplePropertyXml } from "../propertyXml";
 import { splitSimpleUnitSource } from "../simpleUnitSource";
 import { parseSimpleUnitSymbols } from "../simpleUnitSymbols";
+import { createProjectInfo } from "../project";
+import { filePathKey } from "../simpleProjectPaths";
+
+test("按变化类别替换项目快照，资源、资产和改名各自保留无关索引", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-index-scope-"));
+	const first = createProjectInfo(path.join(directory, "a", "project.properties"), {});
+	const second = createProjectInfo(path.join(directory, "b", "project.properties"), {});
+	const projects = [first, second];
+	const firstUnit = path.join(first.sourceDirectories[0]!, "First.simple");
+	const peerUnit = path.join(first.sourceDirectories[0]!, "Peer.simple");
+	const secondUnit = path.join(second.sourceDirectories[0]!, "Second.simple");
+	const firstResource = path.join(first.resourceDirectory, "drawable", "first.png");
+	const secondResource = path.join(second.resourceDirectory, "drawable", "second.png");
+	try {
+		for (const file of [firstUnit, peerUnit, secondUnit, firstResource, secondResource]) {
+			await fs.mkdir(path.dirname(file), { recursive: true });
+			await fs.writeFile(file, path.extname(file) === ".simple" ? "常量 数值 为 整数型 = 1\r\n" : "image");
+		}
+		const index = new ProjectSymbolIndex();
+		await index.updateProjects(projects);
+		const firstBefore = index.contextForFile(firstUnit)!;
+		const secondBefore = index.contextForFile(secondUnit)!;
+		const secondKey = { generation: 1, identity: {} };
+		const secondContext = index.contextForFile(secondUnit, undefined, undefined, [], secondKey);
+		const refresh = (paths: readonly string[]) => index.updateProjects(projects, undefined, paths);
+		assert.deepEqual(await refresh([path.join(first.assetsDirectory, "图片.png")]), [filePathKey(first.filePath)]);
+		assert.equal(index.contextForFile(firstUnit)?.currentUnit, firstBefore.currentUnit);
+		assert.equal(index.contextForFile(firstUnit)?.resources, firstBefore.resources);
+
+		const peerBefore = index.contextForFile(peerUnit)?.currentUnit;
+		await fs.writeFile(firstUnit, "常量 已保存值 为 整数型 = 5\r\n");
+		assert.deepEqual(await index.updateProjects(projects, undefined, [firstUnit], new Set([filePathKey(firstUnit)])), [filePathKey(first.filePath)]);
+		const changedUnit = index.contextForFile(firstUnit)?.currentUnit;
+		assert.equal(changedUnit?.definition.constants?.[0]?.name, "已保存值");
+		assert.equal(index.contextForFile(peerUnit)?.currentUnit, peerBefore);
+		assert.equal(index.contextForFile(secondUnit, undefined, undefined, [], secondKey), secondContext);
+
+		const renamedResource = path.join(path.dirname(firstResource), "renamed.png");
+		await fs.rename(firstResource, renamedResource);
+		assert.deepEqual(await refresh([firstResource, renamedResource]), [filePathKey(first.filePath)]);
+		const resources = index.resourcesForProject(first.filePath);
+		assert.deepEqual(resources?.symbols.map((symbol) => symbol.name), ["drawable_renamed"]);
+		assert.equal(index.contextForFile(firstUnit)?.currentUnit, changedUnit);
+
+		const renamedUnit = path.join(path.dirname(firstUnit), "Renamed.simple");
+		await fs.rename(firstUnit, renamedUnit);
+		assert.deepEqual(await refresh([firstUnit, renamedUnit]), [filePathKey(first.filePath)]);
+		assert.equal(index.contextForFile(firstUnit)?.currentUnit, undefined);
+		assert.equal(index.contextForFile(renamedUnit)?.currentUnit?.name, "Renamed");
+		assert.equal(index.contextForFile(renamedUnit)?.resources, resources);
+		assert.equal(index.contextForFile(secondUnit)?.currentUnit, secondBefore.currentUnit);
+		assert.equal(index.contextForFile(secondUnit)?.resources, secondBefore.resources);
+
+		const shared = { ...second, sourceDirectories: [...second.sourceDirectories, ...first.sourceDirectories] };
+		assert.equal(await index.updateProjects([first, shared], undefined, [second.filePath]), undefined, "共享源码归属变化时须重新分配诊断");
+		const sharedResources = index.resourcesForProject(second.filePath);
+		await fs.writeFile(renamedUnit, "常量 共享数值 为 整数型 = 2\r\n");
+		assert.deepEqual(await index.updateProjects([first, shared], undefined, [renamedUnit]), [filePathKey(first.filePath), filePathKey(second.filePath)]);
+		assert.equal(index.contextForFile(secondUnit)?.units?.find((unit) => unit.name === "Renamed")?.definition.constants?.[0]?.name, "共享数值");
+		assert.equal(index.contextForFile(secondUnit)?.resources, sharedResources);
+	} finally {
+		assert.ok(path.basename(directory).startsWith("es4a-index-scope-"));
+		assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+		await fs.rm(directory, { recursive: true, force: true });
+	}
+});
+
+test("项目根作为源码根时索引排除自定义构建目录，监听范围不包含其产物", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-index-generated-"));
+	const project = createProjectInfo(path.join(directory, "project.properties"), { source: "./", build: "./output" });
+	const unit = path.join(directory, "主窗口.simple");
+	const generated = path.join(project.buildDirectory, "生成.simple");
+	try {
+		await fs.mkdir(project.buildDirectory);
+		await fs.writeFile(unit, "常量 用户值 为 整数型 = 1\n");
+		await fs.writeFile(generated, "常量 生成值 为 整数型 = 2\n");
+		const index = new ProjectSymbolIndex();
+		await index.updateProjects([project]);
+		assert.deepEqual(index.contextForFile(unit)?.units?.map((value) => value.filePath), [unit]);
+		assert.equal(index.metadataForFile(generated), undefined);
+		assert.equal(index.containsProjectPath(generated), false);
+		assert.equal(index.containsProjectPath(unit), true);
+		assert.equal(index.containsProjectPath(directory), true);
+		const generatedCode = "常量 未保存生成值 为 整数型 = 3\r\n";
+		const context = index.contextForFile(unit, undefined, undefined,
+			[{ filePath: generated, userCode: generatedCode, property: inspectSimplePropertyXml(generatedCode) }],
+			undefined, [parseSimpleUnitSymbols(generatedCode, generated, directory)]);
+		assert.deepEqual(context?.units?.map((value) => value.filePath), [unit], "打开的原生与 ES4A 文档都不能把构建产物重新加入项目");
+	} finally {
+		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+});
+
+test("项目外原生源码派生当前单元并保留已有 XML 会话优先级", () => {
+	const index = new ProjectSymbolIndex();
+	const file = path.join(os.tmpdir(), "es4a-standalone", "独立单元.simple");
+	const code = "函数 当前计算(值 为 整数型) 为 整数型\r\n当前计算 = 值\r\n结束 函数\r\n";
+	const properties = "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n";
+	const cache = { identity: {}, generation: 1 };
+	const context = index.contextForFile(file, code + properties, undefined, [], cache);
+	assert.equal(context?.standalone, true);
+	assert.equal(context?.currentUnit?.name, "独立单元");
+	assert.equal(context?.currentUnit?.definition.functions?.[0]?.name, "当前计算");
+	assert.equal(index.contextForFile(file, code + properties, undefined, [], cache), context);
+	const changed = index.contextForFile(file, code.replaceAll("当前计算", "新计算") + properties, undefined, [], cache);
+	assert.equal(changed?.currentUnit?.definition.functions?.[0]?.name, "新计算");
+
+	/* 用户代码标签已经有 XML 模型时，不从另一份属性原文推断单元种类。 */
+	const property = inspectSimplePropertyXml("$属性\r\n$资源 $窗口\r\n$结束 $属性\r\n");
+	const shared = index.contextForFile(file, code, property);
+	assert.equal(shared?.standalone, true);
+	assert.equal(shared?.currentUnit?.unitType, "窗口");
+	assert.equal(index.contextForFile(file), undefined);
+});
 
 test("原生未保存符号参与跨单元分析并使缓存失效，共享 XML 会话仍优先", async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-native-source-symbols-"));
@@ -35,6 +149,7 @@ test("原生未保存符号参与跨单元分析并使缓存失效，共享 XML 
 		const cache = { identity: {}, generation: 1 };
 		const native = parseSimpleUnitSymbols("变量 原生成员 为 整数型\r\n" + propertySource, targetFile, sourceRoot);
 		const context = index.contextForFile(callerFile, callerSource, undefined, [], cache, [native]);
+		assert.equal(context?.standalone, undefined);
 		assert.equal(context?.units?.find((unit) => unit.filePath === targetFile), native);
 		assert.equal(native.definition.variables?.[0]?.name, "原生成员");
 		assert.equal(native.definition.constants?.length ?? 0, 0);
@@ -214,8 +329,6 @@ test("项目索引把 res 资源独立附加到语义上下文", async () => {
 		await index.updateProjects([project]);
 		const context = index.contextForFile(unitFile, "", inspectSimplePropertyXml(source));
 
-		assert.equal(index.containsResourcePath(resourceFile), true);
-		assert.equal(index.containsResourcePath(path.join(directory, "assets", "icon.png")), false);
 		assert.equal(context?.resources?.objectQualifiedName, "pkg.SimpleResources");
 		assert.deepEqual(context?.resources?.symbols.map((symbol) => symbol.name), ["drawable_icon"]);
 	} finally {

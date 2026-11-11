@@ -1,9 +1,9 @@
 /*
-合并活动单元定位请求，并协调项目树展开与窗口单元上下文状态。
+合并活动单元定位请求，并协调项目树展开。
 xhwsd@qq.com 2026-9-10
 */
 
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { ProgramTreeProvider, type FileNode } from "./programTree";
 import { ProgramTreeExpansionController } from "./programTreeExpansion";
 
@@ -36,38 +36,29 @@ export class ProgramRevealController implements vscode.Disposable {
 		if (this.timer !== undefined) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
 			this.timer = undefined;
-			void this.reveal(sourceUri, request);
+			void this.reveal(sourceUri, request).catch((error: unknown) => {
+				const message = error instanceof Error ? error.message : String(error);
+				this.reportError(`无法在项目树中定位活动单元：${message}`);
+			});
 		}, 75);
 	}
 
 	private async reveal(sourceUri: vscode.Uri | undefined, request: number): Promise<void> {
 		if (request !== this.request) return;
 		if (sourceUri === undefined) {
-			await vscode.commands.executeCommand("setContext", "es4a.activeEditorIsWindowUnit", false);
-			if (request === this.request) this.lastSource = undefined;
+			this.lastSource = undefined;
 			return;
 		}
 
 		const selectedUnit = this.selectedUnit(sourceUri.fsPath);
 		const unit = selectedUnit ?? await this.programs.findUnitByFilePath(sourceUri.fsPath);
 		if (request !== this.request) return;
-		await vscode.commands.executeCommand(
-			"setContext",
-			"es4a.activeEditorIsWindowUnit",
-			unit?.unitType === "窗口"
-		);
-		if (request !== this.request) return;
 		this.lastSource = sourceUri.toString();
 		if (unit === undefined) return;
 		/* 点击项目树打开单元时节点本来就已选中，不再对同一节点执行第二次 reveal。 */
 		if (selectedUnit !== undefined) return;
 
-		try {
-			await this.expansion.revealActiveUnit(unit);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			this.reportError(`无法在项目树中定位活动单元：${message}`);
-		}
+		await this.expansion.revealActiveUnit(unit);
 	}
 
 	dispose(): void {

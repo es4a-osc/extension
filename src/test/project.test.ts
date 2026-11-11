@@ -13,6 +13,14 @@ import {
 	updateProjectMainForRenamedUnits
 } from "../project";
 
+test("Java Properties 的无效 Unicode 转义必须拒绝，转义后的字面反斜杠不受影响", () => {
+	for (const source of [String.raw`name=\u123`, String.raw`name=\uZZZZ`, String.raw`\uXYZ1=value`]) {
+		assert.throws(() => parseProjectProperties(source), /Unicode 转义/u);
+	}
+	assert.equal(parseProjectProperties(String.raw`name=\\uZZZZ`).name, String.raw`\uZZZZ`);
+	assert.equal(parseProjectProperties(String.raw`name=\uD83D\uDE00`).name, "😀");
+});
+
 test("解析 Simple 项目属性", () => {
 	const properties = parseProjectProperties(`
 # 项目说明

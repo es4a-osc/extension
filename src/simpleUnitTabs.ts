@@ -4,8 +4,10 @@ xhwsd@qq.com 2026-9-6
 */
 
 import * as vscode from "vscode";
+import * as path from "node:path";
 import { SIMPLE_DESIGNER_VIEW_TYPE } from "./designerWebview";
 import type { SimpleProjectInfo } from "./project";
+import type { ProgramTreeProvider } from "./programTree";
 import { findProjectForSource } from "./projectCapability";
 import { readSimpleUnitType } from "./programResources";
 import {
@@ -14,7 +16,7 @@ import {
 	toSimpleDesignerUri,
 	toSimpleSourceUri
 } from "./simpleCodeFileSystem";
-import { filePathKey, isPathInside, sameFilePath } from "./simpleProjectPaths";
+import { filePathKey, isPathInside, projectSourceRoot, sameFilePath } from "./simpleProjectPaths";
 import {
 	UNIT_CONTENT_PREVIEW_SCHEME,
 	UNIT_XML_PREVIEW_SCHEME,
@@ -157,6 +159,20 @@ export async function closeSimpleUnitTabsInDirectories(
 		))
 		.map((binding) => binding.tab);
 	return closeTabs(tabs);
+}
+
+/** 仅关闭移除后失去项目归属的单元，保留共享源码的其它项目标签。 */
+export async function removeSimpleProjectWithTabs(programs: ProgramTreeProvider, filePath: string): Promise<boolean> {
+	if (!programs.hasProjectProperties(filePath)) return false;
+	const projects = await programs.getProjects();
+	const removed = projects.find((project) => sameFilePath(project.filePath, filePath));
+	const remaining = projects.filter((project) => project !== removed);
+	const tabs = currentSimpleUnitTabs().filter(({ sourceUri }) => {
+		const source = sourceUri.fsPath;
+		const belonged = removed === undefined ? isPathInside(path.dirname(filePath), source) : projectSourceRoot(removed, source) !== undefined;
+		return belonged && findProjectForSource(remaining, source) === undefined;
+	}).map(({ tab }) => tab);
+	return await closeTabs(tabs) && programs.removeProject(filePath);
 }
 
 /** 检查真实单元仍然存在且是文件。 */

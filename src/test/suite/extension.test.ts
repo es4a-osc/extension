@@ -351,11 +351,10 @@ suite("ES4A 扩展", () => {
 		assert.equal(designerUri.scheme, SIMPLE_CODE_SCHEME);
 		assert.equal(path.basename(designerUri.path), "BooleanConversionsTest(设计器)");
 		assert.equal(toSimpleSourceUri(designerUri)?.fsPath, sourceUri.fsPath);
+		assert.equal(toSimpleSourceUri(vscode.Uri.parse(designerUri.toString()))?.fsPath, sourceUri.fsPath);
 		assert.notEqual(designerUri.toString(), document.uri.toString());
-		assert.equal(
-			toSimpleSourceUri(sourceUri.with({ scheme: SIMPLE_CODE_SCHEME }))?.fsPath,
-			sourceUri.fsPath
-		);
+		assert.equal(toSimpleSourceUri(sourceUri.with({ scheme: SIMPLE_CODE_SCHEME })), undefined);
+		assert.equal(toSimpleSourceUri(designerUri.with({ query: "" })), undefined);
 		assert.equal(document.languageId, "simple");
 		assert.match(document.getText(), /函数 Name\(\) 为 文本型/u);
 		assert.doesNotMatch(document.getText(), /\$属性/u);
@@ -2162,7 +2161,7 @@ suite("ES4A 扩展", () => {
 
 		const globalConstant = await completionLabels([
 			"过程 Run()",
-			"\trq_n¦",
+			"\t变量 值 为 整数型", "\t值 = rq_n¦",
 			"结束 过程",
 			"$属性",
 			"\t$资源 $对象",
@@ -2186,7 +2185,7 @@ suite("ES4A 扩展", () => {
 		assert.ok(extension, "没有找到 ES4A 扩展");
 		const markedSource = [
 			"''' **日期工具说明**",
-			"别名 日期工具 = 日期时间操作.格式化",
+			"别名 日期工具 = 日期时间操作.格式化时间",
 			"过程 Run()",
 			"	rqgj¦",
 			"结束 过程",

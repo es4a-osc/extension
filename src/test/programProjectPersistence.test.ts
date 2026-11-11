@@ -33,6 +33,21 @@ test("工作区项目引用按工作区目录往返相对路径", () => {
 	assert.deepEqual(resolveWorkspaceProjectFiles(references, workspaceDirectory), projectFiles);
 });
 
+test("同一项目目录的多种写法只保留首次出现的条目", async () => {
+	const workspaceDirectory = path.resolve("workspace");
+	const first = { path: "./Project", settings: { setting: "first" } };
+	const state = await createProgramProjectState({
+		available: true,
+		baseDirectory: workspaceDirectory,
+		read: () => [first, { path: "Other/../Project", settings: { setting: "second" } }, { path: "Other" }],
+		update: async () => undefined
+	});
+	assert.deepEqual(state.projectEntries(), [
+		{ projectFile: path.join(workspaceDirectory, "Project", "project.properties"), settings: first.settings },
+		{ projectFile: path.join(workspaceDirectory, "Other", "project.properties"), settings: undefined }
+	]);
+});
+
 test("工作区项目配置是项目列表唯一初始来源", async () => {
 	const workspaceDirectory = path.resolve("workspace");
 	const configuredProject = path.join(workspaceDirectory, "Configured", "project.properties");

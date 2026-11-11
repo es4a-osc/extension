@@ -40,6 +40,20 @@ test("成员初值保留完整表达式且正确区分顶层声明逗号", () =>
 	]);
 });
 
+test("源码属性投影保留访问器，包括尚未关闭的设置过程", () => {
+	const source = [
+		"属性 只读值 为 整数型", "获取", "只读值 = 1", "结束 获取", "结束 属性",
+		"属性 只写值 为 整数型", "设置", "结束 设置", "结束 属性",
+		"属性 双向值 为 整数型", "获取", "双向值 = 1", "结束 获取", "设置", "结束 设置", "结束 属性",
+		"属性 未完成值 为 整数型", "设置", "",
+		"$属性", "$资源 $对象", "$结束 $属性"
+	].join("\r\n");
+	const unit = parseSimpleUnitSymbols(source, "C:\\project\\src\\Test.simple", "C:\\project\\src");
+	assert.deepEqual(unit.definition.properties?.map((value) => [value.name, value.readable, value.writable]), [
+		["只读值", true, false], ["只写值", false, true], ["双向值", true, true], ["未完成值", false, true]
+	]);
+});
+
 test("单元符号从属性 XML 读取类型、继承、接口和组件", () => {
 	const sourceRoot = fixture("Tetris", "src");
 	const filePath = fixture("Tetris", "src", "simple", "samples", "tetris", "Tetris.simple");
@@ -407,7 +421,7 @@ test("项目索引支持完全限定单元名和属性 XML 组件成员", async 
 	);
 });
 
-test("别名目标只补全完整项目单元名和完整类库类名并保持项目优先", async () => {
+test("别名目标保留完整类型名和合法成员，项目类型保持优先", async () => {
 	const project = await loadSimpleProject(fixture("SmokeTest", "project.properties"));
 	const index = new ProjectSymbolIndex();
 	await index.updateProjects([project]);
@@ -430,7 +444,7 @@ test("别名目标只补全完整项目单元名和完整类库类名并保持�
 	assert.ok(libraryIndex > projectIndex);
 	assert.ok(!names.includes("双精度小数型"));
 	assert.ok(!names.includes("数组操作"));
-	assert.ok(result?.candidates.every((candidate) => candidate.name.includes(".")));
+	assert.ok(result?.candidates.filter((candidate) => candidate.kind === "type").every((candidate) => candidate.name.includes(".")));
 });
 
 test("SmokeTests 跨单元静态变量继续推导窗口实例成员", async () => {

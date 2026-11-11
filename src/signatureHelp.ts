@@ -4,25 +4,21 @@ xhwsd@qq.com 2026-8-27
 */
 
 import * as vscode from "vscode";
-import { createSimpleSourceAnalysis, resolveSimpleBinding, resolveSimpleQualifier } from "./completionModel";
+import { createSimpleSourceAnalysis, resolveSimpleCallMembers } from "./completionModel";
 import { markdownDocumentationForDisplay } from "./markdownDocumentation";
-import {
-	getEffectiveMembers,
-	type LibraryMemberGroup,
-	type Sdk
-} from "./sdk";
+import { simpleExecutionContext } from "./simpleCodeContext";
+import { getVisibleSimpleUnitUserCode } from "./simpleUnitSource";
+import type { Sdk } from "./sdk";
 import {
 	buildDocumentSignatures,
 	findCallContext,
+	findCallableArgumentCount,
 	formatParameter,
 	formatSignature,
 	signatureFromMember,
 	type SignatureDefinition
 } from "./signatures";
-import {
-	isStaticProjectMember,
-	type SimpleProjectSemanticContext
-} from "./simpleUnitSymbols";
+import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
 
 /**
  * 将编辑器中立的签名定义转换为 VS Code API 对象。
@@ -85,74 +81,31 @@ export class SimpleSignatureHelpProvider implements vscode.SignatureHelpProvider
 		_cancellationToken: vscode.CancellationToken,
 		_context: vscode.SignatureHelpContext
 	): vscode.SignatureHelp | undefined {
-		const visibleSource = document.getText();
-		const analysisSource = this.readSource(document);
-		const context = this.readContext(document, analysisSource);
-		const analysis = createSimpleSourceAnalysis(analysisSource, this.sdk, context);
-		const call = findCallContext(visibleSource, document.offsetAt(position), visibleSource === analysisSource ? analysis.syntax : undefined);
-		if (call === undefined) return undefined;
-		const eventCall = call.event === true;
-
-		const access = analysis.memberAt(call.nameStart);
-		const documentSignatures = buildDocumentSignatures(analysisSource, analysis.syntax);
-		let matches: SignatureDefinition[] = [];
-		if (access !== undefined || call.qualifier !== undefined) {
-			const resolved = access?.receiver ?? (call.qualifier === undefined ? undefined : resolveSimpleQualifier(
-				analysisSource,
-				call.nameStart,
-				call.qualifier,
-				this.sdk,
-				context,
-				analysis
-			));
-			if (resolved !== undefined) {
-				const definitions = analysis.definitions;
-				const groups: readonly LibraryMemberGroup[] = eventCall ? ["events"] : ["functions"];
-				for (const group of groups) {
-					for (const value of getEffectiveMembers(resolved.reference, group, definitions)) {
-						const staticMember = value.member.global === true || isStaticProjectMember(value.member);
-						if (
-							value.member.name === call.name
-							&& (resolved.access === "static") === staticMember
-						) {
-							matches.push(signatureFromMember(call.qualifier, value.member));
-						}
-					}
-				}
-			}
-		} else {
-			const binding = resolveSimpleBinding(analysisSource, call.nameStart, call.name, context, analysis);
-			const declaration = analysis.syntax.resolve(call.name, call.nameStart);
-			if (!eventCall && (binding !== undefined && binding.kind !== "functionResult"
-				|| declaration !== undefined && !["function", "procedure", "functionResult"].includes(declaration.kind))) return undefined;
-			const staticContext = analysis.syntax.callableAt(call.nameStart)?.static === true;
-			matches = documentSignatures.filter((signature) => (signature.event === true) === eventCall && signature.owner === undefined && signature.name === call.name
-				&& (!staticContext || analysis.syntax.declarationsNamed(call.name).some((value) => value.static)));
-			const current = context?.currentUnit === undefined ? undefined : analysis.definitions.get(context.currentUnit.qualifiedName);
-			if (current !== undefined) {
-				// 本地声明不能遮掉基类中不同参数个数的有效重载。
-				matches.push(...getEffectiveMembers(current, eventCall ? "events" : "functions", analysis.definitions)
-					.filter(({ member }) => member.name === call.name && (!staticContext || member.global === true || isStaticProjectMember(member)))
-					.map(({ member }) => signatureFromMember(undefined, member)));
-			}
-			// 同名本地声明或当前对象成员优先，不把全局函数拼成另一个重载集合。
-			const shadowed = declaration !== undefined || current !== undefined && (["variables", "constants", "properties", "functions", "events"] as const)
-				.some((group) => getEffectiveMembers(current, group, analysis.definitions).some(({ member }) => member.name === call.name));
-			if (matches.length === 0 && !shadowed && !eventCall) {
-				for (const manifest of this.sdk?.manifests ?? []) {
-					if (manifest.kind === "compiler" || manifest.kind === "project") continue;
-					for (const definition of manifest.categories.flatMap((category) => category.definitions)) matches.push(...(definition.functions ?? [])
-						.filter((member) => member.name === call.name && member.global === true).map((member) => signatureFromMember(undefined, member)));
-				}
-			}
+		const visibleText = document.getText();
+		const visibleSource = getVisibleSimpleUnitUserCode(visibleText);
+		const offset = document.offsetAt(position);
+		/* 不把属性表达式当成用户调用，避免在原生文件的属性区弹出参数提示。 */
+		if (visibleSource.length < visibleText.length && offset >= visibleSource.length) {
+			return undefined;
 		}
 
-		// 限定名与清单对象一致时优先精确匹配；变量类型未知时保留同名候选。
-		if (call.qualifier !== undefined && matches.length > 0) {
-			const qualifiedMatches = matches.filter((signature) => signature.owner === call.qualifier);
-
-			if (qualifiedMatches.length > 0) {
-				matches = qualifiedMatches;
+		const source = this.readSource(document);
+		const analysisSource = getVisibleSimpleUnitUserCode(source);
+		const context = this.readContext(document, source);
+		const analysis = createSimpleSourceAnalysis(analysisSource, this.sdk, context);
+		const call = findCallContext(visibleSource, offset, visibleSource === analysisSource ? analysis.syntax : undefined);
+		if (call === undefined) return undefined;
+		let matches: SignatureDefinition[] = resolveSimpleCallMembers(call, analysis, context).map(({ member }) => ({
+			...signatureFromMember(call.qualifier, member), name: call.name
+		}));
+		if (matches.length === 0 && context?.currentUnit === undefined && call.qualifier === undefined) {
+			const binding = analysis.syntax.resolve(call.name, call.nameStart);
+			const staticContext = simpleExecutionContext(analysis.syntax, call.nameStart).static;
+			if (binding === undefined || ["function", "procedure", "functionResult", "event"].includes(binding.kind)) {
+				matches = buildDocumentSignatures(analysisSource, analysis.syntax).filter((signature) => signature.name === call.name
+					&& signature.owner === undefined && (signature.event === true) === (call.event === true)
+					&& (!staticContext || analysis.syntax.declarationsNamed(call.name).some((declaration) => declaration.static
+						&& declaration.parameters?.length === signature.parameters.length)));
 			}
 		}
 
@@ -171,7 +124,9 @@ export class SimpleSignatureHelpProvider implements vscode.SignatureHelpProvider
 		const help = new vscode.SignatureHelp();
 		help.signatures = definitions.map(toSignatureInformation);
 		help.activeParameter = call.activeParameter;
-		const matchingArity = definitions.findIndex(
+		const arity = findCallableArgumentCount(visibleSource, call.nameStart + call.name.length);
+		const exactArity = arity === undefined ? -1 : definitions.findIndex((signature) => signature.parameters.length === arity);
+		const matchingArity = exactArity >= 0 ? exactArity : definitions.findIndex(
 			(signature) => signature.parameters.length > call.activeParameter
 		);
 		help.activeSignature = matchingArity < 0 ? 0 : matchingArity;

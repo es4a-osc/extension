@@ -29,7 +29,7 @@ export type EditableProjectProperty =
 
 /** 项目属性编辑完成后需要刷新的扩展状态。 */
 export interface ProjectPropertyEditServices {
-	readonly refreshProjectSemantics: () => Promise<void>;
+	readonly refreshProjectSemantics: (paths?: readonly string[]) => Promise<void>;
 	readonly fileSystem?: typeof vscode.workspace.fs;
 }
 
@@ -172,8 +172,8 @@ async function saveProjectPropertyFile(
 		await state.fileSystem.writeFile(state.uri, output);
 	}
 
-	provider.refresh();
-	await services.refreshProjectSemantics();
+	provider.refresh(undefined, state.uri.fsPath);
+	await services.refreshProjectSemantics([state.uri.fsPath]);
 }
 
 /** 输入完成后重新读取并合并其它字段；同一字段被修改时拒绝覆盖。 */

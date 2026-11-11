@@ -5,10 +5,10 @@ xhwsd@qq.com 2026-9-1
 
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { filePathKey, mostSpecificSourceRoot } from "./simpleProjectPaths";
 import {
 	findProjectCodeMatches,
 	loadProjectCodeDocuments,
-	projectCodePathKey,
 	type ProjectCodeDocument,
 	type ProjectCodeMatch
 } from "./projectCodeSearch";
@@ -28,18 +28,21 @@ interface ProjectCodeSearchQuickPickItem extends vscode.QuickPickItem {
 interface ProjectCodeSearchScope {
 	readonly label: string;
 	readonly roots: readonly string[];
+	readonly excludedDirectories: readonly string[];
 }
 
 /** 从项目树节点建立代码搜索范围，不允许资源目录或具体单元混入。 */
 function searchScope(node: ProgramTreeNode | undefined): ProjectCodeSearchScope {
 	if (isUnitsNode(node)) {
 		return {
+			excludedDirectories: [node.project.buildDirectory],
 			label: node.project.name,
 			roots: node.project.sourceDirectories
 		};
 	}
 	if (isUnitFolderNode(node)) {
 		return {
+			excludedDirectories: node.project === undefined ? [] : [node.project.buildDirectory],
 			label: node.label,
 			roots: [node.directoryPath]
 		};
@@ -49,15 +52,8 @@ function searchScope(node: ProgramTreeNode | undefined): ProjectCodeSearchScope 
 
 /** 返回文件相对于最具体搜索根目录的显示路径。 */
 function relativeSearchPath(filePath: string, roots: readonly string[]): string {
-	const match = roots.map((rootPath) => ({
-		relativePath: path.relative(rootPath, filePath),
-		rootPath
-	})).filter(({ relativePath }) => (
-		!path.isAbsolute(relativePath)
-		&& relativePath !== ".."
-		&& !relativePath.startsWith(`..${path.sep}`)
-	)).sort((left, right) => right.rootPath.length - left.rootPath.length)[0];
-	return match === undefined ? filePath : `.${path.sep}${match.relativePath}`;
+	const root = mostSpecificSourceRoot(roots, filePath);
+	return root === undefined ? filePath : `.${path.sep}${path.relative(root, filePath)}`;
 }
 
 /** 收集当前已打开单元尚未保存的用户代码，以真实 `.simple` 路径建立快照。 */
@@ -69,7 +65,7 @@ function openUserCodeSnapshots(): ReadonlyMap<string, string> {
 		}
 		const sourceUri = toSimpleSourceUri(document.uri);
 		if (sourceUri !== undefined) {
-			snapshots.set(projectCodePathKey(sourceUri.fsPath), document.getText());
+			snapshots.set(filePathKey(sourceUri.fsPath), document.getText());
 		}
 	}
 	return snapshots;
@@ -89,16 +85,14 @@ function searchItem(match: ProjectCodeMatch, roots: readonly string[]): ProjectC
 
 /** 打开命中单元的用户代码文档，并选中匹配文本。 */
 async function openSearchMatch(match: ProjectCodeMatch): Promise<void> {
+	const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(match.filePath)));
+	if (match.lineNumber >= document.lineCount || document.lineAt(match.lineNumber).text !== match.lineText) {
+		void vscode.window.showInformationMessage("搜索结果所在代码行已变化，请重新搜索。");
+		return;
+	}
 	const start = new vscode.Position(match.lineNumber, match.startCharacter);
 	const end = new vscode.Position(match.lineNumber, match.endCharacter);
-	await vscode.commands.executeCommand(
-		"vscode.open",
-		toSimpleCodeUri(vscode.Uri.file(match.filePath)),
-		{
-			preview: true,
-			selection: new vscode.Range(start, end)
-		}
-	);
+	await vscode.window.showTextDocument(document, { preview: true, selection: new vscode.Range(start, end) });
 }
 
 /** 打开限定到项目或源码文件夹的用户代码搜索选择器。 */
@@ -106,6 +100,7 @@ export async function showProjectCodeSearch(node: ProgramTreeNode | undefined): 
 	const scope = searchScope(node);
 	const picker = vscode.window.createQuickPick<ProjectCodeSearchQuickPickItem>();
 	const cancellation = new vscode.CancellationTokenSource();
+	const token = cancellation.token;
 	const snapshots = openUserCodeSnapshots();
 	const baseTitle = `搜索代码 — ${scope.label}`;
 	let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -120,22 +115,35 @@ export async function showProjectCodeSearch(node: ProgramTreeNode | undefined): 
 	picker.placeholder = "输入要搜索的用户代码";
 	picker.title = baseTitle;
 
+	const fail = (error: unknown): void => {
+		if (token.isCancellationRequested) return;
+		picker.hide();
+		void vscode.window.showErrorMessage(`搜索代码失败：${error instanceof Error ? error.message : String(error)}`);
+	};
+
 	const refresh = (): void => {
 		const query = picker.value;
 		const version = ++refreshVersion;
 		if (refreshTimer !== undefined) {
 			clearTimeout(refreshTimer);
+			refreshTimer = undefined;
 		}
+		picker.items = [];
+		picker.title = baseTitle;
+		const loaded = documents;
+		picker.busy = loaded === undefined || query.trim().length !== 0;
+		if (loaded === undefined || !picker.busy) return;
+		const cancelled = (): boolean => version !== refreshVersion || token.isCancellationRequested;
 		refreshTimer = setTimeout(() => {
 			refreshTimer = undefined;
-			if (version !== refreshVersion || documents === undefined || cancellation.token.isCancellationRequested) {
-				return;
-			}
-			const result = findProjectCodeMatches(documents, query);
-			picker.items = result.matches.map((match) => searchItem(match, scope.roots));
-			picker.title = query.trim().length === 0
-				? baseTitle
-				: `${baseTitle} · ${result.matches.length}${result.limitHit ? "+" : ""} 条`;
+			void findProjectCodeMatches(loaded, query, undefined, cancelled).then((result) => {
+				if (result === undefined || cancelled()) return;
+				picker.items = result.matches.map((match) => searchItem(match, scope.roots));
+				picker.title = `${baseTitle} · ${result.matches.length}${result.limitHit ? "+" : ""} 条`;
+				picker.busy = false;
+			}, (error: unknown) => {
+				if (!cancelled()) fail(error);
+			});
 		}, 100);
 	};
 
@@ -143,7 +151,7 @@ export async function showProjectCodeSearch(node: ProgramTreeNode | undefined): 
 		const valueDisposable = picker.onDidChangeValue(refresh);
 		const acceptDisposable = picker.onDidAccept(() => {
 			const selected = picker.activeItems[0];
-			if (selected !== undefined) {
+			if (!picker.busy && selected !== undefined && picker.items.includes(selected)) {
 				acceptedMatch = selected.match;
 				picker.hide();
 			}
@@ -164,16 +172,16 @@ export async function showProjectCodeSearch(node: ProgramTreeNode | undefined): 
 		picker.show();
 		void loadProjectCodeDocuments(
 			scope.roots,
-			(filePath) => snapshots.get(projectCodePathKey(filePath)),
-			() => cancellation.token.isCancellationRequested
+			(filePath) => snapshots.get(filePathKey(filePath)),
+			() => token.isCancellationRequested,
+			scope.excludedDirectories
 		).then((loadedDocuments) => {
-			if (cancellation.token.isCancellationRequested) {
+			if (token.isCancellationRequested) {
 				return;
 			}
 			documents = loadedDocuments;
-			picker.busy = false;
 			refresh();
-		});
+		}, fail);
 	});
 
 	if (acceptedMatch !== undefined) {

@@ -19,6 +19,22 @@ import { simpleTestProjectPath } from "./testProjects";
 
 const SMOKE_TEST_DIRECTORY = simpleTestProjectPath("SmokeTest");
 
+test("源码目录投影按项目排除构建路径，但构建分支仍可浏览", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-tree-generated-"));
+	const build = path.join(directory, "output");
+	try {
+		await fs.mkdir(build);
+		await fs.mkdir(path.join(directory, "output-source"));
+		await fs.writeFile(path.join(build, "生成.simple"), "");
+		await fs.writeFile(path.join(directory, "主窗口.simple"), "");
+		assert.deepEqual((await listProgramDirectory(directory, "units", undefined, [build])).map((entry) => entry.label), ["output-source", "主窗口"]);
+		assert.deepEqual(await listProgramDirectory(build, "units", undefined, [build]), []);
+		assert.equal((await listProgramDirectory(build, "build"))[0]?.label, "生成.simple");
+	} finally {
+		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+});
+
 test("从 project.properties 加载 SmokeTest 项目目录映射", async () => {
 	const projectFile = path.join(SMOKE_TEST_DIRECTORY, "project.properties");
 	const project = await loadSimpleProject(projectFile);

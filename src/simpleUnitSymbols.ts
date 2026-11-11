@@ -56,6 +56,8 @@ export interface SimpleUnitSymbol {
 export interface SimpleProjectSemanticContext {
 	readonly currentUnit?: SimpleUnitSymbol;
 	readonly manifest: LibraryManifest;
+	/** 仅为独立单元派生的上下文；临时语义清单不代表已识别的真实项目。 */
+	readonly standalone?: true;
 	/** 当前语义快照中的单元，用于按成员声明处解析其类型和别名。 */
 	readonly units?: readonly SimpleUnitSymbol[];
 	/** 仅由项目 res 目录推导、供资源补全、着色、悬停和定义跳转使用的独立索引。 */
@@ -192,6 +194,10 @@ function parseCodeMembers(
 	syntax: SimpleSourceSyntax
 ): Pick<LibraryDefinition, "constants" | "events" | "functions" | "properties" | "variables"> {
 	const members: Record<LibraryMemberGroup, LibraryMember[]> = { constants: [], events: [], functions: [], properties: [], variables: [] };
+	/* 获取结果和设置参数沿用所属属性的声明位置，直接复用共享语法中的访问器信息。 */
+	const getters = new Set(syntax.declarations.filter((value) => value.implicit === true && value.kind === "functionResult").map((value) => value.token.start));
+	const setters = new Set(syntax.declarations.filter((value) => value.implicit === true && value.kind === "parameter").map((value) => value.token.start));
+
 	for (const declaration of syntax.declarations) {
 		if (declaration.scope !== syntax.root || declaration.implicit === true || declaration.kind === "alias") {
 			continue;
@@ -207,6 +213,7 @@ function parseCodeMembers(
 		const description = findAdjacentSimpleDocumentationComment(userCode, declaration.statementStart);
 		members[group].push({
 			...(description === undefined ? {} : { description }),
+			...(group === "properties" ? { readable: getters.has(declaration.token.start), writable: setters.has(declaration.token.start) } : {}),
 			line: declaration.token.line + 1,
 			declarationOffset: declaration.token.start,
 			name: declaration.name,

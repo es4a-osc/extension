@@ -11,6 +11,7 @@ import type { SimpleProjectRefactoring } from "./projectRefactoring";
 import type { ProgramTreeProvider } from "./programTree";
 import type { Sdk } from "./sdk";
 import { filePathKey } from "./simpleProjectPaths";
+import { createSimpleSourcePositionIndex } from "./simpleSourcePositions";
 import { toSimpleCodeUri, toSimpleSourceUri } from "./simpleCodeFileSystem";
 
 export class SimpleReferenceProvider implements vscode.ReferenceProvider {
@@ -40,20 +41,32 @@ export class SimpleReferenceProvider implements vscode.ReferenceProvider {
 		const references = findSimpleProjectReferences(snapshot.units, snapshot.current, offset, sdk);
 		const target = findSimpleDefinition(snapshot.current.userCode, offset, sdk, refactoringContext(snapshot.current, snapshot.units));
 		const result: vscode.Location[] = [];
-		const documents = new Map<string, { readonly document: vscode.TextDocument; readonly source: string }>();
+		const positions = new Map<string, { readonly uri: vscode.Uri; readonly at: ReturnType<typeof createSimpleSourcePositionIndex> }>();
 		for (const { unit, span } of references) {
 			if (cancelled()) return [];
 			if (!options.includeDeclaration && target?.targetOffset === span.start && target.filePath !== undefined && filePathKey(target.filePath) === filePathKey(unit.filePath)) continue;
 			const key = filePathKey(unit.filePath);
-			let referenced = documents.get(key)?.document;
-			if (referenced === undefined) {
-				referenced = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(unit.filePath)));
-				if (cancelled() || referenced.getText() !== unit.userCode) return [];
-				documents.set(key, { document: referenced, source: unit.userCode });
+			let location = positions.get(key);
+			if (location === undefined) {
+				location = { uri: toSimpleCodeUri(vscode.Uri.file(unit.filePath)), at: createSimpleSourcePositionIndex(unit.userCode) };
+				positions.set(key, location);
 			}
-			result.push(new vscode.Location(referenced.uri, new vscode.Range(referenced.positionAt(span.start), referenced.positionAt(span.end))));
+			const start = location.at(span.start);
+			const end = location.at(span.end);
+			result.push(new vscode.Location(location.uri, new vscode.Range(start.line, start.character, end.line, end.character)));
 		}
-		// 打开后续单元期间，先前读取的文档仍可能被编辑，不能返回旧偏移构造的位置。
-		return cancelled() || [...documents.values()].some((entry) => entry.document.isClosed || entry.document.getText() !== entry.source) ? [] : result;
+		if (result.length === 0) return result;
+		// 直接校验查询快照。提前打开命中文档会触发恢复和诊断，还会改变文档会话。
+		const used = snapshot.units.filter((unit) => unit === snapshot.current || positions.has(filePathKey(unit.filePath)));
+		try {
+			for (const unit of used) {
+				if (cancelled()) return [];
+				await unit.assertUnchanged();
+			}
+			for (const unit of used) unit.assertCurrent();
+		} catch {
+			return [];
+		}
+		return cancelled() ? [] : result;
 	}
 }

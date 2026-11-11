@@ -20,6 +20,7 @@ import {
 	type SimpleUnitType
 } from "./propertyXml";
 import { decodeSimpleSource } from "./simpleSourceEncoding";
+import { isPathInsideOrEqual } from "./simpleProjectPaths";
 
 /** 项目资源管理器枚举目录时使用的内容模式。 */
 export type ProgramDirectoryMode = "build" | "resources" | "units";
@@ -132,15 +133,23 @@ export async function readSimpleUnitType(filePath: string): Promise<SimpleUnitTy
  * @param directoryPath 待枚举的完整目录路径。
  * @param mode 单元或资源枚举模式。
  * @param knownUnitMetadata 已由打开文档或项目索引提供的单元元数据。
+ * @param excludedDirectories 当前项目明确排除的生成目录。
  * @returns 文件夹优先、名称自然排序的直接子项。
  */
 export async function listProgramDirectory(
 	directoryPath: string,
 	mode: ProgramDirectoryMode,
-	knownUnitMetadata?: (filePath: string) => SimpleUnitMetadata | undefined
+	knownUnitMetadata?: (filePath: string) => SimpleUnitMetadata | undefined,
+	excludedDirectories: readonly string[] = []
 ): Promise<readonly ProgramDirectoryEntry[]> {
+	if (excludedDirectories.some((directory) => isPathInsideOrEqual(directory, directoryPath))) {
+		return [];
+	}
 	const directoryEntries = await fs.readdir(directoryPath, { withFileTypes: true });
 	const visibleEntries = directoryEntries.filter((entry) => {
+		if (excludedDirectories.some((directory) => isPathInsideOrEqual(directory, path.join(directoryPath, entry.name)))) {
+			return false;
+		}
 		if (entry.isDirectory()) {
 			return true;
 		}

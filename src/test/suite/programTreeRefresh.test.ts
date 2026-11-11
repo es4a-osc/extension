@@ -9,10 +9,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { ProgramTreeProvider, type ProgramTreeNode } from "../../programTree";
-import { toSimpleCodeUri } from "../../simpleCodeFileSystem";
-import { isPathInside } from "../../simpleProjectPaths";
+import { SimpleCodeFileSystemProvider, toSimpleCodeUri } from "../../simpleCodeFileSystem";
+import { filePathKey, isPathInside } from "../../simpleProjectPaths";
 import { ProjectSemanticSyncController } from "../../projectSemanticSync";
 import { ProjectSymbolIndex } from "../../projectSymbolIndex";
+import { SimpleDiagnosticProvider } from "../../diagnosticProvider";
+import { SimpleProjectRefactoring } from "../../projectRefactoring";
+import type { SimpleProjectInfo } from "../../project";
+import { loadSdk } from "../../sdk";
+import { toUnitXmlPreviewUri } from "../../unitPreview";
+import { testSdkPath } from "../testFixtures";
 import { WorkbenchDriver } from "./workbenchDriver";
 
 /** 等待监听、语义刷新及可见工作台操作完成。 */
@@ -106,9 +112,11 @@ suite("项目树懒刷新", () => {
 				await fs.writeFile(path.join(directory, "res/values/strings.xml"), '<resources><string name="hidden_resource">中文</string></resources>');
 				await waitFor(() => symbols.contextForFile(source)?.resources?.symbols.some((symbol) => symbol.name === "string_hidden_resource") === true);
 				const before = published;
+				const unchangedUnit = symbols.contextForFile(source)?.currentUnit;
 				await fs.writeFile(added, "变量 ChangedField 为 文本型\r\n" + property);
-				await waitFor(() => published > before);
-				assert.ok(symbols.contextForFile(added)?.currentUnit?.definition.variables?.some((member) => member.name === "ChangedField"));
+				await waitFor(() => published > before && symbols.contextForFile(added)?.currentUnit?.definition.variables?.some((member) => member.name === "ChangedField") === true);
+				assert.ok(unchangedUnit);
+				assert.equal(symbols.contextForFile(source)?.currentUnit, unchangedUnit, "后台收到内容更新时保留同项目其它单元符号");
 				await fs.unlink(added);
 				await waitFor(() => symbols.contextForFile(source)?.units?.some((unit) => unit.filePath === added) === false);
 				assert.deepEqual(events, [], "隐藏树的后台分析不能触发列表或项目根刷新");
@@ -118,6 +126,85 @@ suite("项目树懒刷新", () => {
 			}
 		} finally {
 			semantic.dispose();
+			provider.dispose();
+			await removeFixture(directory);
+		}
+	});
+
+	test("隐藏项目树时资产外部变化只重查所属项目，目录改名清除旧代码和 XML 诊断", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-build-host-"));
+		const documents = new SimpleCodeFileSystemProvider();
+		const provider = new ProgramTreeProvider();
+		const symbols = new ProjectSymbolIndex();
+		const readProjects: string[] = [];
+		const errors: string[] = [];
+		class ObservedRefactoring extends SimpleProjectRefactoring {
+			override readProject(project: SimpleProjectInfo) {
+				readProjects.push(filePathKey(project.filePath));
+				return super.readProject(project);
+			}
+		}
+		const refactoring = new ObservedRefactoring({ codeDocuments: documents, refreshProjectSemantics: async () => undefined });
+		let diagnostics: SimpleDiagnosticProvider | undefined;
+		const semantic = new ProjectSemanticSyncController(provider, symbols, (projects) => {
+			if (projects === undefined) diagnostics?.schedule(true);
+			else diagnostics?.scheduleProjects(projects);
+		}, (message) => errors.push(message));
+		const projectFiles = ["a", "b"].map((name) => path.join(directory, name, "project.properties"));
+		const sourceFiles = projectFiles.map((file) => path.join(path.dirname(file), "src", "旧目录", "主窗口.simple"));
+		const hasAssetWarning = (file: string, xml = false): boolean => {
+			const source = vscode.Uri.file(file);
+			return vscode.languages.getDiagnostics(xml ? toUnitXmlPreviewUri(source) : toSimpleCodeUri(source))
+				.some((issue) => issue.code === "unknownAsset");
+		};
+		const source = [
+			"事件 主窗口.初始化()", '\t图片框1.图片 = "icon.png"', "结束 事件", "",
+			"$属性", "\t$资源 $窗口", "\t$定义 主窗口 $为 窗口", "\t\t$定义 图片框1 $为 图片框",
+			'\t\t\t图片 = "icon.png"', "\t\t$结束 $定义", "\t$结束 $定义", "$结束 $属性", ""
+		].join("\r\n");
+		try {
+			const sdk = await loadSdk(testSdkPath());
+			for (const [index, file] of projectFiles.entries()) {
+				await fs.mkdir(path.dirname(sourceFiles[index]!), { recursive: true });
+				await fs.mkdir(path.join(path.dirname(file), "assets"));
+				await fs.writeFile(file, "source=./src\r\nmain=旧目录.主窗口\r\n");
+				await fs.writeFile(sourceFiles[index]!, source);
+				await provider.addProject(file);
+			}
+			const first = sourceFiles[0]!;
+			const second = sourceFiles[1]!;
+			const firstKey = filePathKey(projectFiles[0]!);
+			provider.setTreeVisible(false);
+			diagnostics = new SimpleDiagnosticProvider(provider, refactoring, documents, symbols, () => sdk, () => undefined,
+				(message) => errors.push(message), () => semantic.wait());
+			await semantic.refresh();
+			await waitFor(() => hasAssetWarning(first) && hasAssetWarning(first, true) && hasAssetWarning(second));
+			const firstUnit = symbols.contextForFile(first)?.currentUnit;
+			const firstResources = symbols.resourcesForProject(projectFiles[0]!);
+			const secondUnit = symbols.contextForFile(second)?.currentUnit;
+			readProjects.length = 0;
+			const asset = path.join(directory, "a", "assets", "icon.png");
+			await fs.writeFile(asset, "image");
+			await waitFor(() => !hasAssetWarning(first) && !hasAssetWarning(first, true));
+			assert.ok(hasAssetWarning(second));
+			assert.equal(symbols.contextForFile(first)?.currentUnit, firstUnit);
+			assert.equal(symbols.resourcesForProject(projectFiles[0]!), firstResources);
+			assert.ok(readProjects.length > 0 && readProjects.every((file) => file === firstKey));
+
+			await fs.unlink(asset);
+			await waitFor(() => hasAssetWarning(first) && hasAssetWarning(first, true));
+			const renamed = path.join(path.dirname(path.dirname(first)), "新目录", path.basename(first));
+			await fs.rename(path.dirname(first), path.dirname(renamed));
+			await waitFor(() => hasAssetWarning(renamed) && hasAssetWarning(renamed, true) && !hasAssetWarning(first) && !hasAssetWarning(first, true));
+			assert.equal(symbols.contextForFile(second)?.currentUnit, secondUnit);
+			assert.ok(hasAssetWarning(second));
+			assert.ok(readProjects.every((file) => file === firstKey));
+			assert.deepEqual(errors, []);
+		} finally {
+			diagnostics?.dispose();
+			semantic.dispose();
+			refactoring.dispose();
+			documents.dispose();
 			provider.dispose();
 			await removeFixture(directory);
 		}

@@ -13,7 +13,7 @@ import * as vscode from "vscode";
 import { SimpleDiagnosticProvider } from "../../diagnosticProvider";
 import { SimpleProjectRefactoring } from "../../projectRefactoring";
 import type { ProgramTreeProvider } from "../../programTree";
-import type { ProjectSymbolIndex } from "../../projectSymbolIndex";
+import { ProjectSymbolIndex } from "../../projectSymbolIndex";
 import { refactoringContext, type RefactoringUnit } from "../../refactoringModel";
 import { simpleTestProjectPath, simpleTestUnitPath } from "../testProjects";
 import { inspectSimplePropertyXml } from "../../propertyXml";
@@ -295,6 +295,52 @@ suite("项目关联重构", () => {
 			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		}
 	});
+	test("项目索引延迟时诊断等待完整语义，不能按独立单元误报限定字段", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-diagnostic-index-wait-"));
+		const projectFile = path.join(directory, "project.properties");
+		const file = path.join(directory, "src", "pkg", "Caller.simple");
+		const code = "静态 变量 值 为 整数型\r\n静态 过程 Run()\r\n值 = pkg.Caller.值\r\n未定义名称 = 0\r\n结束 过程\r\n";
+		const documents = new SimpleCodeFileSystemProvider();
+		const symbols = new ProjectSymbolIndex();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		let waiting = false;
+		let reads = 0;
+		const errors: string[] = [];
+		let diagnostics: SimpleDiagnosticProvider | undefined;
+		try {
+			await fs.mkdir(path.dirname(file), { recursive: true });
+			await fs.writeFile(projectFile, "source=./src\r\n");
+			await fs.writeFile(file, code + "$属性\r\n$资源 $对象\r\n$结束 $属性\r\n");
+			const project = await loadSimpleProject(projectFile);
+			const document = await vscode.workspace.openTextDocument(toSimpleCodeUri(vscode.Uri.file(file)));
+			await documents.readFile(document.uri);
+			const sdk = await loadSdk(testSdkPath());
+			assert.equal(symbols.contextForFile(file, code)?.standalone, true);
+			diagnostics = new SimpleDiagnosticProvider(
+				{ getProjects: async () => [project] } as unknown as ProgramTreeProvider,
+				{ isBusy: false } as SimpleProjectRefactoring, documents, symbols, () => sdk,
+				(_document, source) => { reads++; return symbols.contextForFile(file, source); },
+				(message) => errors.push(message),
+				async () => { waiting = true; await gate; await symbols.updateProjects([project]); }
+			);
+			diagnostics.schedule(false, document.uri);
+			for (let attempt = 0; attempt < 200 && !waiting; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
+			assert.ok(waiting, "诊断必须进入语义就绪边界");
+			assert.equal(reads, 0, "索引未完成前不能读取并发布独立单元诊断");
+			release();
+			for (let attempt = 0; attempt < 200 && !vscode.languages.getDiagnostics(document.uri).some((issue) => issue.message.includes("未定义名称")); attempt++)
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			assert.equal(reads, 1);
+			assert.deepEqual(vscode.languages.getDiagnostics(document.uri).filter((issue) => issue.source === "ES4A 引用分析")
+				.map((issue) => [issue.code, document.getText(issue.range)]), [["unknownName", "未定义名称"]]);
+			assert.deepEqual(errors, []);
+		} finally {
+			release(); diagnostics?.dispose(); documents.dispose();
+			await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
+	});
+
 	test("数字、续行与静态字段在真实编辑器中不误报且可跳转", async function () {
 		this.timeout(30000);
 		const sourceRoot = simpleTestProjectPath("SmokeTest", "src");
@@ -907,11 +953,9 @@ suite("项目关联重构", () => {
 			assert.equal(code.isDirty, true);
 			assert.match(getVisibleSimpleUnitUserCode(await fs.readFile(unitFile, "utf8")), /images\/icon.png/u);
 			await fs.unlink(path.join(destination, "icon.png"));
-			await vscode.commands.executeCommand("es4a.refreshPrograms");
 			for (let attempt = 0; attempt < 200 && !vscode.languages.getDiagnostics(code.uri).some((issue) => issue.code === "unknownAsset"); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 			assert.ok(vscode.languages.getDiagnostics(code.uri).some((issue) => issue.code === "unknownAsset"));
 			await fs.writeFile(path.join(destination, "icon.png"), new Uint8Array([0]));
-			await vscode.commands.executeCommand("es4a.refreshPrograms");
 			for (let attempt = 0; attempt < 200 && vscode.languages.getDiagnostics(code.uri).some((issue) => issue.code === "unknownAsset"); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 			assert.ok(!vscode.languages.getDiagnostics(code.uri).some((issue) => issue.code === "unknownAsset"));
 		} finally {

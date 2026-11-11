@@ -5,6 +5,8 @@ xhwsd@qq.com 2026-8-27
 
 import * as path from "node:path";
 import {
+	createSimpleSourceAnalysis,
+	isSimpleResourceRoot,
 	resolveSimpleBinding,
 	resolveSimpleQualifier,
 	type SimpleBinding
@@ -30,14 +32,14 @@ import {
 	type SimpleUnitSymbol
 } from "./simpleUnitSymbols";
 import { findAdjacentSimpleDocumentationComment } from "./simpleDocumentation";
-import { findPropertySectionStart } from "./simpleUnitSource";
+import { findPropertySectionStart, getVisibleSimpleUnitUserCode } from "./simpleUnitSource";
 import {
 	libraryDefinitionTarget,
 	libraryMemberTarget,
 	type LibrarySymbolTarget
 } from "./librarySymbol";
 import { findCallableArgumentCount } from "./signatures";
-import { SIMPLE_IDENTIFIER_CHARACTER as IDENTIFIER_CHARACTER, simpleIdentifierRange, isSimpleIgnoredOffset } from "./simpleSourceLexical";
+import { SIMPLE_IDENTIFIER_CHARACTER as IDENTIFIER_CHARACTER, simpleIdentifierRange, simpleSourceTokenIndex, skipSimpleContinuationWhitespace, isSimpleIgnoredOffset } from "./simpleSourceLexical";
 
 /** 悬停不跨越名称末尾的引号或标点；F2 的左侧命中规则由导航入口自行选择。 */
 const identifierRange = (source: string, offset: number) => IDENTIFIER_CHARACTER.test(source[offset] ?? "") ? simpleIdentifierRange(source, offset) : undefined;
@@ -296,6 +298,7 @@ function qualifierBefore(source: string, start: number): string | undefined {
 function projectResourceHover(
 	source: string,
 	offset: number,
+	sdk: Sdk | undefined,
 	context: SimpleProjectSemanticContext | undefined
 ): SimpleKeywordHoverInfo | undefined {
 	const range = identifierRange(source, offset);
@@ -306,24 +309,16 @@ function projectResourceHover(
 	if (resources === undefined) {
 		return undefined;
 	}
+	const analysis = createSimpleSourceAnalysis(getVisibleSimpleUnitUserCode(source), sdk, context);
+	const tokens = analysis.expressionTokens;
+	const index = simpleSourceTokenIndex(tokens, range.start);
+	const rootIndex = range.name === "R" ? index : index - 2;
+	const root = tokens[rootIndex];
+	if (root?.text !== "R" || tokens[rootIndex - 1]?.text === "." || tokens[rootIndex + 1]?.text !== "."
+		|| !isSimpleResourceRoot(analysis, root.start, context)) return undefined;
 
 	if (range.name === "R") {
-		let cursor = range.end;
-		while (cursor < source.length && /[ \t]/u.test(source[cursor] ?? "")) {
-			cursor += 1;
-		}
-		if (source[cursor] !== ".") {
-			return undefined;
-		}
-		cursor += 1;
-		while (cursor < source.length && /[ \t]/u.test(source[cursor] ?? "")) {
-			cursor += 1;
-		}
-		const memberStart = cursor;
-		while (cursor < source.length && IDENTIFIER_CHARACTER.test(source[cursor] ?? "")) {
-			cursor += 1;
-		}
-		const memberName = source.slice(memberStart, cursor);
+		const memberName = tokens[rootIndex + 2]?.text;
 		if (!resources.symbols.some((candidate) => candidate.name === memberName)) {
 			return undefined;
 		}
@@ -341,9 +336,6 @@ function projectResourceHover(
 		};
 	}
 
-	if (qualifierBefore(source, range.start) !== "R") {
-		return undefined;
-	}
 	const symbol = resources.symbols.find((candidate) => candidate.name === range.name);
 	if (symbol === undefined) {
 		return undefined;
@@ -825,7 +817,8 @@ function findRuntimeHover(
 		return undefined;
 	}
 
-	const semanticDefinitions = buildSemanticDefinitionIndex(sdk, context);
+	const analysis = createSimpleSourceAnalysis(getVisibleSimpleUnitUserCode(source), sdk, context);
+	const semanticDefinitions = analysis.definitions;
 	const entries = runtimeDefinitions(sdk, context, semanticDefinitions);
 	const visibleEntry = (name: string): RuntimeDefinition | undefined => {
 		const reference = resolveSimpleDefinitionName(name, semanticDefinitions);
@@ -833,9 +826,11 @@ function findRuntimeHover(
 	};
 	const references = semanticDefinitions;
 	const qualifier = qualifierBefore(source, range.start);
+	const access = analysis.memberAt(range.start);
+	if (qualifier === undefined && access === undefined && analysis.syntax.isBlocked(range.name, range.start)) return undefined;
 	const callArity = findCallableArgumentCount(source, range.end);
 
-	if (qualifier !== undefined) {
+	if (qualifier !== undefined || access !== undefined) {
 		const currentUnit = context?.currentUnit;
 		if (
 			currentUnit !== undefined
@@ -866,11 +861,12 @@ function findRuntimeHover(
 			}
 		}
 
-		const resolved = resolveSimpleQualifier(source, range.start, qualifier, sdk, context);
+		const resolved = access?.receiver ?? (qualifier === undefined ? undefined : resolveSimpleQualifier(source, range.start, qualifier, sdk, context, analysis));
 
 		if (resolved === undefined) {
+			if (qualifier === undefined) return undefined;
 			const qualifiedName = `${qualifier}.${range.name}`;
-			if (resolveSimpleBinding(source, range.start, qualifier.split(".")[0]!, context) !== undefined) return undefined;
+			if (resolveSimpleBinding(source, range.start, qualifier.split(".")[0]!, context, analysis) !== undefined) return undefined;
 			const qualifiedDefinition = visibleEntry(qualifiedName);
 			return qualifiedDefinition === undefined
 				? undefined
@@ -929,6 +925,7 @@ function findRuntimeHover(
 		const result = runtimeMemberHover(member, reference, references, range.start, range.end, context);
 		if (
 			member.group === "events"
+			&& qualifier !== undefined
 			&& isSourceEventDeclaration(source, range.start, qualifier, range.name)
 			&& context?.currentUnit !== undefined
 		) {
@@ -951,7 +948,7 @@ function findRuntimeHover(
 		return result;
 	}
 
-	const binding = resolveSimpleBinding(source, range.start, range.name, context);
+	const binding = resolveSimpleBinding(source, range.start, range.name, context, analysis);
 	if (binding !== undefined) {
 		return sourceBindingHover(
 			binding,
@@ -1092,13 +1089,15 @@ export function findSimpleKeywordHover(
 	if (hexadecimal !== undefined) {
 		return hexadecimal;
 	}
-	const resource = projectResourceHover(source, offset, context);
+	const resource = projectResourceHover(source, offset, sdk, context);
 	if (resource !== undefined) {
 		return resource;
 	}
 	// 点号后的名称先按限定成员解析，未知成员也不能回退成同名关键字。
 	const memberRange = identifierRange(source, offset);
-	if (memberRange !== undefined && qualifierBefore(source, memberRange.start) !== undefined) {
+	const dot = memberRange === undefined ? -1 : source.lastIndexOf(".", memberRange.start - 1);
+	if (memberRange !== undefined && dot >= 0 && skipSimpleContinuationWhitespace(source, dot + 1) === memberRange.start
+		&& !isSimpleIgnoredOffset(source, dot, true)) {
 		return findRuntimeHover(source, offset, sdk, context);
 	}
 

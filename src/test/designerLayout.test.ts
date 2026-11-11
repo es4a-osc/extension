@@ -23,7 +23,7 @@ test("设计器列顺序只接受四个区域各出现一次", () => {
 	assert.equal(isDesignerColumnOrder(["property", "projection", "toolbox"]), false);
 	assert.deepEqual(normalizeDesignerColumnOrder(["enabled", "projection"]), DESIGNER_COLUMN_IDS);
 	assert.deepEqual(
-		normalizeDesignerColumnOrder(["property", "designer", "enabled", "toolbox"]),
+		normalizeDesignerColumnOrder(["toolbox", "designer", "enabled", "property"]),
 		DESIGNER_COLUMN_IDS
 	);
 });

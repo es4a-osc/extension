@@ -4,7 +4,7 @@ xhwsd@qq.com 2026-8-27
 */
 
 import * as vscode from "vscode";
-import { findSimpleKeywordHover } from "./keywordHover";
+import { findSimpleKeywordHover, type SimpleKeywordHoverInfo } from "./keywordHover";
 import { markdownDocumentationForDisplay } from "./markdownDocumentation";
 import type { Sdk } from "./sdk";
 import type { SimpleProjectSemanticContext } from "./simpleUnitSymbols";
@@ -16,6 +16,24 @@ function appendMetadata(
 	value: string
 ): void {
 	contents.appendText(`${label}：${value}`);
+}
+
+/** 分别显示真实项目或类库与声明来源，独立单元的临时清单只用于语义分析。 */
+function sourceMetadata(
+	info: SimpleKeywordHoverInfo,
+	context: SimpleProjectSemanticContext | undefined
+): { readonly label: string; readonly value: string }[] {
+	if (info.declarationSource === undefined || info.declarationSource.length === 0) {
+		return [];
+	}
+
+	const fromProject = info.declarationSourceKind === "project";
+	const metadata: { readonly label: string; readonly value: string }[] = [];
+	if (info.manifest !== undefined && info.manifest.length > 0 && (!fromProject || context?.standalone !== true)) {
+		metadata.push({ label: fromProject ? "所属项目" : "所属库", value: info.manifest });
+	}
+	metadata.push({ label: fromProject ? "所属单元" : "所属类", value: info.declarationSource });
+	return metadata;
 }
 
 /** 为 Simple 编译器语言标记及运行库定义、成员提供悬停说明。 */
@@ -39,11 +57,12 @@ export class SimpleHoverProvider implements vscode.HoverProvider {
 	/** 返回当前光标下由 SDK 清单和源码类型绑定确认的说明。 */
 	provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
 		const source = this.readSource(document);
+		const context = this.readContext(document, source);
 		const result = findSimpleKeywordHover(
 			source,
 			document.offsetAt(position),
 			this.sdk,
-			this.readContext(document, source)
+			context
 		);
 		if (result === undefined) {
 			return undefined;
@@ -52,7 +71,8 @@ export class SimpleHoverProvider implements vscode.HoverProvider {
 		const contents = new vscode.MarkdownString();
 		const displayed = result.overloads ?? [result];
 		const sharedSource = displayed.every((candidate) => candidate.manifest === result.manifest
-			&& candidate.declarationSource === result.declarationSource);
+			&& candidate.declarationSource === result.declarationSource
+			&& candidate.declarationSourceKind === result.declarationSourceKind);
 		displayed.forEach((candidate, candidateIndex) => {
 			if (candidateIndex > 0) contents.appendMarkdown("\n\n");
 			contents.appendCodeblock(candidate.signature ?? candidate.name, "simple");
@@ -74,34 +94,19 @@ export class SimpleHoverProvider implements vscode.HoverProvider {
 				if (parameters.length > 0) contents.appendMarkdown("\n\n");
 				contents.appendMarkdown(description);
 			}
-			if (!sharedSource && candidate.manifest !== undefined && candidate.declarationSource !== undefined) {
+			const candidateMetadata = sharedSource ? [] : sourceMetadata(candidate, context);
+			if (candidateMetadata.length > 0) {
 				contents.appendMarkdown("\n\n");
-				appendMetadata(contents, candidate.declarationSourceKind === "project" ? "所属项目" : "所属库", candidate.manifest);
-				contents.appendMarkdown("  \n");
-				appendMetadata(contents, candidate.declarationSourceKind === "project" ? "所属单元" : "所属类", candidate.declarationSource);
+				candidateMetadata.forEach(({ label, value }, index) => {
+					if (index > 0) {
+						contents.appendMarkdown("  \n");
+					}
+					appendMetadata(contents, label, value);
+				});
 			}
 		});
 
-		const metadata: { readonly label: string; readonly value: string }[] = [];
-		if (
-			sharedSource
-			&&
-			result.manifest !== undefined
-			&& result.manifest.length > 0
-			&& result.declarationSource !== undefined
-			&& result.declarationSource.length > 0
-		) {
-			metadata.push(
-				{
-					label: result.declarationSourceKind === "project" ? "所属项目" : "所属库",
-					value: result.manifest
-				},
-				{
-					label: result.declarationSourceKind === "project" ? "所属单元" : "所属类",
-					value: result.declarationSource
-				}
-			);
-		}
+		const metadata = sharedSource ? sourceMetadata(result, context) : [];
 
 		if (result.relations !== undefined && result.relations.length > 0) {
 			metadata.push(...result.relations.map((relation) => ({

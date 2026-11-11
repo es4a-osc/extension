@@ -59,16 +59,9 @@ export function isDesignerColumnOrder(value: unknown): value is readonly Designe
 		&& new Set(value).size === DESIGNER_COLUMN_IDS.length;
 }
 
-/** 将旧版投影列标识迁移为当前标识；其它无效状态仍然拒绝恢复。 */
-function migrateDesignerColumnOrder(value: unknown): readonly DesignerColumnId[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const migrated = value.map((id: unknown) => id === "designer" ? "projection" : id);
-	return isDesignerColumnOrder(migrated) ? [...migrated] : undefined;
-}
-
-/** 从工作区状态读取列顺序；无效或旧版本状态回退到产品缺省顺序。 */
+/** 从工作区状态读取当前列顺序，无效值使用产品缺省顺序。 */
 export function normalizeDesignerColumnOrder(value: unknown): readonly DesignerColumnId[] {
-	return migrateDesignerColumnOrder(value) ?? [...DESIGNER_COLUMN_IDS];
+	return isDesignerColumnOrder(value) ? [...value] : [...DESIGNER_COLUMN_IDS];
 }
 
 /** 单元列顺序优先，其次读取用户默认顺序，最后使用内置顺序。 */

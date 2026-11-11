@@ -103,6 +103,25 @@ test("快捷调试按当前单元所在的最具体源码根选择项目", () =>
 	);
 });
 
+test("项目归属排除自身构建目录，但保留另一项目的显式源码根", () => {
+	const rootSourceProject: SimpleProjectInfo = {
+		...project,
+		sourceDirectories: [project.directory]
+	};
+	const nestedProject: SimpleProjectInfo = {
+		...project,
+		buildDirectory: "E:\\Projects\\Demo\\build\\nested\\output",
+		directory: "E:\\Projects\\Demo\\build\\nested",
+		filePath: "E:\\Projects\\Demo\\build\\nested\\project.properties",
+		name: "Nested",
+		sourceDirectories: ["E:\\Projects\\Demo\\build\\nested\\src"]
+	};
+	assert.equal(findProjectForSource([rootSourceProject], "E:\\Projects\\Demo\\build\\生成.simple"), undefined);
+	assert.equal(findProjectForSource([rootSourceProject], "E:\\Projects\\Demo\\build-other\\用户.simple"), rootSourceProject);
+	assert.equal(findProjectForSource([rootSourceProject, nestedProject], "E:\\Projects\\Demo\\build\\nested\\src\\用户.simple"), nestedProject);
+	assert.equal(findProjectForSource([rootSourceProject, nestedProject], "E:\\Projects\\Demo\\build\\nested\\output\\生成.simple"), undefined);
+});
+
 test("项目参数使用项目模型已经解析的缺省值", () => {
 	const projectWithoutConfiguration: SimpleProjectInfo = {
 		...project,

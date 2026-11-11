@@ -85,9 +85,21 @@ export class WorkbenchDriver {
 		})()`), name);
 	}
 
-	async key(key: "F2" | "F5" | "Enter" | "Escape", control = false): Promise<void> {
-		const code = key === "F2" ? 113 : key === "F5" ? 116 : key === "Enter" ? 13 : 27;
-		for (const type of ["keyDown", "keyUp"]) await this.send("Input.dispatchKeyEvent", { type, key, code: key, windowsVirtualKeyCode: code, modifiers: control ? 2 : 0 });
+	async key(key: "F2" | "F5" | "Enter" | "Escape" | " ", control = false): Promise<void> {
+		const code = key === "F2" ? 113 : key === "F5" ? 116 : key === "Enter" ? 13 : key === " " ? 32 : 27;
+		for (const type of ["keyDown", "keyUp"]) await this.send("Input.dispatchKeyEvent", { type, key, code: key === " " ? "Space" : key, windowsVirtualKeyCode: code, modifiers: control ? 2 : 0 });
+	}
+
+	/** 将文字交给工作台的实际输入通道，让编辑器自行处理输入与自动建议。 */
+	async type(text: string): Promise<void> {
+		if (/^[a-z.]$/u.test(text)) {
+			const code = text === "." ? "Period" : `Key${text.toUpperCase()}`;
+			const windowsVirtualKeyCode = text === "." ? 190 : text.toUpperCase().charCodeAt(0);
+			await this.send("Input.dispatchKeyEvent", { type: "keyDown", key: text, code, text, windowsVirtualKeyCode });
+			await this.send("Input.dispatchKeyEvent", { type: "keyUp", key: text, code, windowsVirtualKeyCode });
+		} else {
+			await this.send("Input.insertText", { text });
+		}
 	}
 
 	private rejectPending(): void {

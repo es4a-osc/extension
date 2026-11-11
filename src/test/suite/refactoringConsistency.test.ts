@@ -15,13 +15,13 @@ import { SimpleRenameProvider } from "../../renameProvider";
 import { SimpleReferenceProvider } from "../../referenceProvider";
 import { SimpleProjectRefactoring } from "../../projectRefactoring";
 import { SimpleCodeFileSystemProvider, SIMPLE_CODE_SCHEME, toSimpleCodeUri, toSimpleDesignerUri, toSimpleSourceUri } from "../../simpleCodeFileSystem";
-import { isPathInsideOrEqual } from "../../simpleProjectPaths";
+import { isPathInsideOrEqual, sameFilePath } from "../../simpleProjectPaths";
 import { closeSimpleUnitTabsInDirectories } from "../../simpleUnitTabs";
 import { loadSimpleProject } from "../../programResources";
 import { loadSdk } from "../../sdk";
 import type { SimpleProjectInfo } from "../../project";
 import type { ProgramTreeProvider } from "../../programTree";
-import type { ProjectSymbolIndex } from "../../projectSymbolIndex";
+import { ProjectSymbolIndex } from "../../projectSymbolIndex";
 import { toUnitXmlPreviewUri } from "../../unitPreview";
 import { WorkbenchDriver } from "./workbenchDriver";
 
@@ -222,6 +222,33 @@ suite("重构异步一致性", () => {
 		});
 	});
 
+	test("查找引用直接返回关闭单元的准确范围，不触发打开文档", async () => {
+		await withProject(async ({ project, caller, callerFile, refactoring }) => {
+			const coldFile = path.join(path.dirname(callerFile), "未打开.simple");
+			const line = "\t对象1.字段 = 2";
+			await fs.writeFile(coldFile, `过程 P()\r\n${line}\r\n结束 过程\r\n` + property);
+			const programs = { getProjects: async () => [project] } as unknown as ProgramTreeProvider;
+			const provider = new SimpleReferenceProvider(programs, refactoring, () => undefined);
+			const cancellation = new vscode.CancellationTokenSource();
+			let opened = false;
+			const listener = vscode.workspace.onDidOpenTextDocument((document) => {
+				const source = toSimpleSourceUri(document.uri);
+				opened ||= source !== undefined && sameFilePath(source.fsPath, coldFile);
+			});
+			try {
+				const position = caller.positionAt(caller.getText().indexOf("对象1.字段") + "对象1.".length);
+				const locations = await provider.provideReferences(caller, position, { includeDeclaration: false }, cancellation.token);
+				const location = locations.find((entry) => sameFilePath(toSimpleSourceUri(entry.uri)!.fsPath, coldFile));
+				assert.ok(location);
+				assert.ok(location.range.isEqual(new vscode.Range(1, line.indexOf("字段"), 1, line.indexOf("字段") + 2)));
+				assert.equal(opened, false);
+			} finally {
+				listener.dispose();
+				cancellation.dispose();
+			}
+		});
+	});
+
 	test("查找引用期间另一个单元变化时不返回错位位置，取消请求不读取项目", async () => {
 		await withProject(async ({ project, owner, caller, refactoring }) => {
 			const cancellation = new vscode.CancellationTokenSource();
@@ -356,7 +383,7 @@ suite("重构异步一致性", () => {
 		}
 	});
 
-	test("单个项目读取失败时保留其原诊断，其它项目继续更新，恢复后重新全量分析", async () => {
+	test("单个项目读取失败时保留其原诊断，其它项目继续更新，恢复后只重扫该项目", async () => {
 		await withProject(async ({ directory, project, documents, refactoring, owner }) => {
 			const otherFile = path.join(directory, "其它项目", "project.properties");
 			const otherUnit = path.join(path.dirname(otherFile), "src", "其它.simple");
@@ -370,10 +397,14 @@ suite("重构异步一致性", () => {
 			const sdk = await loadSdk(testSdkPath());
 			const errors: string[] = [];
 			const programs = { getProjects: async () => [project, other] } as unknown as ProgramTreeProvider;
-			const diagnostics = new SimpleDiagnosticProvider(programs, refactoring, documents, { contextForFile: () => undefined } as unknown as ProjectSymbolIndex, () => sdk, () => undefined, (message) => errors.push(message));
+			const symbols = new ProjectSymbolIndex();
+			await symbols.updateProjects([project, other]);
+			const diagnostics = new SimpleDiagnosticProvider(programs, refactoring, documents, symbols, () => sdk, () => undefined, (message) => errors.push(message));
 			const read = refactoring.readProject.bind(refactoring);
+			const scannedProjects: string[] = [];
 			let broken = false;
 			refactoring.readProject = async (current) => {
+				scannedProjects.push(current.filePath);
 				if (broken && current.filePath === project.filePath) throw new Error("项目暂时不可读");
 				return read(current);
 			};
@@ -391,9 +422,11 @@ suite("重构异步一致性", () => {
 				broken = false;
 				const fix = new vscode.WorkspaceEdit(); fix.delete(owner.uri, new vscode.Range(0, 0, 1, 0));
 				assert.ok(await vscode.workspace.applyEdit(fix));
-				// 失败留下全量请求，下一次普通调度也能重新扫描恢复的项目。
+				// 下一次单文档调度也会重试失败项目，同时保留其它项目已有诊断。
+				scannedProjects.length = 0;
 				diagnostics.schedule(false, otherDocument.uri);
 				await waitFor(() => !has(owner, "未声明原值"));
+				assert.deepEqual(scannedProjects, [project.filePath]);
 				assert.ok(has(otherDocument, "未声明新值"));
 			} finally { diagnostics.dispose(); }
 		});

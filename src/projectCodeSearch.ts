@@ -31,11 +31,6 @@ export interface ProjectCodeSearchResult {
 	readonly matches: readonly ProjectCodeMatch[];
 }
 
-/** Windows 文件路径作为内部键时忽略大小写。 */
-export function projectCodePathKey(filePath: string): string {
-	return filePathKey(filePath);
-}
-
 /**
  * 读取搜索范围内全部单元的用户代码。
  *
@@ -45,14 +40,15 @@ export function projectCodePathKey(filePath: string): string {
 export async function loadProjectCodeDocuments(
 	rootPaths: readonly string[],
 	readOpenUserCode: (filePath: string) => string | undefined = () => undefined,
-	isCancelled: () => boolean = () => false
+	isCancelled: () => boolean = () => false,
+	excludedDirectories: readonly string[] = []
 ): Promise<readonly ProjectCodeDocument[]> {
 	const seen = new Set<string>();
 	const filePaths: string[] = [];
 
 	for (const rootPath of rootPaths) {
-		for (const filePath of await listSimpleFiles(rootPath, isCancelled)) {
-			const key = projectCodePathKey(filePath);
+		for (const filePath of await listSimpleFiles(rootPath, isCancelled, { excludedDirectories })) {
+			const key = filePathKey(filePath);
 			if (!seen.has(key)) {
 				seen.add(key);
 				filePaths.push(path.resolve(filePath));
@@ -86,12 +82,14 @@ export async function loadProjectCodeDocuments(
 	return documents;
 }
 
-/** 对已加载的用户代码快照执行不区分大小写的单行普通文本搜索。 */
-export function findProjectCodeMatches(
+/** 分段匹配已加载的用户代码，允许输入变化或关闭搜索时取消当前查询。 */
+export async function findProjectCodeMatches(
 	documents: readonly ProjectCodeDocument[],
 	query: string,
-	maxResults = 1000
-): ProjectCodeSearchResult {
+	maxResults = 1000,
+	isCancelled: () => boolean = () => false
+): Promise<ProjectCodeSearchResult | undefined> {
+	if (isCancelled()) return undefined;
 	if (query.trim().length === 0 || maxResults <= 0) {
 		return { limitHit: false, matches: [] };
 	}
@@ -99,9 +97,18 @@ export function findProjectCodeMatches(
 	const normalizedQuery = query.toLowerCase();
 	const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "iu");
 	const matches: ProjectCodeMatch[] = [];
+	let checked = 0;
+	let deadline = performance.now() + 8;
 	for (const document of documents) {
 		const lines = document.userCode.split(/\r\n|\n|\r/u);
 		for (let lineNumber = 0; lineNumber < lines.length; lineNumber += 1) {
+			if (checked++ % 128 === 0) {
+				if (performance.now() >= deadline) {
+					await new Promise<void>((resolve) => setImmediate(resolve));
+					deadline = performance.now() + 8;
+				}
+				if (isCancelled()) return undefined;
+			}
 			const lineText = lines[lineNumber];
 			if (lineText === undefined) {
 				continue;

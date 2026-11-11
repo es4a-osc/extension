@@ -601,7 +601,7 @@ test("运行库完整声明 Java 相对布局常量、属性和方法", async ()
 	}
 });
 
-test("完整限定继承名可关联仅声明短名称的唯一父定义", async (context) => {
+test("完整限定继承名精确匹配清单声明，不猜测同短名父类型", async (context) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-sdk-inherits-"));
 	context.after(() => fs.rm(directory, { recursive: true, force: true }));
 
@@ -614,11 +614,13 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 				{
 					name: "布局",
 					kind: "layout",
+					type: "simple.runtime.components.布局",
 					properties: [{ name: "宽度", type: "整数型", projection: "width" }]
 				},
 				{
 					name: "线性布局",
 					kind: "layout",
+					type: "simple.runtime.components.线性布局",
 					inherits: ["simple.runtime.components.布局"],
 					properties: [{ name: "方向", type: "整数型", projection: "orientation" }]
 				},
@@ -628,6 +630,11 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 					inherits: ["simple.runtime.components.线性布局"],
 					resolvedInherits: ["伪造的清单缓存"],
 					properties: [{ name: "排列方向", type: "整数型", projection: "orientation" }]
+				},
+				{
+					name: "独立布局",
+					kind: "layout",
+					inherits: ["other.布局"]
 				}
 			]
 		}]
@@ -651,6 +658,8 @@ test("完整限定继承名可关联仅声明短名称的唯一父定义", async
 
 	const index = buildDefinitionIndex(sdk.manifests);
 	assert.equal(index.get("simple.runtime.components.布局")?.definition, layout);
+	assert.equal(index.has("other.布局"), false);
+	assert.deepEqual(getEffectiveMembers(index.get("独立布局")!, "properties", index), []);
 	const testLayoutReference = index.get("测试布局");
 	assert.ok(testLayoutReference);
 	assert.deepEqual(

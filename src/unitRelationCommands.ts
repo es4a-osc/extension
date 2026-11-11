@@ -36,7 +36,7 @@ export interface UnitRelationServices {
 	readonly codeDocuments: SimpleCodeFileSystemProvider;
 	readonly getSdk: () => Sdk | undefined;
 	readonly projectSymbols: ProjectSymbolIndex;
-	readonly refreshProjectSemantics: () => Promise<void>;
+	readonly refreshProjectSemantics: (paths?: readonly string[]) => Promise<void>;
 }
 
 /** VS Code 类型选择项携带写入 Simple 属性 XML 的完整名称。 */

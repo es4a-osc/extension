@@ -10,6 +10,31 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { listSimpleFiles } from "../simpleFileDiscovery";
 
+test("明确排除的构建目录不被读取，同名前缀的普通源码仍保留", async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-discovery-exclude-"));
+	const build = path.join(directory, "output");
+	const sibling = path.join(directory, "output-source");
+	const nativeFs: typeof fs = require("node:fs/promises");
+	const original = nativeFs.readdir;
+	try {
+		await fs.mkdir(build);
+		await fs.mkdir(sibling);
+		await fs.writeFile(path.join(build, "生成.simple"), "");
+		await fs.writeFile(path.join(sibling, "保留.simple"), "");
+		nativeFs.readdir = ((target: Parameters<typeof fs.readdir>[0], ...args: unknown[]) => {
+			assert.notEqual(String(target), build, "排除目录应在读取之前跳过");
+			return Reflect.apply(original, nativeFs, [target, ...args]);
+		}) as typeof fs.readdir;
+		assert.deepEqual(await listSimpleFiles(directory, undefined, {
+			excludedDirectories: [build], strict: true
+		}), [path.join(sibling, "保留.simple")]);
+		assert.deepEqual(await listSimpleFiles(build, undefined, { excludedDirectories: [build] }), []);
+	} finally {
+		nativeFs.readdir = original;
+		await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	}
+});
+
 test("重构严格扫描拒绝不可读子树，普通搜索仍可跳过", async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "es4a-strict-discovery-"));
 	const restricted = path.join(directory, "restricted");

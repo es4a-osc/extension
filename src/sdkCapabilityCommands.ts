@@ -12,6 +12,9 @@ import type { ProgramTreeNode } from "./programTree";
 import type { Sdk, SdkCapability } from "./sdk";
 import { createWindowsSdkCapabilityShell } from "./sdkCapabilityShell";
 import { SdkProjectTerminals, type ProjectProcessResult } from "./sdkProjectTerminal";
+import { KeyedTaskQueue } from "./keyedTaskQueue";
+import { filePathKey } from "./simpleProjectPaths";
+import { loadSimpleProject } from "./programResources";
 
 /** 快速选择项携带的原始 SDK 能力声明。 */
 interface CapabilityQuickPickItem extends vscode.QuickPickItem {
@@ -94,6 +97,7 @@ async function selectCapability(
 /** 按 SDK 清单解析项目参数，在扩展管理的终端中运行并返回实际结果。 */
 async function runProjectCapability(
 	terminals: SdkProjectTerminals,
+	builds: KeyedTaskQueue,
 	getSdk: () => Sdk | undefined,
 	project: SimpleProjectInfo | undefined,
 	capabilityId: string,
@@ -117,7 +121,15 @@ async function runProjectCapability(
 			environment = { ANDROID_SERIAL: serial };
 		}
 	}
-	return terminals.run(invocation.command, invocation.args, displayName + "：" + project.name, environment);
+	// 同一构建目录的编译、清理和 APK 读取必须串行，其他项目仍可并行。
+	const buildKey = filePathKey(project.buildDirectory);
+	return builds.run(buildKey, async () => {
+		const current = await loadSimpleProject(project.filePath);
+		if (filePathKey(current.buildDirectory) !== buildKey) {
+			throw new Error("等待期间项目构建目录已变化，请重新执行。");
+		}
+		return terminals.run(invocation.command, invocation.args, displayName + "：" + current.name, environment);
+	});
 }
 
 /** 选择并在 SDK 根目录运行不依赖项目的工具能力。 */
@@ -154,6 +166,7 @@ export function registerSdkCapabilityCommands(
 	getCurrentProject: () => Promise<SimpleProjectInfo | undefined>
 ): void {
 	const terminals = new SdkProjectTerminals();
+	const builds = new KeyedTaskQueue();
 	context.subscriptions.push(terminals);
 	const resolveProject = async (node: ProgramTreeNode | undefined): Promise<SimpleProjectInfo | undefined> => {
 		if (node === undefined) {
@@ -162,18 +175,18 @@ export function registerSdkCapabilityCommands(
 		if (node.kind !== "project") {
 			throw new Error("请在项目节点上执行项目能力。");
 		}
-		return node.project;
+		return loadSimpleProject(node.project.filePath);
 	};
 	const compileApplication = async (node?: ProgramTreeNode): Promise<ProjectProcessResult | undefined> => {
 		try {
-			return await runProjectCapability(terminals, getSdk, await resolveProject(node), "compile", "编译应用");
+			return await runProjectCapability(terminals, builds, getSdk, await resolveProject(node), "compile", "编译应用");
 		} catch (error) {
 			await vscode.window.showErrorMessage("编译应用失败：" + errorMessage(error));
 		}
 	};
 	const debugApplication = async (node?: ProgramTreeNode): Promise<ProjectProcessResult | undefined> => {
 		try {
-			return await runProjectCapability(terminals, getSdk, await resolveProject(node), "debug", "调试应用");
+			return await runProjectCapability(terminals, builds, getSdk, await resolveProject(node), "debug", "调试应用");
 		} catch (error) {
 			await vscode.window.showErrorMessage("调试应用失败：" + errorMessage(error));
 		}

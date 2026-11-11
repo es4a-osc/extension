@@ -61,12 +61,13 @@ test("资源改名只更新资源表达式，项目类型和别名 R 保持原�
 });
 
 test("成员补全按同名 R 对象、调用结果和数组元素的真实类型返回成员", () => {
-	for (const expression of ["R.", "工厂.获取().", "数组(0).", "(R).", "工厂.获取().方"]) {
+	for (const expression of ["R.", "工厂.获取().", "数组(0).", "(R).", "工厂.获取().标"]) {
 		const source = "变量 R 为 结果\n过程 测试()\n变量 数组 为 结果(10)\n" + expression;
 		const current = unit("调用", source);
 		const result = provideSimpleCompletions(source, source.length, sdk, refactoringContext(current, [current]));
 		const names = result?.candidates.map((candidate) => candidate.name) ?? [];
-		assert.ok(names.includes(expression.endsWith("方") ? "方法" : "标题"), expression);
+		assert.ok(names.includes("标题"), expression);
+		assert.equal(names.includes("方法"), expression === "R.", expression);
 		assert.ok(!names.includes("工厂"), expression);
 	}
 });
